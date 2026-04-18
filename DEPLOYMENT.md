@@ -2,16 +2,15 @@
 
 ## Public repo and auto-update hook
 
-This repo keeps the deployment hook in `.githooks/post-push`.
+Automatic node updates are driven by a server-side `post-receive` hook on the deployment node.
 
-To enable it on a local clone:
+On your local clone, configure `origin` to push to both GitHub and the node bare repo:
 
 ```bash
-git config core.hooksPath .githooks
-cp deploy/deploy-hook.env.example .deploy-hook.env
+./scripts/deploy/configure-origin-push-mirrors.sh
 ```
 
-Fill `.deploy-hook.env` with the SSH target, repo URL, deploy directory, and branch you want to auto-deploy. The hook only runs when the configured branch is pushed.
+That keeps GitHub as the public source of truth while also sending each push to the node, where the bare repo hook fast-forwards the working tree and runs `./scripts/deploy/remote-update.sh`.
 
 ## Remote node layout
 
@@ -57,6 +56,5 @@ Optional integrations such as `ETHEREUM_RPC_URL`, `KUBO_API_URL`, and `KUBO_API_
 Run this on the node after the repo has been cloned:
 
 ```bash
-git config core.hooksPath .githooks
 ./scripts/deploy/remote-update.sh
 ```
