@@ -155,7 +155,7 @@ export default function RootLayout({
                     >
                       <LogoMark size={28} />
                     </span>
-                    <span className="truncate font-serif text-[1.05rem] leading-none tracking-tight text-[var(--color-ink)] sm:text-[1.2rem]">
+                    <span className="block whitespace-nowrap pb-[0.08em] font-serif text-[1.05rem] leading-[1.08] tracking-tight text-[var(--color-ink)] sm:text-[1.2rem]">
                       Agorix
                     </span>
                   </Link>
