@@ -52,3 +52,60 @@ export function artworkBlockedBySmartBudget(
     rootKnownTooLarge(root, smartPinMaxBytes),
   );
 }
+
+export function nextProcessableRootPriority(
+  artwork: SmartBudgetArtworkSnapshot,
+  smartPinMaxBytes: number,
+) {
+  if (!artwork) {
+    return {
+      rank: 2,
+      size: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
+  let sawUnknownSize = false;
+  let smallestKnownSize: number | null = null;
+
+  for (const root of [artwork.metadataRoot, artwork.mediaRoot]) {
+    if (rootAlreadySatisfied(root)) {
+      continue;
+    }
+
+    if (!root) {
+      continue;
+    }
+
+    const size = root.estimatedByteSize ?? root.byteSize;
+    if (size === null) {
+      sawUnknownSize = true;
+      continue;
+    }
+
+    if (size > smartPinMaxBytes) {
+      continue;
+    }
+
+    smallestKnownSize =
+      smallestKnownSize === null ? size : Math.min(smallestKnownSize, size);
+  }
+
+  if (smallestKnownSize !== null) {
+    return {
+      rank: 0,
+      size: smallestKnownSize,
+    };
+  }
+
+  if (sawUnknownSize) {
+    return {
+      rank: 1,
+      size: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
+  return {
+    rank: 2,
+    size: Number.MAX_SAFE_INTEGER,
+  };
+}

@@ -14,7 +14,10 @@ import {
   FOUNDATION_URL_PRIORITY,
   normalizeAddress,
 } from "./shared";
-import { artworkBlockedBySmartBudget } from "./smart-budget";
+import {
+  artworkBlockedBySmartBudget,
+  nextProcessableRootPriority,
+} from "./smart-budget";
 
 const SMART_BUDGET_ROOT_SELECT = {
   backupStatus: true,
@@ -524,11 +527,31 @@ async function refillAutomaticBackups(args: {
       },
     },
     orderBy: [{ lastIndexedAt: "asc" }, { createdAt: "asc" }],
-    take: Math.min(Math.max(refillSlots * 8, 96), 2_000),
+    take: Math.min(Math.max(refillSlots * 256, 1_024), 10_000),
   });
 
+  const orderedCandidates = candidateArtworks
+    .map((artwork) => ({
+      artwork,
+      priority: nextProcessableRootPriority(artwork, smartPinMaxBytes),
+    }))
+    .filter((entry) => entry.priority.rank < 2)
+    .sort((left, right) => {
+      const rankGap = left.priority.rank - right.priority.rank;
+      if (rankGap !== 0) {
+        return rankGap;
+      }
+
+      const sizeGap = left.priority.size - right.priority.size;
+      if (sizeGap !== 0) {
+        return sizeGap;
+      }
+
+      return 0;
+    });
+
   let refilledCount = 0;
-  for (const artwork of candidateArtworks) {
+  for (const { artwork } of orderedCandidates) {
     if (activeDedupeKeys.has(artwork.id)) continue;
     if (artworkBlockedBySmartBudget(artwork, smartPinMaxBytes)) continue;
 
