@@ -250,8 +250,8 @@ model WorkerHeartbeat {
 model ArchivePolicyState {
   id                    String   @id
   autoCrawlerEnabled    Boolean  @default(true)
-  smartPinStartBytes    Int      @default(1048576)
-  smartPinMaxBytes      Int      @default(1048576)
+  smartPinStartBytes    Int      @default(5242880)
+  smartPinMaxBytes      Int      @default(5242880)
   smartPinCeilingBytes  Int      @default(268435456)
   smartPinGrowthFactor  Float    @default(2)
   smartPinDeferMs       Int      @default(60000)
