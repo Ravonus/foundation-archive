@@ -8,6 +8,9 @@ import { getArchivePolicyState } from "~/server/archive/state";
 
 import { type DatabaseClient } from "./types";
 
+const MIB = 1024 * 1024;
+const SMART_PIN_TIER_FACTORS = [1, 2, 5] as const;
+
 async function findSmallestDeferredRoot(
   client: DatabaseClient,
   smartPinMaxBytes: number,
@@ -106,19 +109,84 @@ async function hasPendingRootsInCurrentTier(
   );
 }
 
-export async function maybeAdvanceSmartPinBudget(client: DatabaseClient) {
+function nextSmartPinBudgetTier(currentBytes: number, ceilingBytes: number) {
+  if (currentBytes >= ceilingBytes) {
+    return ceilingBytes;
+  }
+
+  const ceilingMiB = Math.max(Math.ceil(ceilingBytes / MIB), 1);
+
+  for (let magnitude = 1; magnitude <= ceilingMiB * 10; magnitude *= 10) {
+    for (const factor of SMART_PIN_TIER_FACTORS) {
+      const candidate = factor * magnitude * MIB;
+      if (candidate > currentBytes) {
+        return Math.min(candidate, ceilingBytes);
+      }
+    }
+  }
+
+  return ceilingBytes;
+}
+
+async function automaticCrawlerScanCompleted(client: DatabaseClient) {
+  const [totalAutoCrawlers, unfinishedAutoCrawlers] = await Promise.all([
+    client.contractCrawlerState.count({
+      where: {
+        autoEnabled: true,
+      },
+    }),
+    client.contractCrawlerState.count({
+      where: {
+        autoEnabled: true,
+        completed: false,
+      },
+    }),
+  ]);
+
+  return totalAutoCrawlers > 0 && unfinishedAutoCrawlers === 0;
+}
+
+async function hasActiveAutomationBacklog(client: DatabaseClient) {
+  const pendingAutomationJobs = await client.queueJob.count({
+    where: {
+      status: {
+        in: [QueueJobStatus.PENDING, QueueJobStatus.RUNNING],
+      },
+      kind: {
+        in: [
+          QueueJobKind.INGEST_FOUNDATION_URL,
+          QueueJobKind.INGEST_CONTRACT_TOKEN,
+          QueueJobKind.SCAN_CONTRACT_TOKENS,
+        ],
+      },
+    },
+  });
+
+  return pendingAutomationJobs > 0;
+}
+
+export async function maybeAdvanceSmartPinBudget(
+  client: DatabaseClient,
+  input: {
+    completedFoundationPass: boolean;
+  },
+) {
   const policy = await getArchivePolicyState(client);
-  if (
-    policy.lastBudgetRaisedAt &&
-    Date.now() - policy.lastBudgetRaisedAt.getTime() < policy.smartPinDeferMs
-  ) {
+  if (!input.completedFoundationPass) {
     return {
       advanced: false,
       policy,
     };
   }
 
-  if (await hasPendingRootsInCurrentTier(client, policy.smartPinMaxBytes)) {
+  const [hasCurrentTierWork, scanCompleted, hasAutomationBacklog] =
+    await Promise.all([
+      hasPendingRootsInCurrentTier(client, policy.smartPinMaxBytes),
+      automaticCrawlerScanCompleted(client),
+      hasActiveAutomationBacklog(client),
+    ]);
+
+  if (hasCurrentTierWork || !scanCompleted || hasAutomationBacklog) {
     return {
       advanced: false,
       policy,
@@ -138,16 +206,10 @@ export async function maybeAdvanceSmartPinBudget(client: DatabaseClient) {
   }
 
   const target =
-    smallestDeferredRoot.estimatedByteSize ??
-    smallestDeferredRoot.byteSize ??
-    Math.ceil(policy.smartPinMaxBytes * policy.smartPinGrowthFactor);
-
-  const nextBudget = Math.min(
+    smallestDeferredRoot.estimatedByteSize ?? smallestDeferredRoot.byteSize;
+  const nextBudget = nextSmartPinBudgetTier(
+    policy.smartPinMaxBytes,
     policy.smartPinCeilingBytes,
-    Math.max(
-      Math.ceil(policy.smartPinMaxBytes * policy.smartPinGrowthFactor),
-      target,
-    ),
   );
 
   if (nextBudget <= policy.smartPinMaxBytes) {
@@ -162,13 +224,14 @@ export async function maybeAdvanceSmartPinBudget(client: DatabaseClient) {
     data: {
       smartPinMaxBytes: nextBudget,
       lastBudgetRaisedAt: new Date(),
-      lastBudgetReason: `Raised to include ${smallestDeferredRoot.cid}`,
+      lastBudgetReason:
+        "Advanced to the next smart-pin tier after a full Foundation scan pass",
     },
   });
 
   await emitArchiveEvent(client, {
     type: "policy.smart-pin-budget-raised",
-    summary: `Smart pin budget widened to ${nextBudget} bytes.`,
+    summary: `Advanced the smart-pin tier to ${nextBudget} bytes after a full Foundation scan pass.`,
     cid: smallestDeferredRoot.cid,
     sizeBytes: target,
     data: {

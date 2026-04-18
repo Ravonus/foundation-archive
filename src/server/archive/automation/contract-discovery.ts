@@ -176,6 +176,7 @@ function disabledDiscoveryResult(policy: PolicyState) {
     query: null as string | null,
     seenContracts: 0,
     newContracts: 0,
+    completedFoundationPass: false,
     pausedForBacklog: false,
     backlogMaxPendingJobs: 0,
     backlogHeadroomJobs: 0,
@@ -210,6 +211,7 @@ async function handleBacklogPause({
         : null,
     seenContracts: 0,
     newContracts: 0,
+    completedFoundationPass: false,
     pausedForBacklog: true,
     backlogMaxPendingJobs: backlog.maxPendingJobs,
     backlogHeadroomJobs: backlog.pendingHeadroom,
@@ -317,6 +319,7 @@ async function handleDiscoveryError({
     query,
     seenContracts: 0,
     newContracts: 0,
+    completedFoundationPass: false,
     pausedForBacklog: false,
     backlogMaxPendingJobs: backlog.maxPendingJobs,
     backlogHeadroomJobs: backlog.pendingHeadroom,
@@ -413,6 +416,11 @@ async function persistDiscoveryProgress({
   const nextDiscoveryPage =
     nextCursor.discoveryPage ??
     policy.discoveryPage + (nextCursor.discoveryPageIncrement ?? 0);
+  const completedFoundationPass =
+    nextCursor.discoverySource === "drops" &&
+    nextDiscoveryPage === 0 &&
+    nextCursor.discoveryQueryIndex === 0 &&
+    discovery.reachedEnd;
 
   const updatedPolicy = await client.archivePolicyState.update({
     where: { id: policy.id },
@@ -449,6 +457,10 @@ async function persistDiscoveryProgress({
       totalDiscoveredContracts: updatedPolicy.totalDiscoveredContracts,
     },
   });
+
+  return {
+    completedFoundationPass,
+  };
 }
 
 export async function runAutomaticContractDiscoveryTick(
@@ -499,9 +511,10 @@ export async function runAutomaticContractDiscoveryTick(
   }
 
   let upsertResult: DiscoveryUpsertResult;
+  let progressResult: { completedFoundationPass: boolean };
   try {
     upsertResult = await upsertDiscoveryItems({ client, discovery });
-    await persistDiscoveryProgress({
+    progressResult = await persistDiscoveryProgress({
       client,
       policy,
       discovery,
@@ -519,6 +532,7 @@ export async function runAutomaticContractDiscoveryTick(
     query: discovery.query,
     seenContracts: discovery.items.length,
     newContracts: upsertResult.newContracts,
+    completedFoundationPass: progressResult.completedFoundationPass,
     pausedForBacklog: false,
     backlogMaxPendingJobs: backlog.maxPendingJobs,
     backlogHeadroomJobs: backlog.pendingHeadroom,

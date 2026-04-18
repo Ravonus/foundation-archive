@@ -198,6 +198,7 @@ export async function finalizeJobDeferred(
   input: {
     availableAt: Date;
     message: string;
+    retainJob?: boolean;
   },
 ) {
   const existingJob = await client.queueJob.findUnique({
@@ -211,14 +212,21 @@ export async function finalizeJobDeferred(
       id: job.id,
       status: QueueJobStatus.RUNNING,
     },
-    data: {
-      status: QueueJobStatus.PENDING,
-      availableAt: input.availableAt,
-      startedAt: null,
-      finishedAt: null,
-      attempts: Math.max(job.attempts - 1, 0),
-      lastError: null,
-    },
+    data: input.retainJob
+      ? {
+          status: QueueJobStatus.PENDING,
+          availableAt: input.availableAt,
+          startedAt: null,
+          finishedAt: null,
+          attempts: Math.max(job.attempts - 1, 0),
+          lastError: null,
+        }
+      : {
+          status: QueueJobStatus.CANCELLED,
+          availableAt: input.availableAt,
+          finishedAt: new Date(),
+          lastError: null,
+        },
   });
 
   if (updated.count === 0) return null;

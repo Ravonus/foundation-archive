@@ -37,6 +37,7 @@ function cycleHadActivity(input: {
     advanced: boolean;
   };
   rebalance: {
+    parkedBlockedJobs: number;
     trimmedAutomaticJobs: number;
     refilledAutomaticJobs: number;
   };
@@ -48,6 +49,7 @@ function cycleHadActivity(input: {
     input.crawl.scannedContracts > 0 ||
     input.crawl.queuedTokens > 0 ||
     input.budget.advanced ||
+    input.rebalance.parkedBlockedJobs > 0 ||
     input.rebalance.trimmedAutomaticJobs > 0 ||
     input.rebalance.refilledAutomaticJobs > 0
   );
@@ -60,6 +62,7 @@ function disabledDiscoveryResult() {
     query: null as string | null,
     seenContracts: 0,
     newContracts: 0,
+    completedFoundationPass: false,
     pausedForBacklog: true,
     backlogMaxPendingJobs: 0,
     backlogHeadroomJobs: 0,
@@ -84,6 +87,7 @@ function idleDiscoveryResult() {
     query: null as string | null,
     seenContracts: 0,
     newContracts: 0,
+    completedFoundationPass: false,
     pausedForBacklog: false,
     backlogMaxPendingJobs: 0,
     backlogHeadroomJobs: 0,
@@ -103,6 +107,7 @@ function idleRebalanceResult() {
     totalPendingJobs: 0,
     refillResumeThreshold: 0,
     automaticPendingTarget: 0,
+    parkedBlockedJobs: 0,
     trimmedAutomaticJobs: 0,
     refilledAutomaticJobs: 0,
   };
@@ -145,12 +150,21 @@ async function runIngressCycle(
   const fallbackRebalance = idleRebalanceResult();
 
   const ingressResults = allowIngress
-    ? await withArchiveIngressLock(client, async () => ({
-        budget: await maybeAdvanceSmartPinBudget(client),
-        discovery: await runAutomaticContractDiscoveryTick(client),
-        crawl: await runAutomaticContractCrawlerTick(client),
-        rebalance: await rebalanceAutomaticBackupQueue(client),
-      }))
+    ? await withArchiveIngressLock(client, async () => {
+        const rebalance = await rebalanceAutomaticBackupQueue(client);
+        const discovery = await runAutomaticContractDiscoveryTick(client);
+        const crawl = await runAutomaticContractCrawlerTick(client);
+        const budget = await maybeAdvanceSmartPinBudget(client, {
+          completedFoundationPass: discovery.completedFoundationPass,
+        });
+
+        return {
+          budget,
+          discovery,
+          crawl,
+          rebalance,
+        };
+      })
     : null;
 
   return {

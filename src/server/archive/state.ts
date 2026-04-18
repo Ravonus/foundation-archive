@@ -31,7 +31,7 @@ function archivePolicyDefaults() {
 
 export async function getArchivePolicyState(client: DatabaseClient) {
   const defaults = archivePolicyDefaults();
-  const policy = await client.archivePolicyState.upsert({
+  return client.archivePolicyState.upsert({
     where: { id: "global" },
     create: {
       id: "global",
@@ -50,34 +50,6 @@ export async function getArchivePolicyState(client: DatabaseClient) {
       totalDiscoveredContracts: 0,
     },
     update: {},
-  });
-
-  const nextSmartPinMaxBytes = Math.min(
-    Math.max(policy.smartPinMaxBytes, defaults.smartPinStartBytes),
-    defaults.smartPinCeilingBytes,
-  );
-  const shouldSyncConfig =
-    policy.smartPinStartBytes !== defaults.smartPinStartBytes ||
-    policy.smartPinCeilingBytes !== defaults.smartPinCeilingBytes ||
-    policy.smartPinGrowthFactor !== defaults.smartPinGrowthFactor ||
-    policy.smartPinDeferMs !== defaults.smartPinDeferMs ||
-    policy.blockWindowSize !== defaults.blockWindowSize ||
-    policy.smartPinMaxBytes !== nextSmartPinMaxBytes;
-
-  if (!shouldSyncConfig) {
-    return policy;
-  }
-
-  return client.archivePolicyState.update({
-    where: { id: policy.id },
-    data: {
-      smartPinStartBytes: defaults.smartPinStartBytes,
-      smartPinCeilingBytes: defaults.smartPinCeilingBytes,
-      smartPinGrowthFactor: defaults.smartPinGrowthFactor,
-      smartPinDeferMs: defaults.smartPinDeferMs,
-      blockWindowSize: defaults.blockWindowSize,
-      smartPinMaxBytes: nextSmartPinMaxBytes,
-    },
   });
 }
 

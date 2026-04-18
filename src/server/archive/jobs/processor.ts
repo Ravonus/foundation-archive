@@ -1,9 +1,4 @@
-import {
-  BackupStatus,
-  type QueueJob,
-  QueueJobKind,
-  QueueJobStatus,
-} from "~/server/prisma-client";
+import { type QueueJob, QueueJobKind, QueueJobStatus } from "~/server/prisma-client";
 import {
   backupArtworkJobPayloadSchema,
   foundationJobPayloadSchema,
@@ -23,6 +18,7 @@ import {
   recoverStaleRunningJobs,
 } from "./queue";
 import { backupArtwork } from "./backup";
+import { artworkBlockedBySmartBudget } from "./smart-budget";
 import {
   ingestContractToken,
   ingestFoundationMintUrl,
@@ -95,6 +91,7 @@ async function runJob(args: {
       await finalizeJobDeferred(client, job, {
         availableAt: outcome.availableAt,
         message: outcome.message,
+        retainJob: outcome.retainJob,
       });
       return {
         jobId: runningJob.id,
@@ -120,32 +117,6 @@ async function runJob(args: {
       message: error instanceof Error ? error.message : "Unknown queue error",
     };
   }
-}
-
-type SmartBudgetRoot = {
-  backupStatus: BackupStatus;
-  pinStatus: BackupStatus;
-  localDirectory: string | null;
-  estimatedByteSize: number | null;
-  byteSize: number | null;
-} | null;
-
-function rootAlreadySatisfied(root: SmartBudgetRoot) {
-  if (!root) return true;
-
-  return (
-    root.pinStatus === BackupStatus.PINNED ||
-    (root.backupStatus === BackupStatus.DOWNLOADED &&
-      Boolean(root.localDirectory))
-  );
-}
-
-function rootKnownTooLarge(
-  root: Exclude<SmartBudgetRoot, null>,
-  smartPinMaxBytes: number,
-) {
-  const size = root.estimatedByteSize ?? root.byteSize;
-  return size !== null && size > smartPinMaxBytes;
 }
 
 async function jobBlockedBySmartBudget(args: {
@@ -193,17 +164,7 @@ async function jobBlockedBySmartBudget(args: {
     return false;
   }
 
-  const unsatisfiedRoots = [artwork.metadataRoot, artwork.mediaRoot].filter(
-    (root): root is Exclude<SmartBudgetRoot, null> => !rootAlreadySatisfied(root),
-  );
-
-  if (unsatisfiedRoots.length === 0) {
-    return false;
-  }
-
-  return unsatisfiedRoots.every((root) =>
-    rootKnownTooLarge(root, smartPinMaxBytes),
-  );
+  return artworkBlockedBySmartBudget(artwork, smartPinMaxBytes);
 }
 
 async function selectProcessableJobs(client: DatabaseClient, limit: number) {

@@ -14,6 +14,15 @@ import {
   FOUNDATION_URL_PRIORITY,
   normalizeAddress,
 } from "./shared";
+import { artworkBlockedBySmartBudget } from "./smart-budget";
+
+const SMART_BUDGET_ROOT_SELECT = {
+  backupStatus: true,
+  pinStatus: true,
+  localDirectory: true,
+  estimatedByteSize: true,
+  byteSize: true,
+} as const;
 
 function queueJobSummary(kind: QueueJobKind) {
   switch (kind) {
@@ -337,15 +346,100 @@ async function fetchActiveJobs(client: DatabaseClient) {
   });
 }
 
-async function analyseRebalance(
-  client: DatabaseClient,
-): Promise<RebalanceAnalysis> {
-  const policy = await getArchivePolicyState(client);
+async function blockedArtworkIdsForSmartBudget(args: {
+  client: DatabaseClient;
+  artworkIds: string[];
+  smartPinMaxBytes: number;
+}) {
+  const { client, artworkIds, smartPinMaxBytes } = args;
+  if (artworkIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const artworks = await client.artwork.findMany({
+    where: {
+      id: {
+        in: artworkIds,
+      },
+    },
+    select: {
+      id: true,
+      metadataRoot: {
+        select: SMART_BUDGET_ROOT_SELECT,
+      },
+      mediaRoot: {
+        select: SMART_BUDGET_ROOT_SELECT,
+      },
+    },
+  });
+
+  return new Set(
+    artworks
+      .filter((artwork) =>
+        artworkBlockedBySmartBudget(artwork, smartPinMaxBytes),
+      )
+      .map((artwork) => artwork.id),
+  );
+}
+
+async function parkBlockedAutomaticBackupJobs(args: {
+  client: DatabaseClient;
+  activeJobs: ActiveJobSummary[];
+  smartPinMaxBytes: number;
+}) {
+  const { client, activeJobs, smartPinMaxBytes } = args;
+  const automaticPendingJobs = activeJobs.filter(
+    (job) =>
+      job.kind === QueueJobKind.BACKUP_ARTWORK &&
+      job.status === QueueJobStatus.PENDING &&
+      job.priority <= BACKUP_PRIORITY &&
+      Boolean(job.dedupeKey),
+  );
+
+  if (automaticPendingJobs.length === 0) {
+    return 0;
+  }
+
+  const blockedArtworkIds = await blockedArtworkIdsForSmartBudget({
+    client,
+    artworkIds: automaticPendingJobs
+      .map((job) => job.dedupeKey)
+      .filter((value): value is string => Boolean(value)),
+    smartPinMaxBytes,
+  });
+
+  const blockedJobIds = automaticPendingJobs
+    .filter((job) => job.dedupeKey && blockedArtworkIds.has(job.dedupeKey))
+    .map((job) => job.id);
+
+  if (blockedJobIds.length === 0) {
+    return 0;
+  }
+
+  await client.queueJob.updateMany({
+    where: {
+      id: {
+        in: blockedJobIds,
+      },
+      status: QueueJobStatus.PENDING,
+    },
+    data: {
+      status: QueueJobStatus.CANCELLED,
+      finishedAt: new Date(),
+      lastError: null,
+    },
+  });
+
+  return blockedJobIds.length;
+}
+
+function analyseRebalance(
+  policy: Awaited<ReturnType<typeof getArchivePolicyState>>,
+  activeJobs: ActiveJobSummary[],
+): RebalanceAnalysis {
   const queueBudget = archivePaceConfigForContractsPerTick(
     policy.contractsPerTick,
   ).maxPendingJobs;
-
-  const activeJobs = await fetchActiveJobs(client);
 
   const protectedJobs = activeJobs.filter(
     (job) =>
@@ -398,8 +492,9 @@ async function refillAutomaticBackups(args: {
   client: DatabaseClient;
   refillSlots: number;
   activeDedupeKeys: Set<string>;
+  smartPinMaxBytes: number;
 }) {
-  const { client, refillSlots, activeDedupeKeys } = args;
+  const { client, refillSlots, activeDedupeKeys, smartPinMaxBytes } = args;
   if (refillSlots <= 0) return 0;
 
   const candidateArtworks = await client.artwork.findMany({
@@ -419,7 +514,15 @@ async function refillAutomaticBackups(args: {
         },
       ],
     },
-    select: { id: true },
+    select: {
+      id: true,
+      metadataRoot: {
+        select: SMART_BUDGET_ROOT_SELECT,
+      },
+      mediaRoot: {
+        select: SMART_BUDGET_ROOT_SELECT,
+      },
+    },
     orderBy: [{ lastIndexedAt: "asc" }, { createdAt: "asc" }],
     take: Math.min(Math.max(refillSlots * 8, 96), 2_000),
   });
@@ -427,6 +530,7 @@ async function refillAutomaticBackups(args: {
   let refilledCount = 0;
   for (const artwork of candidateArtworks) {
     if (activeDedupeKeys.has(artwork.id)) continue;
+    if (artworkBlockedBySmartBudget(artwork, smartPinMaxBytes)) continue;
 
     await queueArtworkBackup({
       client,
@@ -443,7 +547,16 @@ async function refillAutomaticBackups(args: {
 }
 
 export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
-  const analysis = await analyseRebalance(client);
+  const policy = await getArchivePolicyState(client);
+  const initialActiveJobs = await fetchActiveJobs(client);
+  const parkedBlockedJobs = await parkBlockedAutomaticBackupJobs({
+    client,
+    activeJobs: initialActiveJobs,
+    smartPinMaxBytes: policy.smartPinMaxBytes,
+  });
+  const activeJobs =
+    parkedBlockedJobs > 0 ? await fetchActiveJobs(client) : initialActiveJobs;
+  const analysis = analyseRebalance(policy, activeJobs);
   const {
     queueBudget,
     protectedJobs,
@@ -478,13 +591,16 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     client,
     refillSlots,
     activeDedupeKeys,
+    smartPinMaxBytes: policy.smartPinMaxBytes,
   });
 
-  if (overflowPendingJobs.length > 0 || refilledCount > 0) {
+  if (overflowPendingJobs.length > 0 || refilledCount > 0 || parkedBlockedJobs > 0) {
     await emitArchiveEvent(client, {
       type: "queue.backlog-rebalanced",
       summary:
-        overflowPendingJobs.length > 0
+        parkedBlockedJobs > 0
+          ? `Parked ${parkedBlockedJobs} oversized backup job${parkedBlockedJobs === 1 ? "" : "s"} until a later smart-pin tier opens.`
+          : overflowPendingJobs.length > 0
           ? `Rebalanced the automatic queue: kept ${automaticPendingTarget} active backup jobs and deferred ${overflowPendingJobs.length}.`
           : `Topped the automatic queue back up with ${refilledCount} backup job${refilledCount === 1 ? "" : "s"}.`,
       data: {
@@ -493,6 +609,7 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
         totalPendingJobs,
         refillResumeThreshold,
         automaticPendingTarget,
+        parkedBlockedJobs,
         trimmedAutomaticJobs: overflowPendingJobs.length,
         refilledAutomaticJobs: refilledCount,
       },
@@ -505,6 +622,7 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     totalPendingJobs,
     refillResumeThreshold,
     automaticPendingTarget,
+    parkedBlockedJobs,
     trimmedAutomaticJobs: overflowPendingJobs.length,
     refilledAutomaticJobs: refilledCount,
   };

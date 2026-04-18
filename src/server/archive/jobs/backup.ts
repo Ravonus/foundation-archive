@@ -46,6 +46,7 @@ type BackupRootInput = {
 type DeferredOutcome = {
   status: "deferred";
   availableAt: Date;
+  retainJob?: boolean;
 };
 
 type SkippedOutcome = {
@@ -136,7 +137,7 @@ async function evaluateSmartBudget(args: {
 
   await emitArchiveEvent(client, {
     type: "root.deferred-for-size",
-    summary: `Deferred ${root.cid} until the smart budget grows beyond ${formatBytes(estimatedByteSize)}.`,
+    summary: `Deferred ${root.cid} for a later smart-pin tier after ${formatBytes(estimatedByteSize)} exceeded the current ${formatBytes(policy.smartPinMaxBytes)} limit.`,
     artwork: await loadArtworkLiveCard(client, input.artworkId),
     cid: root.cid,
     sizeBytes: estimatedByteSize,
@@ -149,6 +150,7 @@ async function evaluateSmartBudget(args: {
   return {
     status: "deferred",
     availableAt: new Date(Date.now() + policy.smartPinDeferMs),
+    retainJob: false,
   };
 }
 
@@ -353,7 +355,12 @@ async function backupSingleRoot(
 
 type BackupSummary =
   | { outcome: "skipped"; reason: "artwork-not-found" }
-  | { outcome: "deferred"; availableAt: Date; message: string }
+  | {
+      outcome: "deferred";
+      availableAt: Date;
+      message: string;
+      retainJob?: boolean;
+    }
   | {
       outcome: "completed";
       artwork: Awaited<ReturnType<typeof syncArtworkStatuses>>;
@@ -464,7 +471,8 @@ export async function backupArtwork(
     return {
       outcome: "deferred",
       availableAt: deferredRoot.availableAt,
-      message: `Deferred larger root(s) for ${artwork.title} until the smart budget expands.`,
+      message: `Deferred larger root(s) for ${artwork.title} until a later smart-pin tier unlocks.`,
+      retainJob: deferredRoot.retainJob,
     };
   }
 
