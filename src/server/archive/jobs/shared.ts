@@ -19,6 +19,7 @@ export const FOUNDATION_URL_PRIORITY = 10;
 export const CONTRACT_TOKEN_PRIORITY = 9;
 export const BACKUP_PRIORITY = 8;
 export const CONTRACT_SCAN_PRIORITY = 5;
+export const FAILED_ROOT_RETRY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 export type KnownContractSeed = {
   chainId: number;

@@ -17,6 +17,7 @@ import {
 } from "~/server/archive/storage";
 import {
   type DatabaseClient,
+  FAILED_ROOT_RETRY_COOLDOWN_MS,
   loadArtworkLiveCard,
   recordBackupRun,
   syncArtworkStatuses,
@@ -35,6 +36,7 @@ type RootRecord = {
   localDirectory: string | null;
   backupStatus: BackupStatus;
   pinStatus: BackupStatus;
+  updatedAt: Date;
 };
 
 type BackupRootInput = {
@@ -46,6 +48,7 @@ type BackupRootInput = {
 type DeferredOutcome = {
   status: "deferred";
   availableAt: Date;
+  reason: "size" | "retry-cooldown";
   retainJob?: boolean;
 };
 
@@ -66,6 +69,17 @@ function isRootAlreadySatisfied(root: RootRecord) {
     (root.backupStatus === BackupStatus.DOWNLOADED &&
       Boolean(root.localDirectory))
   );
+}
+
+function recentFailedRetryAt(root: RootRecord) {
+  if (
+    root.backupStatus !== BackupStatus.FAILED &&
+    root.pinStatus !== BackupStatus.FAILED
+  ) {
+    return null;
+  }
+
+  return new Date(root.updatedAt.getTime() + FAILED_ROOT_RETRY_COOLDOWN_MS);
 }
 
 async function headProbeRoot(root: RootRecord) {
@@ -150,6 +164,7 @@ async function evaluateSmartBudget(args: {
   return {
     status: "deferred",
     availableAt: new Date(Date.now() + policy.smartPinDeferMs),
+    reason: "size",
     retainJob: false,
   };
 }
@@ -318,6 +333,16 @@ async function backupSingleRoot(
   const startedAt = new Date();
 
   try {
+    const retryAt = recentFailedRetryAt(root);
+    if (retryAt && retryAt.getTime() > Date.now()) {
+      return {
+        status: "deferred",
+        availableAt: retryAt,
+        reason: "retry-cooldown",
+        retainJob: false,
+      };
+    }
+
     const deferred = await evaluateSmartBudget({ client, input, root });
     if (deferred) return deferred;
 
@@ -471,7 +496,10 @@ export async function backupArtwork(
     return {
       outcome: "deferred",
       availableAt: deferredRoot.availableAt,
-      message: `Deferred larger root(s) for ${artwork.title} until a later smart-pin tier unlocks.`,
+      message:
+        deferredRoot.reason === "retry-cooldown"
+          ? `Paused a recently failed root for ${artwork.title} before trying it again.`
+          : `Deferred larger root(s) for ${artwork.title} until a later smart-pin tier unlocks.`,
       retainJob: deferredRoot.retainJob,
     };
   }

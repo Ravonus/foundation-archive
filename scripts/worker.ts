@@ -20,20 +20,40 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function nextLoopDelayMs(fallbackMs: number, hadActivity: boolean) {
+async function readWorkerLoopConfig(input: {
+  fallbackMs: number;
+  hadActivity: boolean;
+  explicitLimit: number | null;
+}) {
+  const { fallbackMs, hadActivity, explicitLimit } = input;
+
   try {
     const policy = await getArchivePolicyState(db);
     const pace = archivePaceConfigForContractsPerTick(policy.contractsPerTick);
-    return hadActivity ? pace.busyDelayMs : Math.max(fallbackMs, pace.idleDelayMs);
+    return {
+      delayMs: hadActivity
+        ? pace.busyDelayMs
+        : Math.max(fallbackMs, pace.idleDelayMs),
+      limit: explicitLimit ?? pace.queueLimit,
+    };
   } catch {
-    return fallbackMs;
+    return {
+      delayMs: fallbackMs,
+      limit: explicitLimit ?? 25,
+    };
   }
 }
 
 async function main() {
   const workerKey = readFlag("--worker-key") ?? "default-worker";
   const label = readFlag("--label") ?? "Automatic queue worker";
-  const limit = Number(readFlag("--limit") ?? "25");
+  const explicitLimitFlag = readFlag("--limit");
+  const parsedExplicitLimit =
+    explicitLimitFlag === null ? Number.NaN : Number(explicitLimitFlag);
+  const explicitLimit =
+    explicitLimitFlag === null || !Number.isFinite(parsedExplicitLimit)
+      ? null
+      : parsedExplicitLimit;
   const intervalMs = Number(readFlag("--interval-ms") ?? "15000");
   const once = readBooleanFlag("--once");
   let stopping = false;
@@ -81,10 +101,15 @@ async function main() {
     }
 
     try {
+      const currentConfig = await readWorkerLoopConfig({
+        fallbackMs: intervalMs,
+        hadActivity: false,
+        explicitLimit,
+      });
       const result = await runWorkerCycle(db, {
         workerKey,
         label,
-        limit,
+        limit: currentConfig.limit,
         mode: once ? "manual" : "daemon",
       });
       const completed = result.results.filter(
@@ -106,8 +131,12 @@ async function main() {
         return;
       }
 
-      const delay = await nextLoopDelayMs(intervalMs, result.hadActivity);
-      await sleep(delay);
+      const nextConfig = await readWorkerLoopConfig({
+        fallbackMs: intervalMs,
+        hadActivity: result.hadActivity,
+        explicitLimit,
+      });
+      await sleep(nextConfig.delayMs);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown worker failure";
@@ -119,7 +148,12 @@ async function main() {
         return;
       }
 
-      await sleep(await nextLoopDelayMs(intervalMs, false));
+      const nextConfig = await readWorkerLoopConfig({
+        fallbackMs: intervalMs,
+        hadActivity: false,
+        explicitLimit,
+      });
+      await sleep(nextConfig.delayMs);
     }
   }
 }

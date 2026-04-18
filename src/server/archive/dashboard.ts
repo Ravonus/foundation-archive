@@ -6,6 +6,7 @@ import type {
   ArchiveWorkerStatusCard,
 } from "~/lib/archive-live";
 import { readRecentArchiveEvents } from "~/server/archive/live-events";
+import { BackupStatus } from "~/server/prisma-client";
 import type { PrismaClient } from "~/server/prisma-client";
 
 type DatabaseClient = PrismaClient;
@@ -179,6 +180,16 @@ function toCrawlerCard(crawler: {
   };
 }
 
+const SATISFIED_ARTWORK_STATUSES: BackupStatus[] = [
+  BackupStatus.DOWNLOADED,
+  BackupStatus.PINNED,
+  BackupStatus.SKIPPED,
+];
+
+const ARTWORK_WITH_ROOT_WHERE = {
+  OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
+};
+
 async function findNextDeferredRoot(
   client: DatabaseClient,
   smartPinMaxBytes: number,
@@ -202,37 +213,84 @@ async function findNextDeferredRoot(
 }
 
 async function fetchSnapshotStats(client: DatabaseClient) {
+  const now = new Date();
+
   const [
     artworks,
     contracts,
-    pendingJobs,
+    readyPendingJobs,
     runningJobs,
     failedJobs,
-    preservedRoots,
+    preservedArtworks,
     downloadedRoots,
     pinnedRoots,
-    deferredRoots,
+    deferredArtworks,
   ] = await Promise.all([
     client.artwork.count({
-      where: {
-        OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
-      },
+      where: ARTWORK_WITH_ROOT_WHERE,
     }),
     client.contractRegistry.count(),
-    client.queueJob.count({ where: { status: "PENDING" } }),
-    client.queueJob.count({ where: { status: "RUNNING" } }),
-    client.queueJob.count({ where: { status: "FAILED" } }),
-    client.ipfsRoot.count({
+    client.queueJob.count({
       where: {
-        OR: [{ backupStatus: "DOWNLOADED" }, { pinStatus: "PINNED" }],
+        kind: "BACKUP_ARTWORK",
+        status: "PENDING",
+        availableAt: {
+          lte: now,
+        },
+      },
+    }),
+    client.queueJob.count({
+      where: {
+        kind: "BACKUP_ARTWORK",
+        status: "RUNNING",
+      },
+    }),
+    client.queueJob.count({
+      where: {
+        kind: "BACKUP_ARTWORK",
+        status: "FAILED",
+      },
+    }),
+    client.artwork.count({
+      where: {
+        ...ARTWORK_WITH_ROOT_WHERE,
+        metadataStatus: {
+          in: SATISFIED_ARTWORK_STATUSES,
+        },
+        mediaStatus: {
+          in: SATISFIED_ARTWORK_STATUSES,
+        },
       },
     }),
     client.ipfsRoot.count({ where: { backupStatus: "DOWNLOADED" } }),
     client.ipfsRoot.count({ where: { pinStatus: "PINNED" } }),
-    client.ipfsRoot.count({
+    client.artwork.count({
       where: {
-        lastDeferredAt: { not: null },
-        backupStatus: "PENDING",
+        AND: [
+          ARTWORK_WITH_ROOT_WHERE,
+          {
+            OR: [
+              {
+                metadataStatus: "PENDING",
+                metadataRoot: {
+                  is: {
+                    backupStatus: "PENDING",
+                    lastDeferredAt: { not: null },
+                  },
+                },
+              },
+              {
+                mediaStatus: "PENDING",
+                mediaRoot: {
+                  is: {
+                    backupStatus: "PENDING",
+                    lastDeferredAt: { not: null },
+                  },
+                },
+              },
+            ],
+          },
+        ],
       },
     }),
   ]);
@@ -240,13 +298,13 @@ async function fetchSnapshotStats(client: DatabaseClient) {
   return {
     artworks,
     contracts,
-    pendingJobs,
+    pendingJobs: readyPendingJobs + runningJobs,
     runningJobs,
     failedJobs,
-    preservedRoots,
+    preservedRoots: preservedArtworks,
     downloadedRoots,
     pinnedRoots,
-    deferredRoots,
+    deferredRoots: deferredArtworks,
   };
 }
 

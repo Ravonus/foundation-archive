@@ -1,3 +1,5 @@
+/* eslint-disable max-lines */
+
 import {
   BackupStatus,
   QueueJobKind,
@@ -10,6 +12,7 @@ import { getArchivePolicyState } from "~/server/archive/state";
 import {
   BACKUP_PRIORITY,
   CONTRACT_TOKEN_PRIORITY,
+  FAILED_ROOT_RETRY_COOLDOWN_MS,
   type DatabaseClient,
   FOUNDATION_URL_PRIORITY,
   normalizeAddress,
@@ -319,15 +322,26 @@ type ActiveJobSummary = {
 
 type RebalanceAnalysis = {
   queueBudget: number;
-  protectedJobs: ActiveJobSummary[];
+  protectedReadyJobs: ActiveJobSummary[];
   automaticRunningJobs: ActiveJobSummary[];
-  automaticPendingJobs: ActiveJobSummary[];
+  automaticReadyPendingJobs: ActiveJobSummary[];
+  delayedPendingJobs: number;
   automaticPendingTarget: number;
   overflowPendingJobs: ActiveJobSummary[];
-  totalPendingJobs: number;
+  readyPendingJobs: number;
   refillResumeThreshold: number;
   activeDedupeKeys: Set<string>;
 };
+
+function isReadyPendingJob(
+  job: Pick<ActiveJobSummary, "status" | "availableAt">,
+  now = Date.now(),
+) {
+  return (
+    job.status === QueueJobStatus.PENDING &&
+    (job.availableAt?.getTime() ?? 0) <= now
+  );
+}
 
 async function fetchActiveJobs(client: DatabaseClient) {
   return client.queueJob.findMany({
@@ -440,6 +454,7 @@ function analyseRebalance(
   policy: Awaited<ReturnType<typeof getArchivePolicyState>>,
   activeJobs: ActiveJobSummary[],
 ): RebalanceAnalysis {
+  const now = Date.now();
   const queueBudget = archivePaceConfigForContractsPerTick(
     policy.contractsPerTick,
   ).maxPendingJobs;
@@ -458,14 +473,26 @@ function analyseRebalance(
   const automaticPendingJobs = automaticBackupJobs.filter(
     (job) => job.status === QueueJobStatus.PENDING,
   );
+  const protectedReadyJobs = protectedJobs.filter(
+    (job) =>
+      job.status === QueueJobStatus.RUNNING || isReadyPendingJob(job, now),
+  );
+  const automaticReadyPendingJobs = automaticPendingJobs.filter((job) =>
+    isReadyPendingJob(job, now),
+  );
+  const delayedPendingJobs = activeJobs.filter(
+    (job) =>
+      job.status === QueueJobStatus.PENDING && !isReadyPendingJob(job, now),
+  ).length;
 
   const automaticPendingTarget = Math.max(
-    queueBudget - protectedJobs.length - automaticRunningJobs.length,
+    queueBudget - protectedReadyJobs.length - automaticRunningJobs.length,
     0,
   );
-  const overflowPendingJobs = automaticPendingJobs.slice(automaticPendingTarget);
-  const totalPendingJobs = activeJobs.filter(
-    (job) => job.status === QueueJobStatus.PENDING,
+  const overflowPendingJobs =
+    automaticReadyPendingJobs.slice(automaticPendingTarget);
+  const readyPendingJobs = activeJobs.filter((job) =>
+    isReadyPendingJob(job, now),
   ).length;
   const refillResumeThreshold = Math.max(
     queueBudget - policy.discoveryPerPage,
@@ -480,12 +507,13 @@ function analyseRebalance(
 
   return {
     queueBudget,
-    protectedJobs,
+    protectedReadyJobs,
     automaticRunningJobs,
-    automaticPendingJobs,
+    automaticReadyPendingJobs,
+    delayedPendingJobs,
     automaticPendingTarget,
     overflowPendingJobs,
-    totalPendingJobs,
+    readyPendingJobs,
     refillResumeThreshold,
     activeDedupeKeys,
   };
@@ -499,6 +527,9 @@ async function refillAutomaticBackups(args: {
 }) {
   const { client, refillSlots, activeDedupeKeys, smartPinMaxBytes } = args;
   if (refillSlots <= 0) return 0;
+  const failedRetryCutoff = new Date(
+    Date.now() - FAILED_ROOT_RETRY_COOLDOWN_MS,
+  );
 
   const candidateArtworks = await client.artwork.findMany({
     where: {
@@ -506,13 +537,35 @@ async function refillAutomaticBackups(args: {
         {
           metadataRootId: { not: null },
           metadataStatus: {
-            in: [BackupStatus.PENDING, BackupStatus.FAILED],
+            equals: BackupStatus.PENDING,
           },
         },
         {
           mediaRootId: { not: null },
           mediaStatus: {
-            in: [BackupStatus.PENDING, BackupStatus.FAILED],
+            equals: BackupStatus.PENDING,
+          },
+        },
+        {
+          metadataRootId: { not: null },
+          metadataStatus: BackupStatus.FAILED,
+          metadataRoot: {
+            is: {
+              updatedAt: {
+                lte: failedRetryCutoff,
+              },
+            },
+          },
+        },
+        {
+          mediaRootId: { not: null },
+          mediaStatus: BackupStatus.FAILED,
+          mediaRoot: {
+            is: {
+              updatedAt: {
+                lte: failedRetryCutoff,
+              },
+            },
           },
         },
       ],
@@ -582,12 +635,13 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
   const analysis = analyseRebalance(policy, activeJobs);
   const {
     queueBudget,
-    protectedJobs,
+    protectedReadyJobs,
     automaticRunningJobs,
-    automaticPendingJobs,
+    automaticReadyPendingJobs,
+    delayedPendingJobs,
     automaticPendingTarget,
     overflowPendingJobs,
-    totalPendingJobs,
+    readyPendingJobs,
     refillResumeThreshold,
     activeDedupeKeys,
   } = analysis;
@@ -604,10 +658,10 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
 
   const automaticActiveCount =
     automaticRunningJobs.length +
-    Math.min(automaticPendingJobs.length, automaticPendingTarget);
+    Math.min(automaticReadyPendingJobs.length, automaticPendingTarget);
   const refillSlots =
-    totalPendingJobs <= refillResumeThreshold
-      ? Math.max(queueBudget - protectedJobs.length - automaticActiveCount, 0)
+    readyPendingJobs <= refillResumeThreshold
+      ? Math.max(queueBudget - protectedReadyJobs.length - automaticActiveCount, 0)
       : 0;
 
   const refilledCount = await refillAutomaticBackups({
@@ -628,8 +682,9 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
           : `Topped the automatic queue back up with ${refilledCount} backup job${refilledCount === 1 ? "" : "s"}.`,
       data: {
         queueBudget,
-        protectedJobs: protectedJobs.length,
-        totalPendingJobs,
+        protectedJobs: protectedReadyJobs.length,
+        readyPendingJobs,
+        delayedPendingJobs,
         refillResumeThreshold,
         automaticPendingTarget,
         parkedBlockedJobs,
@@ -641,8 +696,8 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
 
   return {
     queueBudget,
-    protectedJobs: protectedJobs.length,
-    totalPendingJobs,
+    protectedJobs: protectedReadyJobs.length,
+    totalPendingJobs: readyPendingJobs + delayedPendingJobs,
     refillResumeThreshold,
     automaticPendingTarget,
     parkedBlockedJobs,

@@ -26,8 +26,7 @@ export interface StatCard {
 export function computePipelineShares(
   stats: ArchiveLiveSnapshot["stats"],
 ): PipelineShares {
-  const pipelineTotal =
-    stats.preservedRoots + stats.pendingJobs + stats.deferredRoots;
+  const pipelineTotal = stats.artworks;
   if (pipelineTotal === 0) {
     return {
       pipelineTotal,
@@ -38,9 +37,9 @@ export function computePipelineShares(
   }
   return {
     pipelineTotal,
-    preservedShare: (stats.preservedRoots / pipelineTotal) * 100,
-    queuedShare: (stats.pendingJobs / pipelineTotal) * 100,
-    deferredShare: (stats.deferredRoots / pipelineTotal) * 100,
+    preservedShare: Math.min((stats.preservedRoots / pipelineTotal) * 100, 100),
+    queuedShare: Math.min((stats.pendingJobs / pipelineTotal) * 100, 100),
+    deferredShare: Math.min((stats.deferredRoots / pipelineTotal) * 100, 100),
   };
 }
 
