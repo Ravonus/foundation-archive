@@ -49,6 +49,12 @@ At minimum, set:
 - `NAS_USERNAME`
 - `NAS_PASSWORD`
 
+Current public production values:
+
+- `NEXT_PUBLIC_SITE_URL=https://foundation.agorix.io`
+- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL=https://socket-foundation.agorix.io`
+- `ARCHIVE_SOCKET_INTERNAL_URL=http://socket:43129`
+
 Optional integrations such as `ETHEREUM_RPC_URL`, `KUBO_API_URL`, and `KUBO_API_AUTH_HEADER` can be added later.
 
 ## Manual deploy
