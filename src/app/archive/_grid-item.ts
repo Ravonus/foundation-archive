@@ -7,7 +7,6 @@ import {
   type FoundationLookupWork,
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
-import { buildArchivePublicPath } from "~/server/archive/ipfs";
 
 import {
   artworkKey,
@@ -23,10 +22,7 @@ function isArchivedMediaDownloaded(status: string) {
 function resolveArchiveMediaUrl(artwork: ArchivedArtworkRow) {
   if (!artwork.mediaRoot) return null;
   if (!isArchivedMediaDownloaded(artwork.mediaStatus)) return null;
-  return buildArchivePublicPath(
-    artwork.mediaRoot.cid,
-    artwork.mediaRoot.relativePath,
-  );
+  return artwork.mediaRoot.gatewayUrl;
 }
 
 function resolveArchivedPosterUrl(
@@ -158,10 +154,7 @@ function toPinnedWork(artwork: ArchivedArtworkRow) {
     title: artwork.title,
     slug: artwork.slug,
     archiveUrl: artwork.mediaRoot
-      ? buildArchivePublicPath(
-          artwork.mediaRoot.cid,
-          artwork.mediaRoot.relativePath,
-        )
+      ? artwork.mediaRoot.gatewayUrl
       : null,
     publicGatewayUrl: artwork.mediaRoot?.gatewayUrl ?? null,
   };

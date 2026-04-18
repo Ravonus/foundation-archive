@@ -5,7 +5,6 @@ import type {
   ArchivePolicyCard,
   ArchiveWorkerStatusCard,
 } from "~/lib/archive-live";
-import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { readRecentArchiveEvents } from "~/server/archive/live-events";
 import type { PrismaClient } from "~/server/prisma-client";
 
@@ -31,7 +30,7 @@ type ArtworkCardRow = {
   } | null;
   mediaRoot: {
     cid: string;
-    relativePath: string | null;
+    gatewayUrl: string | null;
   } | null;
 };
 
@@ -42,10 +41,7 @@ function archivedPosterUrl(artwork: ArtworkCardRow) {
     return null;
   }
 
-  return buildArchivePublicPath(
-    artwork.mediaRoot.cid,
-    artwork.mediaRoot.relativePath,
-  );
+  return artwork.mediaRoot.gatewayUrl;
 }
 
 export function toLiveArtworkCard(
@@ -292,7 +288,7 @@ async function fetchLatestArchivedArtworks(client: DatabaseClient) {
       tokenId: true,
       mediaStatus: true,
       metadataRoot: { select: { cid: true } },
-      mediaRoot: { select: { cid: true, relativePath: true } },
+      mediaRoot: { select: { cid: true, gatewayUrl: true } },
     },
   });
 }

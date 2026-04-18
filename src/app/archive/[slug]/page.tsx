@@ -93,8 +93,10 @@ type IpfsRoot = NonNullable<ArtworkWithRelations["metadataRoot"]>;
 type DerivedView = {
   localMediaUrl: string | null;
   localMetadataUrl: string | null;
+  gatewayMediaUrl: string | null;
+  gatewayMetadataUrl: string | null;
   imagePreviewUrl: string | null;
-  canRenderLocalVideo: boolean;
+  canRenderBrowserVideo: boolean;
   hasShareableRoots: boolean;
   health: Health;
   copy: ReturnType<typeof healthCopy>;
@@ -113,12 +115,13 @@ function localUrlFor(root: IpfsRoot | null, status: string): string | null {
 
 function pickImagePreviewUrl(
   artwork: ArtworkWithRelations,
-  localMediaUrl: string | null,
+  gatewayMediaUrl: string | null,
 ): string | null {
+  if (gatewayMediaUrl && artwork.mediaKind === "IMAGE") return gatewayMediaUrl;
   if (artwork.staticPreviewUrl) return artwork.staticPreviewUrl;
   if (artwork.previewUrl) return artwork.previewUrl;
   if (artwork.mediaKind !== "IMAGE") return null;
-  return localMediaUrl ?? artwork.sourceUrl;
+  return artwork.sourceUrl;
 }
 
 function artistDisplay(artwork: ArtworkWithRelations): string {
@@ -196,7 +199,9 @@ function deriveView(artwork: ArtworkWithRelations): DerivedView {
     artwork.metadataRoot,
     artwork.metadataStatus,
   );
-  const imagePreviewUrl = pickImagePreviewUrl(artwork, localMediaUrl);
+  const gatewayMediaUrl = artwork.mediaRoot?.gatewayUrl ?? null;
+  const gatewayMetadataUrl = artwork.metadataRoot?.gatewayUrl ?? null;
+  const imagePreviewUrl = pickImagePreviewUrl(artwork, gatewayMediaUrl);
   const health = healthOf({
     hasMetadataRoot: Boolean(artwork.metadataRoot),
     hasMediaRoot: Boolean(artwork.mediaRoot),
@@ -206,9 +211,11 @@ function deriveView(artwork: ArtworkWithRelations): DerivedView {
   return {
     localMediaUrl,
     localMetadataUrl,
+    gatewayMediaUrl,
+    gatewayMetadataUrl,
     imagePreviewUrl,
-    canRenderLocalVideo:
-      Boolean(localMediaUrl) && artwork.mediaKind === "VIDEO",
+    canRenderBrowserVideo:
+      Boolean(gatewayMediaUrl) && artwork.mediaKind === "VIDEO",
     hasShareableRoots: Boolean(
       artwork.metadataRoot?.cid ?? artwork.mediaRoot?.cid,
     ),
@@ -274,11 +281,11 @@ function BackLink() {
 }
 
 function renderPreviewInner({ artwork, view }: SectionProps) {
-  if (view.canRenderLocalVideo) {
+  if (view.canRenderBrowserVideo) {
     return (
       <video
-        src={view.localMediaUrl ?? undefined}
-        poster={artwork.staticPreviewUrl ?? undefined}
+        src={view.gatewayMediaUrl ?? undefined}
+        poster={artwork.staticPreviewUrl ?? view.imagePreviewUrl ?? undefined}
         controls
         loop
         muted
@@ -422,8 +429,16 @@ function ActionRow({ artwork, view }: SectionProps) {
           label="View original media"
           rel="noreferrer"
         />
-        <ActionPill href={view.localMetadataUrl} label="Open server metadata" />
-        <ActionPill href={view.localMediaUrl} label="Open server media" />
+        <ActionPill
+          href={view.gatewayMetadataUrl}
+          label="View gateway metadata"
+          rel="noreferrer"
+        />
+        <ActionPill
+          href={view.gatewayMediaUrl}
+          label="View gateway media"
+          rel="noreferrer"
+        />
         {slugPath ? (
           <ShareLinkButton title={artwork.title} path={slugPath} />
         ) : null}

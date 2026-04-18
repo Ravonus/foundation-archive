@@ -22,7 +22,6 @@ import { CountUp, FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
 import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
-import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 
 export const dynamic = "force-dynamic";
@@ -98,10 +97,7 @@ function archiveMediaUrlOf(artwork: HomeArtwork) {
   const isCaptured =
     artwork.mediaStatus === "DOWNLOADED" || artwork.mediaStatus === "PINNED";
   if (!artwork.mediaRoot || !isCaptured) return null;
-  return buildArchivePublicPath(
-    artwork.mediaRoot.cid,
-    artwork.mediaRoot.relativePath,
-  );
+  return artwork.mediaRoot.gatewayUrl;
 }
 
 function posterUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {

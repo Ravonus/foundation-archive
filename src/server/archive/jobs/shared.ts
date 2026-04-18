@@ -203,7 +203,7 @@ export async function loadArtworkLiveCard(
       mediaRoot: {
         select: {
           cid: true,
-          relativePath: true,
+          gatewayUrl: true,
         },
       },
     },
