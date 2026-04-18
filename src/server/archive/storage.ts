@@ -138,8 +138,20 @@ async function ensureParentDirectory(targetPath: string) {
   await mkdir(path.dirname(targetPath), { recursive: true });
 }
 
+async function discardHotFile(hotPath: string) {
+  try {
+    await rm(hotPath, { force: true });
+  } catch (error) {
+    console.warn(
+      `[archive] Unable to clear promoted hot file ${hotPath}:`,
+      formatErrorMessage(error),
+    );
+  }
+}
+
 async function promoteHotFileToCold(hotPath: string, coldPath: string) {
   if (await pathExists(coldPath)) {
+    await discardHotFile(hotPath);
     return;
   }
 
@@ -150,11 +162,14 @@ async function promoteHotFileToCold(hotPath: string, coldPath: string) {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "EEXIST") {
+      await discardHotFile(hotPath);
       return;
     }
 
     await copyFile(hotPath, coldPath);
   }
+
+  await discardHotFile(hotPath);
 }
 
 async function requestRustArchiver<T>(
@@ -204,6 +219,7 @@ async function downloadFileToArchiveWithJs(input: {
   const hotPath = getHotArchivedFilePath(input.cid, input.relativePath);
 
   if (await pathExists(targetPath)) {
+    await discardHotFile(hotPath);
     const fileStats = await stat(targetPath);
 
     return {

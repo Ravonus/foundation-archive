@@ -189,8 +189,22 @@ async fn metadata_len(path: &Path) -> Result<u64, AppError> {
         .map_err(|error| AppError::internal(format!("Unable to stat archived file: {error}")))
 }
 
+async fn discard_hot_copy(hot_path: &Path) {
+    match fs::remove_file(hot_path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => {
+            warn!(
+                "Unable to clear promoted hot archive file {}: {error}",
+                hot_path.display()
+            );
+        }
+    }
+}
+
 async fn clone_hot_into_cold(hot_path: &Path, cold_path: &Path) -> Result<(), AppError> {
     if fs::metadata(cold_path).await.is_ok() {
+        discard_hot_copy(hot_path).await;
         return Ok(());
     }
 
@@ -205,6 +219,8 @@ async fn clone_hot_into_cold(hot_path: &Path, cold_path: &Path) -> Result<(), Ap
             })?;
         }
     }
+
+    discard_hot_copy(hot_path).await;
 
     Ok(())
 }

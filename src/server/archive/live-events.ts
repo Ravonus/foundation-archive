@@ -16,6 +16,10 @@ type ArchiveEventPayload = {
   sizeBytes?: number | null;
 };
 
+type ListenForArchiveEventsOptions = {
+  onDisconnect?: (error?: Error) => void;
+};
+
 const globalForArchiveEvents = globalThis as typeof globalThis & {
   archiveEventPool?: Pool;
 };
@@ -120,10 +124,40 @@ export async function readRecentArchiveEvents(
 
 export async function listenForArchiveEvents(
   onEvent: (event: ArchiveLiveEvent) => void,
+  options: ListenForArchiveEventsOptions = {},
 ) {
   const pool = getEventPool();
   const client = await pool.connect();
   let released = false;
+  let disconnectNotified = false;
+
+  const release = async () => {
+    if (released) return;
+    released = true;
+    client.off("notification", handler);
+    client.off("error", handleError);
+    client.off("end", handleEnd);
+
+    try {
+      await client.query(`UNLISTEN ${ARCHIVE_EVENT_CHANNEL}`);
+    } catch {
+      // Ignore cleanup failures if the DB connection is already gone.
+    }
+
+    client.release();
+  };
+
+  const notifyDisconnect = (error?: Error) => {
+    if (disconnectNotified) return;
+    disconnectNotified = true;
+
+    void release()
+      .catch(() => undefined)
+      .finally(() => {
+        options.onDisconnect?.(error);
+      });
+  };
+
   await client.query(`LISTEN ${ARCHIVE_EVENT_CHANNEL}`);
 
   const handler = (notification: Notification) => {
@@ -137,14 +171,18 @@ export async function listenForArchiveEvents(
       // Ignore malformed events; the DB record is still the durable source.
     }
   };
+  const handleError = (error: Error) => {
+    notifyDisconnect(error);
+  };
+  const handleEnd = () => {
+    notifyDisconnect();
+  };
 
   client.on("notification", handler);
+  client.on("error", handleError);
+  client.on("end", handleEnd);
 
   return async () => {
-    if (released) return;
-    released = true;
-    client.off("notification", handler);
-    await client.query(`UNLISTEN ${ARCHIVE_EVENT_CHANNEL}`);
-    client.release();
+    await release();
   };
 }

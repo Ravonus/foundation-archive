@@ -4,11 +4,12 @@ import "dotenv/config";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { Server as SocketIOServer } from "socket.io";
+import { Server as SocketIOServer, type Socket } from "socket.io";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import { env } from "~/env";
 import { archivePaceConfigForContractsPerTick } from "~/lib/archive-pace";
+import type { ArchiveLiveEvent } from "~/lib/archive-live";
 import type { RelayPinInventoryItem } from "~/lib/desktop-relay";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { listenForArchiveEvents } from "~/server/archive/live-events";
@@ -58,6 +59,8 @@ type DeviceSocketClient = {
   deviceLabel: string;
   deviceToken: string;
 };
+
+const ARCHIVE_EVENT_RETRY_MS = 5_000;
 
 function safeSend(socket: WebSocket, payload: unknown) {
   if (socket.readyState !== WebSocket.OPEN) return;
@@ -134,6 +137,10 @@ function rawDataToString(data: RawData) {
   return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString(
     "utf8",
   );
+}
+
+function logSocketError(context: string, error: unknown) {
+  console.error(`[socket] ${context}`, error);
 }
 
 async function main() {
@@ -418,9 +425,96 @@ async function main() {
     path: "/desktop-relay",
   });
 
-  io.on("connection", async (socket) => {
-    const snapshot = await getArchiveLiveSnapshot(db);
-    socket.emit("archive:snapshot", snapshot);
+  async function emitSnapshotToClient(socket: Socket) {
+    try {
+      const snapshot = await getArchiveLiveSnapshot(db);
+      socket.emit("archive:snapshot", snapshot);
+    } catch (error) {
+      logSocketError("Unable to load archive snapshot for a new client.", error);
+    }
+  }
+
+  async function broadcastArchiveUpdate(event: ArchiveLiveEvent) {
+    try {
+      const snapshot = await getArchiveLiveSnapshot(db);
+      io.emit("archive:update", {
+        event,
+        snapshot,
+      });
+    } catch (error) {
+      logSocketError("Unable to broadcast an archive update.", error);
+    }
+  }
+
+  function startArchiveEventListener() {
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let connecting = false;
+    let stopListening: (() => Promise<void>) | null = null;
+
+    const clearReconnectTimer = () => {
+      if (!reconnectTimer) return;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    };
+
+    const scheduleReconnect = (reason: string, error?: Error) => {
+      if (stopping || reconnectTimer || connecting) return;
+
+      if (error) {
+        logSocketError(reason, error);
+      } else {
+        console.warn(`[socket] ${reason}`);
+      }
+
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, ARCHIVE_EVENT_RETRY_MS);
+    };
+
+    const connect = async () => {
+      if (stopping || connecting) return;
+      connecting = true;
+
+      try {
+        stopListening = await listenForArchiveEvents(
+          (event) => {
+            void broadcastArchiveUpdate(event);
+          },
+          {
+            onDisconnect: (error) => {
+              stopListening = null;
+              scheduleReconnect(
+                "Archive event listener lost its database connection; retrying.",
+                error,
+              );
+            },
+          },
+        );
+      } catch (error) {
+        scheduleReconnect(
+          "Archive event listener failed to start; retrying.",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      } finally {
+        connecting = false;
+      }
+    };
+
+    void connect();
+
+    return async () => {
+      clearReconnectTimer();
+      const currentStop = stopListening;
+      stopListening = null;
+      if (currentStop) {
+        await currentStop().catch(() => undefined);
+      }
+    };
+  }
+
+  io.on("connection", (socket) => {
+    void emitSnapshotToClient(socket);
   });
 
   relayWss.on("connection", (socket, request) => {
@@ -536,15 +630,7 @@ async function main() {
     });
   });
 
-  const stopListening = await listenForArchiveEvents((event) => {
-    void (async () => {
-      const snapshot = await getArchiveLiveSnapshot(db);
-      io.emit("archive:update", {
-        event,
-        snapshot,
-      });
-    })();
-  });
+  const stopArchiveEventListener = startArchiveEventListener();
 
   const workerLoop = (async () => {
     for (;;) {
@@ -610,7 +696,7 @@ async function main() {
     const shutdown = () => {
       void (async () => {
         stopping = true;
-        await stopListening();
+        await stopArchiveEventListener();
         await workerLoop.catch(() => null);
         await new Promise<void>((resolveIo) => {
           void io.close(() => resolveIo());
