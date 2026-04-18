@@ -15,6 +15,8 @@ import {
 import { ProfileHeader, ViewTabs } from "./_presentational";
 import { type ProfilePageProps } from "./_types";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: ProfilePageProps): Promise<Metadata> {

@@ -3,6 +3,8 @@ import { FadeUp } from "~/app/_components/motion";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { db } from "~/server/db";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   const snapshot = await getArchiveLiveSnapshot(db);
 

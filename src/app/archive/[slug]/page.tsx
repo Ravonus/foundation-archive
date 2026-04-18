@@ -17,6 +17,8 @@ import {
   type RootCardItem,
 } from "./_technical-details";
 
+export const dynamic = "force-dynamic";
+
 type ArtworkDetailPageProps = {
   params: Promise<{ slug: string }>;
 };
@@ -482,4 +484,3 @@ function rootCardItems({ artwork, view }: SectionProps): RootCardItem[] {
     },
   ];
 }
-

@@ -47,6 +47,8 @@ import {
   type ArchivedArtworkRow,
 } from "./_types";
 
+export const dynamic = "force-dynamic";
+
 type DiscoveryResult = {
   profiles: FoundationUserProfile[];
   works: FoundationLookupWork[];

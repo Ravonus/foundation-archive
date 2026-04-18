@@ -9,6 +9,8 @@ import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 
+export const dynamic = "force-dynamic";
+
 type HomeArtwork = Awaited<ReturnType<typeof db.artwork.findMany>>[number] & {
   metadataRoot: {
     cid: string;
