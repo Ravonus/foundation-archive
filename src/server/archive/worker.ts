@@ -20,6 +20,8 @@ export type WorkerStatus =
   | "ERROR"
   | "STOPPED";
 const RUNNING_HEARTBEAT_INTERVAL_MS = 20_000;
+const ARCHIVE_INGRESS_LOCK_FIRST_KEY = 6_145;
+const ARCHIVE_INGRESS_LOCK_SECOND_KEY = 31_816;
 
 function cycleHadActivity(input: {
   processed: number;
@@ -68,10 +70,94 @@ function disabledCrawlerResult() {
   return {
     scannedContracts: 0,
     queuedTokens: 0,
-    pausedForBacklog: true,
+    pausedForBacklog: false,
     backlogMaxPendingJobs: 0,
     backlogHeadroomJobs: 0,
     allowedCrawlerContracts: 0,
+  };
+}
+
+function idleDiscoveryResult() {
+  return {
+    source: "idle",
+    page: 0,
+    query: null as string | null,
+    seenContracts: 0,
+    newContracts: 0,
+    pausedForBacklog: false,
+    backlogMaxPendingJobs: 0,
+    backlogHeadroomJobs: 0,
+  };
+}
+
+function idleBudgetResult() {
+  return {
+    advanced: false,
+  };
+}
+
+function idleRebalanceResult() {
+  return {
+    queueBudget: 0,
+    protectedJobs: 0,
+    totalPendingJobs: 0,
+    refillResumeThreshold: 0,
+    automaticPendingTarget: 0,
+    trimmedAutomaticJobs: 0,
+    refilledAutomaticJobs: 0,
+  };
+}
+
+async function withArchiveIngressLock<T>(
+  client: DatabaseClient,
+  callback: () => Promise<T>,
+): Promise<T | null> {
+  const result: Array<{ locked: boolean }> = await client.$queryRawUnsafe(
+    "SELECT pg_try_advisory_lock($1, $2) AS locked",
+    ARCHIVE_INGRESS_LOCK_FIRST_KEY,
+    ARCHIVE_INGRESS_LOCK_SECOND_KEY,
+  );
+
+  if (!result[0]?.locked) {
+    return null;
+  }
+
+  try {
+    return await callback();
+  } finally {
+    await client.$queryRawUnsafe(
+      "SELECT pg_advisory_unlock($1, $2)",
+      ARCHIVE_INGRESS_LOCK_FIRST_KEY,
+      ARCHIVE_INGRESS_LOCK_SECOND_KEY,
+    );
+  }
+}
+
+async function runIngressCycle(
+  client: DatabaseClient,
+  allowIngress: boolean,
+) {
+  const fallbackBudget = idleBudgetResult();
+  const fallbackDiscovery = allowIngress
+    ? idleDiscoveryResult()
+    : disabledDiscoveryResult();
+  const fallbackCrawl = disabledCrawlerResult();
+  const fallbackRebalance = idleRebalanceResult();
+
+  const ingressResults = allowIngress
+    ? await withArchiveIngressLock(client, async () => ({
+        budget: await maybeAdvanceSmartPinBudget(client),
+        discovery: await runAutomaticContractDiscoveryTick(client),
+        crawl: await runAutomaticContractCrawlerTick(client),
+        rebalance: await rebalanceAutomaticBackupQueue(client),
+      }))
+    : null;
+
+  return {
+    budget: ingressResults?.budget ?? fallbackBudget,
+    discovery: ingressResults?.discovery ?? fallbackDiscovery,
+    crawl: ingressResults?.crawl ?? fallbackCrawl,
+    rebalance: ingressResults?.rebalance ?? fallbackRebalance,
   };
 }
 
@@ -179,20 +265,16 @@ export async function runWorkerCycle(
     keepAliveInterval.unref();
 
     const queueResult = await processQueuedJobs(client, limit);
-    const budgetResult = await maybeAdvanceSmartPinBudget(client);
-    const discoveryResult = allowIngress
-      ? await runAutomaticContractDiscoveryTick(client)
-      : disabledDiscoveryResult();
-    const crawlResult = allowIngress
-      ? await runAutomaticContractCrawlerTick(client)
-      : disabledCrawlerResult();
-    const rebalanceResult = await rebalanceAutomaticBackupQueue(client);
+    const { budget, discovery, crawl, rebalance } = await runIngressCycle(
+      client,
+      allowIngress,
+    );
     const hadActivity = cycleHadActivity({
       processed: queueResult.processed,
-      discovery: discoveryResult,
-      crawl: crawlResult,
-      budget: budgetResult,
-      rebalance: rebalanceResult,
+      discovery,
+      crawl,
+      budget,
+      rebalance,
     });
 
     await updateWorkerHeartbeat(client, {
@@ -208,10 +290,10 @@ export async function runWorkerCycle(
 
     return {
       ...queueResult,
-      discovery: discoveryResult,
-      crawl: crawlResult,
-      budget: budgetResult,
-      rebalance: rebalanceResult,
+      discovery,
+      crawl,
+      budget,
+      rebalance,
       hadActivity,
     };
   } catch (error) {

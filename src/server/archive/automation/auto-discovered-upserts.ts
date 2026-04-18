@@ -22,30 +22,25 @@ export async function ensureApiCrawlerForContract(
   },
 ) {
   const existing = await client.contractCrawlerState.findUnique({
-    where: {
-      contractId: input.contractId,
+    where: { contractId: input.contractId },
+    select: {
+      scanMode: true,
     },
   });
+  const switchingModes = existing?.scanMode !== "api";
 
-  if (!existing) {
-    return client.contractCrawlerState.create({
-      data: {
-        contractId: input.contractId,
-        autoEnabled: true,
-        scanMode: "api",
-        scanFromBlock: 0,
-        nextFromBlock: 0,
-        blockWindowSize: 0,
-        completed: false,
-      },
-    });
-  }
-
-  const switchingModes = existing.scanMode !== "api";
-
-  return client.contractCrawlerState.update({
-    where: { id: existing.id },
-    data: {
+  return client.contractCrawlerState.upsert({
+    where: { contractId: input.contractId },
+    create: {
+      contractId: input.contractId,
+      autoEnabled: true,
+      scanMode: "api",
+      scanFromBlock: 0,
+      nextFromBlock: 0,
+      blockWindowSize: 0,
+      completed: false,
+    },
+    update: {
       autoEnabled: true,
       scanMode: "api",
       blockWindowSize: 0,

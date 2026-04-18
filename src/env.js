@@ -31,7 +31,7 @@ export const env = createEnv({
     AUTO_SCAN_BLOCK_WINDOW: z.coerce.number().int().positive().default(50000),
     AUTO_SCAN_CONTRACTS_PER_TICK: z.coerce.number().int().positive().default(1),
     SMART_PIN_START_BYTES: z.coerce.number().int().positive().default(1048576),
-    SMART_PIN_CEILING_BYTES: z.coerce.number().int().positive().default(268435456),
+    SMART_PIN_CEILING_BYTES: z.coerce.number().int().positive().default(1073741824),
     SMART_PIN_GROWTH_FACTOR: z.coerce.number().positive().default(2),
     SMART_PIN_DEFER_MS: z.coerce.number().int().positive().default(60000),
     ARCHIVE_SOCKET_PORT: z.coerce.number().int().positive().default(43129),

@@ -13,6 +13,8 @@ import path from "node:path";
 import { env } from "~/env";
 
 const ROOT_FILE_SENTINEL = "__root__";
+const ARCHIVE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const ARCHIVE_PIN_TIMEOUT_MS = 20_000;
 
 type RustArchiverDownloadResponse = {
   absolute_path: string;
@@ -175,6 +177,7 @@ async function promoteHotFileToCold(hotPath: string, coldPath: string) {
 async function requestRustArchiver<T>(
   endpoint: string,
   payload: Record<string, unknown>,
+  timeoutMs = ARCHIVE_PIN_TIMEOUT_MS,
 ) {
   if (!env.ARCHIVE_ARCHIVER_URL) {
     return null;
@@ -190,7 +193,7 @@ async function requestRustArchiver<T>(
           "content-type": "application/json",
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
   } catch (error) {
@@ -253,7 +256,7 @@ async function downloadFileToArchiveWithJs(input: {
     headers: {
       "user-agent": "foundation-archive/0.1 (+https://foundation.app)",
     },
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(ARCHIVE_DOWNLOAD_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -375,6 +378,7 @@ export async function downloadFileToArchive(input: {
           final_root_dir: getArchiveStorageRoot(),
           hot_root_dir: getArchiveHotStorageRoot(),
         },
+        ARCHIVE_DOWNLOAD_TIMEOUT_MS,
       );
 
       if (response) {
