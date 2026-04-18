@@ -36,32 +36,6 @@ function disabledCrawlerResult() {
   };
 }
 
-async function handleCrawlerBacklogPause({
-  client,
-  policy,
-  backlog,
-}: {
-  client: DatabaseClient;
-  policy: PolicyState;
-  backlog: BacklogState;
-}) {
-  await client.archivePolicyState.update({
-    where: { id: policy.id },
-    data: {
-      lastCrawlerTickAt: new Date(),
-    },
-  });
-
-  return {
-    scannedContracts: 0,
-    queuedTokens: 0,
-    pausedForBacklog: true,
-    backlogMaxPendingJobs: backlog.maxPendingJobs,
-    backlogHeadroomJobs: backlog.pendingHeadroom,
-    allowedCrawlerContracts: backlog.allowedCrawlerContracts,
-  };
-}
-
 function sortAndSliceCrawlers(
   crawlers: CrawlerCandidate[],
   allowedCrawlerContracts: number,
@@ -623,12 +597,20 @@ export async function runAutomaticContractCrawlerTick(
     pendingJobs,
     policy.discoveryPerPage,
   );
+  const allowedCrawlerContracts = Math.max(
+    backlog.allowedCrawlerContracts,
+    policy.contractsPerTick,
+  );
+  const effectiveBacklog = {
+    ...backlog,
+    allowedCrawlerContracts,
+    pauseIngress: false,
+  };
 
-  if (backlog.pauseIngress || backlog.allowedCrawlerContracts <= 0) {
-    return handleCrawlerBacklogPause({ client, policy, backlog });
-  }
-
-  const crawlers = await selectCrawlerCandidates({ client, backlog });
+  const crawlers = await selectCrawlerCandidates({
+    client,
+    backlog: effectiveBacklog,
+  });
 
   const { scannedContracts, queuedTokens } = await runCrawlerLoop({
     client,
@@ -647,8 +629,8 @@ export async function runAutomaticContractCrawlerTick(
     scannedContracts,
     queuedTokens,
     pausedForBacklog: false,
-    backlogMaxPendingJobs: backlog.maxPendingJobs,
-    backlogHeadroomJobs: backlog.pendingHeadroom,
-    allowedCrawlerContracts: backlog.allowedCrawlerContracts,
+    backlogMaxPendingJobs: effectiveBacklog.maxPendingJobs,
+    backlogHeadroomJobs: effectiveBacklog.pendingHeadroom,
+    allowedCrawlerContracts: effectiveBacklog.allowedCrawlerContracts,
   };
 }

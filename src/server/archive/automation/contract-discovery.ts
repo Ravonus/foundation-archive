@@ -183,41 +183,6 @@ function disabledDiscoveryResult(policy: PolicyState) {
   };
 }
 
-async function handleBacklogPause({
-  client,
-  policy,
-  pendingJobs,
-  backlog,
-}: {
-  client: DatabaseClient;
-  policy: PolicyState;
-  pendingJobs: number;
-  backlog: BacklogState;
-}) {
-  await client.archivePolicyState.update({
-    where: { id: policy.id },
-    data: {
-      lastDiscoveryTickAt: new Date(),
-      lastDiscoverySummary: `Paused discovery while the backup queue drains (${pendingJobs}/${backlog.maxPendingJobs} pending jobs).`,
-    },
-  });
-
-  return {
-    source: policy.discoverySource,
-    page: policy.discoveryPage,
-    query:
-      policy.discoverySource === "collections"
-        ? activeCollectionDiscoveryQuery(policy.discoveryQueryIndex)
-        : null,
-    seenContracts: 0,
-    newContracts: 0,
-    completedFoundationPass: false,
-    pausedForBacklog: true,
-    backlogMaxPendingJobs: backlog.maxPendingJobs,
-    backlogHeadroomJobs: backlog.pendingHeadroom,
-  };
-}
-
 function buildDiscoveryErrorSummary(input: {
   source: string;
   page: number;
@@ -481,10 +446,6 @@ export async function runAutomaticContractDiscoveryTick(
     pendingJobs,
     policy.discoveryPerPage,
   );
-
-  if (backlog.pauseIngress) {
-    return handleBacklogPause({ client, policy, pendingJobs, backlog });
-  }
 
   try {
     await ensureAutoCrawlerContracts(client);
