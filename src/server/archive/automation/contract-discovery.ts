@@ -21,6 +21,11 @@ import {
 type PolicyState = Awaited<ReturnType<typeof getArchivePolicyState>>;
 type BacklogState = ReturnType<typeof archiveIngressGuardForPendingJobs>;
 type DiscoveryPageResult = Awaited<ReturnType<typeof fetchDiscoveryPage>>;
+type DiscoveryUpsertResult = {
+  newContracts: number;
+  skippedContracts: number;
+  sampleErrors: string[];
+};
 
 function normalizeDiscoverySource(source: string): DiscoverySource {
   return (
@@ -232,6 +237,21 @@ function buildDiscoveryErrorEventSummary(input: {
     : `Skipped Foundation ${input.source} page ${input.page} after an API error.`;
 }
 
+function formatDiscoveryErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown discovery error";
+}
+
+async function emitDiscoveryEventSafely(
+  client: DatabaseClient,
+  input: Parameters<typeof emitArchiveEvent>[1],
+) {
+  try {
+    await emitArchiveEvent(client, input);
+  } catch {
+    // Discovery progress should keep moving even if live-event publishing is down.
+  }
+}
+
 async function handleDiscoveryError({
   client,
   policy,
@@ -243,8 +263,7 @@ async function handleDiscoveryError({
   error: unknown;
   backlog: BacklogState;
 }) {
-  const message =
-    error instanceof Error ? error.message : "Unknown discovery error";
+  const message = formatDiscoveryErrorMessage(error);
   const query =
     policy.discoverySource === "collections"
       ? activeCollectionDiscoveryQuery(policy.discoveryQueryIndex)
@@ -274,7 +293,7 @@ async function handleDiscoveryError({
     },
   });
 
-  await emitArchiveEvent(client, {
+  await emitDiscoveryEventSafely(client, {
     type: "crawler.discovery-error",
     summary: buildDiscoveryErrorEventSummary({
       source: policy.discoverySource,
@@ -312,34 +331,63 @@ async function upsertDiscoveryItems({
   discovery: DiscoveryPageResult;
 }) {
   let newContracts = 0;
+  let skippedContracts = 0;
+  const sampleErrors: string[] = [];
+
   for (const discoveredContract of discovery.items) {
-    const result = await upsertAutoDiscoveredContract({
-      client,
-      input: discoveredContract,
-      source: discovery.source,
-      query: discovery.query,
-    });
-    if (result.created) {
-      newContracts += 1;
+    try {
+      const result = await upsertAutoDiscoveredContract({
+        client,
+        input: discoveredContract,
+        source: discovery.source,
+        query: discovery.query,
+      });
+      if (result.created) {
+        newContracts += 1;
+      }
+    } catch (error) {
+      skippedContracts += 1;
+      if (sampleErrors.length < 3) {
+        sampleErrors.push(
+          `${discoveredContract.contractAddress}: ${formatDiscoveryErrorMessage(error)}`,
+        );
+      }
     }
   }
-  return newContracts;
+
+  return {
+    newContracts,
+    skippedContracts,
+    sampleErrors,
+  } satisfies DiscoveryUpsertResult;
 }
 
 function buildDiscoveryProgressSummary(
   discovery: DiscoveryPageResult,
   newContracts: number,
+  skippedContracts: number,
 ) {
   const suffix = newContracts === 1 ? "" : "s";
+  const skippedSummary =
+    skippedContracts > 0
+      ? ` while skipping ${skippedContracts} bad entr${skippedContracts === 1 ? "y" : "ies"}`
+      : "";
   return discovery.source === "collections" && discovery.query
-    ? `Foundation discovery checked "${discovery.query}" page ${discovery.page} and added ${newContracts} contract${suffix}.`
-    : `Foundation discovery checked ${discovery.source} page ${discovery.page} and added ${newContracts} contract${suffix}.`;
+    ? `Foundation discovery checked "${discovery.query}" page ${discovery.page} and added ${newContracts} contract${suffix}${skippedSummary}.`
+    : `Foundation discovery checked ${discovery.source} page ${discovery.page} and added ${newContracts} contract${suffix}${skippedSummary}.`;
 }
 
-function buildDiscoverySummary(discovery: DiscoveryPageResult) {
+function buildDiscoverySummary(
+  discovery: DiscoveryPageResult,
+  skippedContracts: number,
+) {
+  const skippedSummary =
+    skippedContracts > 0
+      ? ` Skipped ${skippedContracts} bad entr${skippedContracts === 1 ? "y" : "ies"}.`
+      : "";
   return discovery.source === "collections" && discovery.query
-    ? `Checked collections search "${discovery.query}" page ${discovery.page}.`
-    : `Checked ${discovery.source} page ${discovery.page}.`;
+    ? `Checked collections search "${discovery.query}" page ${discovery.page}.${skippedSummary}`
+    : `Checked ${discovery.source} page ${discovery.page}.${skippedSummary}`;
 }
 
 async function persistDiscoveryProgress({
@@ -347,11 +395,15 @@ async function persistDiscoveryProgress({
   policy,
   discovery,
   newContracts,
+  skippedContracts,
+  sampleErrors,
 }: {
   client: DatabaseClient;
   policy: PolicyState;
   discovery: DiscoveryPageResult;
   newContracts: number;
+  skippedContracts: number;
+  sampleErrors: string[];
 }) {
   const nextCursor = nextDiscoveryCursor({
     currentSource: discovery.source,
@@ -372,19 +424,25 @@ async function persistDiscoveryProgress({
         increment: newContracts,
       },
       lastDiscoveryTickAt: new Date(),
-      lastDiscoverySummary: buildDiscoverySummary(discovery),
+      lastDiscoverySummary: buildDiscoverySummary(discovery, skippedContracts),
     },
   });
 
-  await emitArchiveEvent(client, {
+  await emitDiscoveryEventSafely(client, {
     type: "crawler.discovery-progress",
-    summary: buildDiscoveryProgressSummary(discovery, newContracts),
+    summary: buildDiscoveryProgressSummary(
+      discovery,
+      newContracts,
+      skippedContracts,
+    ),
     data: {
       source: discovery.source,
       page: discovery.page,
       query: discovery.query,
       seenContracts: discovery.items.length,
       newContracts,
+      skippedContracts,
+      sampleErrors,
       nextSource: updatedPolicy.discoverySource,
       nextPage: updatedPolicy.discoveryPage,
       nextQueryIndex: updatedPolicy.discoveryQueryIndex,
@@ -416,7 +474,17 @@ export async function runAutomaticContractDiscoveryTick(
     return handleBacklogPause({ client, policy, pendingJobs, backlog });
   }
 
-  await ensureAutoCrawlerContracts(client);
+  try {
+    await ensureAutoCrawlerContracts(client);
+  } catch (error) {
+    await emitDiscoveryEventSafely(client, {
+      type: "crawler.discovery-seed-error",
+      summary: "Skipped crawler seed sync after an internal error.",
+      data: {
+        error: formatDiscoveryErrorMessage(error),
+      },
+    });
+  }
 
   let discovery: DiscoveryPageResult;
   try {
@@ -430,21 +498,27 @@ export async function runAutomaticContractDiscoveryTick(
     return handleDiscoveryError({ client, policy, error, backlog });
   }
 
-  const newContracts = await upsertDiscoveryItems({ client, discovery });
-
-  await persistDiscoveryProgress({
-    client,
-    policy,
-    discovery,
-    newContracts,
-  });
+  let upsertResult: DiscoveryUpsertResult;
+  try {
+    upsertResult = await upsertDiscoveryItems({ client, discovery });
+    await persistDiscoveryProgress({
+      client,
+      policy,
+      discovery,
+      newContracts: upsertResult.newContracts,
+      skippedContracts: upsertResult.skippedContracts,
+      sampleErrors: upsertResult.sampleErrors,
+    });
+  } catch (error) {
+    return handleDiscoveryError({ client, policy, error, backlog });
+  }
 
   return {
     source: discovery.source,
     page: discovery.page,
     query: discovery.query,
     seenContracts: discovery.items.length,
-    newContracts,
+    newContracts: upsertResult.newContracts,
     pausedForBacklog: false,
     backlogMaxPendingJobs: backlog.maxPendingJobs,
     backlogHeadroomJobs: backlog.pendingHeadroom,
