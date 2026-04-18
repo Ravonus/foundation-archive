@@ -1,8 +1,16 @@
-import { ArrowLeft, Cable, Download, HardDriveDownload } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Cable,
+  Download,
+  HardDriveDownload,
+} from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
 import { DesktopStatusConsole } from "~/app/_components/desktop-status-console";
+
+const DESKTOP_APP_REPO_URL = "https://github.com/Ravonus/foundation-share-bridge";
 
 function ConsoleFallback() {
   return (
@@ -35,6 +43,22 @@ export default function DesktopPage() {
           The archive site already saves every work we know about. This is for
           people who want a second copy on their own computer too.
         </p>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <a
+            href={DESKTOP_APP_REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] hover:opacity-90"
+          >
+            <Download aria-hidden className="h-4 w-4" />
+            View on GitHub
+            <ArrowUpRight aria-hidden className="h-4 w-4" />
+          </a>
+          <p className="text-sm text-[var(--color-muted)]">
+            Packaged downloads are coming later. For now, the desktop bridge
+            lives on GitHub.
+          </p>
+        </div>
       </header>
 
       <section
@@ -53,11 +77,11 @@ export default function DesktopPage() {
               <Download aria-hidden className="h-4 w-4" />
             </span>
             <p className="text-sm font-medium text-[var(--color-ink)]">
-              Install the app
+              Grab the desktop bridge
             </p>
             <p className="text-xs text-[var(--color-muted)]">
-              A small helper app runs on your computer. It&apos;s free and
-              open-source.
+              Start from the GitHub repo for now. Packaged desktop downloads are
+              on the way.
             </p>
           </li>
           <li className="flex flex-col gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-alt)] p-4">
