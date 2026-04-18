@@ -117,7 +117,7 @@ export function DesktopShareButton({
       )}
 
       <p className="text-xs text-[var(--color-muted)]">
-        Optional. This work is already saved on the archive — this just keeps
+        Optional. This work is already saved on the archive. This just keeps
         an extra copy on your own computer.
       </p>
 

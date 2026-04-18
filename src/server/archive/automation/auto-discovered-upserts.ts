@@ -1,5 +1,6 @@
 import { type FoundationDiscoveredContract } from "~/server/archive/foundation-api";
 import { seedKnownContracts } from "~/server/archive/jobs";
+import { KNOWN_CONTRACTS } from "~/server/archive/jobs/shared";
 
 import {
   contractKindFromFoundationType,
@@ -7,6 +8,12 @@ import {
   type DiscoverySource,
   normalizeAddress,
 } from "./types";
+
+const CRAWLER_ELIGIBLE_SEED_KEYS = new Set(
+  KNOWN_CONTRACTS.filter((entry) => entry.seedCrawler).map(
+    (entry) => `${entry.chainId}:${normalizeAddress(entry.address)}`,
+  ),
+);
 
 export async function ensureApiCrawlerForContract(
   client: DatabaseClient,
@@ -127,6 +134,8 @@ export async function ensureAutoCrawlerContracts(client: DatabaseClient) {
   const seededContracts = await seedKnownContracts(client);
 
   for (const contract of seededContracts) {
+    const key = `${contract.chainId}:${contract.address}`;
+    if (!CRAWLER_ELIGIBLE_SEED_KEYS.has(key)) continue;
     await ensureApiCrawlerForContract(client, {
       contractId: contract.id,
     });

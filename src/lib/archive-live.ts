@@ -1,9 +1,12 @@
+export const ARCHIVE_WORKER_FRESH_MS = 90_000;
+
 export interface ArchiveLiveArtworkCard {
   artworkId: string;
   slug: string | null;
   title: string;
   artistName: string | null;
   artistUsername: string | null;
+  artistWallet: string | null;
   posterUrl: string | null;
   contractAddress: string;
   tokenId: string;

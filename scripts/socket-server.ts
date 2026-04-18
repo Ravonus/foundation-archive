@@ -1,9 +1,11 @@
+/* eslint-disable complexity */
+
 import "dotenv/config";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { Server as SocketIOServer } from "socket.io";
-import { WebSocket, WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import { env } from "~/env";
 import { archivePaceConfigForContractsPerTick } from "~/lib/archive-pace";
@@ -97,13 +99,41 @@ async function checkExistingArchiveSocketServer(port: number) {
 }
 
 async function readJsonBody(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
+  const chunks: Uint8Array[] = [];
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    if (typeof chunk === "string") {
+      chunks.push(Buffer.from(chunk));
+      continue;
+    }
+
+    if (chunk instanceof Buffer) {
+      chunks.push(chunk);
+      continue;
+    }
+
+    chunks.push(Buffer.from(chunk as Uint8Array));
   }
 
   if (chunks.length === 0) return null;
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+}
+
+function rawDataToString(data: RawData) {
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return Buffer.from(data).toString("utf8");
+  }
+
+  if (Array.isArray(data)) {
+    return Buffer.concat(data).toString("utf8");
+  }
+
+  return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString(
+    "utf8",
+  );
 }
 
 async function main() {
@@ -119,7 +149,7 @@ async function main() {
   const cachedInventory = new Map<string, CachedRelayInventory>();
   let stopping = false;
 
-  async function writeJson(
+  function writeJson(
     response: ServerResponse,
     statusCode: number,
     payload: Record<string, unknown>,
@@ -201,7 +231,11 @@ async function main() {
     await broadcastOwnerSnapshot(deviceClient.ownerToken);
   }
 
-  async function handleOwnerMessage(ownerToken: string, socket: WebSocket, message: string) {
+  async function handleOwnerMessage(
+    ownerToken: string,
+    socket: WebSocket,
+    message: string,
+  ) {
     const payload = parseJson<OwnerRelayMessage>(message);
     if (!payload) {
       safeSend(socket, { type: "owner.error", message: "Invalid relay owner message." });
@@ -213,31 +247,29 @@ async function main() {
       return;
     }
 
-    if (payload.type === "owner.requestInventory") {
-      const deviceClient = deviceSockets.get(payload.deviceId);
-      if (!deviceClient || deviceClient.ownerToken !== ownerToken) {
-        const inventory = cachedInventory.get(payload.deviceId);
-        if (inventory) {
-          safeSend(socket, {
-            type: "owner.inventory",
-            deviceId: payload.deviceId,
-            generatedAt: inventory.generatedAt,
-            items: inventory.items,
-          });
-          return;
-        }
-
+    const deviceClient = deviceSockets.get(payload.deviceId);
+    if (deviceClient?.ownerToken !== ownerToken) {
+      const inventory = cachedInventory.get(payload.deviceId);
+      if (inventory) {
         safeSend(socket, {
-          type: "owner.error",
-          message: "That desktop app is not currently connected.",
+          type: "owner.inventory",
+          deviceId: payload.deviceId,
+          generatedAt: inventory.generatedAt,
+          items: inventory.items,
         });
         return;
       }
 
-      safeSend(deviceClient.socket, {
-        type: "relay.requestInventory",
+      safeSend(socket, {
+        type: "owner.error",
+        message: "That desktop app is not currently connected.",
       });
+      return;
     }
+
+    safeSend(deviceClient.socket, {
+      type: "relay.requestInventory",
+    });
   }
 
   async function handleDeviceMessage(client: DeviceSocketClient, message: string) {
@@ -266,27 +298,25 @@ async function main() {
       return;
     }
 
-    if (payload.type === "device.jobResult") {
-      await reportRelayJobResult(db, {
-        deviceToken: client.deviceToken,
-        jobId: payload.jobId,
-        status: payload.status,
-        resultPayload: payload.resultPayload ?? null,
-        errorMessage: payload.errorMessage ?? null,
-      });
+    await reportRelayJobResult(db, {
+      deviceToken: client.deviceToken,
+      jobId: payload.jobId,
+      status: payload.status,
+      resultPayload: payload.resultPayload ?? null,
+      errorMessage: payload.errorMessage ?? null,
+    });
 
-      broadcastToOwner(client.ownerToken, {
-        type: "owner.jobUpdate",
-        deviceId: client.deviceId,
-        jobId: payload.jobId,
-        status: payload.status,
-        finishedAt: new Date().toISOString(),
-        errorMessage: payload.errorMessage ?? null,
-      });
+    broadcastToOwner(client.ownerToken, {
+      type: "owner.jobUpdate",
+      deviceId: client.deviceId,
+      jobId: payload.jobId,
+      status: payload.status,
+      finishedAt: new Date().toISOString(),
+      errorMessage: payload.errorMessage ?? null,
+    });
 
-      await broadcastOwnerSnapshot(client.ownerToken);
-      await dispatchPendingJobs(client.deviceId);
-    }
+    await broadcastOwnerSnapshot(client.ownerToken);
+    await dispatchPendingJobs(client.deviceId);
   }
 
   const httpServer = createServer((request, response) => {
@@ -307,7 +337,7 @@ async function main() {
       }
 
       if (requestUrl.pathname === "/health") {
-        await writeJson(response, 200, { ok: true });
+        writeJson(response, 200, { ok: true });
         return;
       }
 
@@ -316,12 +346,12 @@ async function main() {
         const deviceId = typeof body?.deviceId === "string" ? body.deviceId : null;
 
         if (!deviceId) {
-          await writeJson(response, 400, { error: "deviceId is required." });
+          writeJson(response, 400, { error: "deviceId is required." });
           return;
         }
 
         await dispatchPendingJobs(deviceId).catch(() => null);
-        await writeJson(response, 200, { ok: true });
+        writeJson(response, 200, { ok: true });
         return;
       }
 
@@ -334,7 +364,7 @@ async function main() {
             : "Disconnected from the archive.";
 
         if (!deviceId) {
-          await writeJson(response, 400, { error: "deviceId is required." });
+          writeJson(response, 400, { error: "deviceId is required." });
           return;
         }
 
@@ -349,7 +379,7 @@ async function main() {
           await broadcastOwnerSnapshot(client.ownerToken);
         }
 
-        await writeJson(response, 200, { ok: true });
+        writeJson(response, 200, { ok: true });
         return;
       }
 
@@ -393,120 +423,136 @@ async function main() {
     socket.emit("archive:snapshot", snapshot);
   });
 
-  relayWss.on("connection", async (socket, request) => {
-    const requestUrl = new URL(
-      request.url ?? "/desktop-relay",
-      `http://${request.headers.host ?? `127.0.0.1:${env.ARCHIVE_SOCKET_PORT}`}`,
-    );
-    const role = requestUrl.searchParams.get("role");
+  relayWss.on("connection", (socket, request) => {
+    void (async () => {
+      const requestUrl = new URL(
+        request.url ?? "/desktop-relay",
+        `http://${request.headers.host ?? `127.0.0.1:${env.ARCHIVE_SOCKET_PORT}`}`,
+      );
+      const role = requestUrl.searchParams.get("role");
 
-    if (role === "owner") {
-      const ownerToken = requestUrl.searchParams.get("ownerToken")?.trim();
-      if (!ownerToken || ownerToken.length < 16) {
-        socket.close(4000, "ownerToken is required");
+      if (role === "owner") {
+        const ownerToken = requestUrl.searchParams.get("ownerToken")?.trim();
+        if (!ownerToken || ownerToken.length < 16) {
+          socket.close(4000, "ownerToken is required");
+          return;
+        }
+
+        const sockets = ownerSockets.get(ownerToken) ?? new Set<WebSocket>();
+        sockets.add(socket);
+        ownerSockets.set(ownerToken, sockets);
+
+        await broadcastOwnerSnapshot(ownerToken);
+
+        socket.on("message", (buffer) => {
+          const message = rawDataToString(buffer);
+          void handleOwnerMessage(ownerToken, socket, message).catch(() => null);
+        });
+
+        socket.on("close", () => {
+          const current = ownerSockets.get(ownerToken);
+          if (!current) return;
+          current.delete(socket);
+          if (current.size === 0) {
+            ownerSockets.delete(ownerToken);
+          }
+        });
+
         return;
       }
 
-      const sockets = ownerSockets.get(ownerToken) ?? new Set<WebSocket>();
-      sockets.add(socket);
-      ownerSockets.set(ownerToken, sockets);
-
-      await broadcastOwnerSnapshot(ownerToken);
-
-      socket.on("message", (buffer) => {
-        void handleOwnerMessage(ownerToken, socket, buffer.toString()).catch(() => null);
-      });
-
-      socket.on("close", () => {
-        const current = ownerSockets.get(ownerToken);
-        if (!current) return;
-        current.delete(socket);
-        if (current.size === 0) {
-          ownerSockets.delete(ownerToken);
+      if (role === "device") {
+        const deviceToken = requestUrl.searchParams.get("deviceToken")?.trim();
+        if (!deviceToken || deviceToken.length < 16) {
+          socket.close(4000, "deviceToken is required");
+          return;
         }
-      });
 
-      return;
-    }
+        let device;
+        try {
+          device = await requireRelayDeviceByToken(db, deviceToken);
+        } catch (error) {
+          const existingDevice = await getRelayDeviceByToken(db, deviceToken);
+          if (existingDevice && !existingDevice.relayEnabled) {
+            safeSend(socket, {
+              type: "relay.forceDisconnect",
+              reason: "Disconnected from the archive site.",
+            });
+          }
+          socket.close(
+            4003,
+            error instanceof Error
+              ? error.message
+              : "Desktop device authentication failed.",
+          );
+          return;
+        }
 
-    if (role === "device") {
-      const deviceToken = requestUrl.searchParams.get("deviceToken")?.trim();
-      if (!deviceToken || deviceToken.length < 16) {
-        socket.close(4000, "deviceToken is required");
+        const client: DeviceSocketClient = {
+          socket,
+          ownerToken: device.ownerToken,
+          deviceId: device.id,
+          deviceLabel: device.deviceLabel,
+          deviceToken,
+        };
+
+        deviceSockets.set(device.id, client);
+        await touchRelayDevice(db, {
+          deviceId: device.id,
+        }).catch(() => null);
+
+        safeSend(socket, {
+          type: "relay.welcome",
+          deviceId: device.id,
+          deviceLabel: device.deviceLabel,
+        });
+        safeSend(socket, {
+          type: "relay.requestInventory",
+        });
+
+        await broadcastOwnerSnapshot(device.ownerToken);
+        await dispatchPendingJobs(device.id).catch(() => null);
+
+        socket.on("message", (buffer) => {
+          const message = rawDataToString(buffer);
+          void handleDeviceMessage(client, message).catch(() => null);
+        });
+
+        socket.on("close", () => {
+          const active = deviceSockets.get(device.id);
+          if (active?.socket === socket) {
+            deviceSockets.delete(device.id);
+          }
+          void broadcastOwnerSnapshot(device.ownerToken).catch(() => null);
+        });
+
         return;
       }
 
-      let device;
-      try {
-        device = await requireRelayDeviceByToken(db, deviceToken);
-      } catch (error) {
-        const existingDevice = await getRelayDeviceByToken(db, deviceToken);
-        if (existingDevice && !existingDevice.relayEnabled) {
-          safeSend(socket, {
-            type: "relay.forceDisconnect",
-            reason: "Disconnected from the archive site.",
-          });
-        }
-        socket.close(
-          4003,
-          error instanceof Error ? error.message : "Desktop device authentication failed.",
-        );
-        return;
-      }
-
-      const client: DeviceSocketClient = {
-        socket,
-        ownerToken: device.ownerToken,
-        deviceId: device.id,
-        deviceLabel: device.deviceLabel,
-        deviceToken,
-      };
-
-      deviceSockets.set(device.id, client);
-      await touchRelayDevice(db, {
-        deviceId: device.id,
-      }).catch(() => null);
-
-      safeSend(socket, {
-        type: "relay.welcome",
-        deviceId: device.id,
-        deviceLabel: device.deviceLabel,
-      });
-      safeSend(socket, {
-        type: "relay.requestInventory",
-      });
-
-      await broadcastOwnerSnapshot(device.ownerToken);
-      await dispatchPendingJobs(device.id).catch(() => null);
-
-      socket.on("message", (buffer) => {
-        void handleDeviceMessage(client, buffer.toString()).catch(() => null);
-      });
-
-      socket.on("close", () => {
-        const active = deviceSockets.get(device.id);
-        if (active?.socket === socket) {
-          deviceSockets.delete(device.id);
-        }
-        void broadcastOwnerSnapshot(device.ownerToken).catch(() => null);
-      });
-
-      return;
-    }
-
-    socket.close(4000, "Unsupported relay role");
-  });
-
-  const stopListening = await listenForArchiveEvents(async (event) => {
-    const snapshot = await getArchiveLiveSnapshot(db);
-    io.emit("archive:update", {
-      event,
-      snapshot,
+      socket.close(4000, "Unsupported relay role");
+    })().catch((error) => {
+      console.error(error);
+      socket.close(1011, "Relay connection failed.");
     });
   });
 
+  const stopListening = await listenForArchiveEvents((event) => {
+    void (async () => {
+      const snapshot = await getArchiveLiveSnapshot(db);
+      io.emit("archive:update", {
+        event,
+        snapshot,
+      });
+    })();
+  });
+
   const workerLoop = (async () => {
-    while (!stopping) {
+    for (;;) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- shutdown flips this from signal handlers outside the loop body.
+      if (stopping) {
+        return;
+      }
+
       try {
         const pace = archivePaceConfigForContractsPerTick(
           (await getArchivePolicyState(db)).contractsPerTick,
@@ -518,31 +564,39 @@ async function main() {
           mode: "embedded",
         });
 
-        if (stopping) break;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- shutdown flips this from signal handlers outside the loop body.
+        if (stopping) {
+          return;
+        }
         await sleep(result.hadActivity ? pace.busyDelayMs : pace.idleDelayMs);
       } catch {
-        if (stopping) break;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- shutdown flips this from signal handlers outside the loop body.
+        if (stopping) {
+          return;
+        }
         await sleep(15_000);
       }
     }
   })();
 
   await new Promise<void>((resolve, reject) => {
-    const handleListenError = async (error: NodeJS.ErrnoException) => {
-      httpServer.off("error", handleListenError);
+    const handleListenError = (error: NodeJS.ErrnoException) => {
+      void (async () => {
+        httpServer.off("error", handleListenError);
 
-      if (
-        error.code === "EADDRINUSE" &&
-        (await checkExistingArchiveSocketServer(env.ARCHIVE_SOCKET_PORT))
-      ) {
-        console.log(
-          `[socket] archive live server already running on http://127.0.0.1:${env.ARCHIVE_SOCKET_PORT}`,
-        );
-        resolve();
-        return;
-      }
+        if (
+          error.code === "EADDRINUSE" &&
+          (await checkExistingArchiveSocketServer(env.ARCHIVE_SOCKET_PORT))
+        ) {
+          console.log(
+            `[socket] archive live server already running on http://127.0.0.1:${env.ARCHIVE_SOCKET_PORT}`,
+          );
+          resolve();
+          return;
+        }
 
-      reject(error);
+        reject(error);
+      })();
     };
 
     httpServer.once("error", handleListenError);
@@ -553,13 +607,19 @@ async function main() {
       );
     });
 
-    const shutdown = async () => {
-      stopping = true;
-      await stopListening();
-      await workerLoop.catch(() => null);
-      io.close();
-      relayWss.close();
-      httpServer.close(() => resolve());
+    const shutdown = () => {
+      void (async () => {
+        stopping = true;
+        await stopListening();
+        await workerLoop.catch(() => null);
+        await new Promise<void>((resolveIo) => {
+          void io.close(() => resolveIo());
+        });
+        await new Promise<void>((resolveRelay) => {
+          relayWss.close(() => resolveRelay());
+        });
+        httpServer.close(() => resolve());
+      })();
     };
 
     process.on("SIGINT", shutdown);

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const contractScanBaseSchema = z.object({
+  chainId: z.coerce.number().int().default(1),
   contractAddress: z
     .string()
     .trim()
@@ -13,18 +14,26 @@ const contractScanBaseSchema = z.object({
   toBlock: z.coerce.number().int().nonnegative().optional(),
 });
 
+type ContractScanRangeInput = {
+  startTokenId?: number;
+  endTokenId?: number;
+  fromBlock?: number;
+  toBlock?: number;
+};
+
 function refineContractScanInput<T extends z.ZodRawShape>(
   schema: z.ZodObject<T>,
 ) {
   return schema.superRefine((input, ctx) => {
+    const rangeInput = input as ContractScanRangeInput;
     const hasTokenRange =
-      typeof input.startTokenId === "number" &&
-      typeof input.endTokenId === "number";
+      typeof rangeInput.startTokenId === "number" &&
+      typeof rangeInput.endTokenId === "number";
 
     if (
       !hasTokenRange &&
-      typeof input.fromBlock !== "number" &&
-      typeof input.toBlock !== "number"
+      typeof rangeInput.fromBlock !== "number" &&
+      typeof rangeInput.toBlock !== "number"
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -35,9 +44,9 @@ function refineContractScanInput<T extends z.ZodRawShape>(
     }
 
     if (
-      typeof input.startTokenId === "number" &&
-      typeof input.endTokenId === "number" &&
-      input.endTokenId < input.startTokenId
+      typeof rangeInput.startTokenId === "number" &&
+      typeof rangeInput.endTokenId === "number" &&
+      rangeInput.endTokenId < rangeInput.startTokenId
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -47,9 +56,9 @@ function refineContractScanInput<T extends z.ZodRawShape>(
     }
 
     if (
-      typeof input.fromBlock === "number" &&
-      typeof input.toBlock === "number" &&
-      input.toBlock < input.fromBlock
+      typeof rangeInput.fromBlock === "number" &&
+      typeof rangeInput.toBlock === "number" &&
+      rangeInput.toBlock < rangeInput.fromBlock
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

@@ -20,16 +20,94 @@ export const CONTRACT_TOKEN_PRIORITY = 9;
 export const BACKUP_PRIORITY = 8;
 export const CONTRACT_SCAN_PRIORITY = 5;
 
-export const KNOWN_CONTRACTS = [
+export type KnownContractSeed = {
+  chainId: number;
+  address: string;
+  label: string;
+  contractKind: ContractKind;
+  foundationContractType: string | null;
+  isFoundationNative: boolean;
+  notes: string;
+  seedCrawler: boolean;
+};
+
+export const KNOWN_CONTRACTS: KnownContractSeed[] = [
   {
     chainId: 1,
     address: "0x3b3ee1931dc30c1957379fac9aba94d1c48a5405",
-    label: "Foundation Legacy Mint Contract",
+    label: "Ethereum Mainnet · Foundation NFT (FND)",
     contractKind: ContractKind.FOUNDATION_GENESIS,
     foundationContractType: "FND",
     isFoundationNative: true,
     notes:
-      "Observed in older Foundation mint pages. Good starting point for historical 1/1 scans.",
+      "Shared Foundation ERC-721 for legacy 1/1 mints on Ethereum mainnet. Good starting point for historical 1/1 scans.",
+    seedCrawler: true,
+  },
+  {
+    chainId: 1,
+    address: "0xcda72070e455bb31c7690a170224ce43623d0b6f",
+    label: "Ethereum Mainnet · Foundation NFT Market",
+    contractKind: ContractKind.IMPORTED,
+    foundationContractType: null,
+    isFoundationNative: true,
+    notes:
+      "Foundation's reserve-auction market on Ethereum mainnet. Platform anchor — not a token contract.",
+    seedCrawler: false,
+  },
+  {
+    chainId: 1,
+    address: "0x53f451165ba6fdbe39a134673d13948261b2334a",
+    label: "Ethereum Mainnet · Foundation NFT Drop Market",
+    contractKind: ContractKind.IMPORTED,
+    foundationContractType: null,
+    isFoundationNative: true,
+    notes:
+      "Foundation's drop mint contract on Ethereum mainnet. Platform anchor — not a token contract.",
+    seedCrawler: false,
+  },
+  {
+    chainId: 1,
+    address: "0x612e2daddc89d91409e40f946f9f7cfe422e777e",
+    label: "Ethereum Mainnet · Foundation NFT Collection Factory V2",
+    contractKind: ContractKind.IMPORTED,
+    foundationContractType: null,
+    isFoundationNative: true,
+    notes:
+      "Foundation's per-creator collection factory on Ethereum mainnet. Deploys ERC-1167 proxies for new drops.",
+    seedCrawler: false,
+  },
+  {
+    chainId: 8453,
+    address: "0x7b503e206db34148ad77e00afe214034edf9e3ff",
+    label: "Base · Foundation NFT Market",
+    contractKind: ContractKind.IMPORTED,
+    foundationContractType: null,
+    isFoundationNative: true,
+    notes:
+      "Foundation's reserve-auction market on Base (chain 8453). Platform anchor — not a token contract.",
+    seedCrawler: false,
+  },
+  {
+    chainId: 8453,
+    address: "0x62037b26fff91929655aa3a060f327b47d1e2b3e",
+    label: "Base · Foundation NFT Drop Market",
+    contractKind: ContractKind.IMPORTED,
+    foundationContractType: null,
+    isFoundationNative: true,
+    notes:
+      "Foundation's drop mint contract on Base (chain 8453). Platform anchor — not a token contract.",
+    seedCrawler: false,
+  },
+  {
+    chainId: 8453,
+    address: "0xf1814213a5ef856aaa1fdb0f7f375569168d8e73",
+    label: "Base · Foundation NFT Collection Factory V2",
+    contractKind: ContractKind.IMPORTED,
+    foundationContractType: null,
+    isFoundationNative: true,
+    notes:
+      "Foundation's per-creator collection factory on Base (chain 8453). Deploys ERC-1167 proxies for new drops.",
+    seedCrawler: false,
   },
 ];
 
@@ -108,6 +186,7 @@ export async function loadArtworkLiveCard(
       title: true,
       artistName: true,
       artistUsername: true,
+      artistWallet: true,
       staticPreviewUrl: true,
       previewUrl: true,
       foundationUrl: true,

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { MediaKind } from "~/server/prisma-client";
 
 import { env } from "~/env";
+import { chainSlug } from "~/server/archive/chains";
 
 const foundationTokenSchema = z.object({
   chainId: z.number().int().nullable().optional(),
@@ -98,26 +99,23 @@ export function buildFoundationProfileUrl(username: string) {
   return `${buildFoundationBaseUrl()}/@${normalized}`;
 }
 
-function foundationChainSlug(chainId: number) {
-  if (chainId === 8453) return "base";
-  return "eth";
-}
-
 export function buildFoundationMintUrl(
   contractAddress: string,
   tokenId: string | number | bigint,
   chainId = 1,
 ) {
-  return `${buildFoundationBaseUrl()}/mint/${foundationChainSlug(chainId)}/${contractAddress}/${tokenId.toString()}`;
+  return `${buildFoundationBaseUrl()}/mint/${chainSlug(chainId)}/${contractAddress}/${tokenId.toString()}`;
 }
 
-const FOUNDATION_USER_AGENT = "foundation-archive/0.1 (+https://foundation.app)";
+const FOUNDATION_USER_AGENT =
+  "foundation-archive/0.1 (+https://foundation.app)";
 const NEXT_DATA_PATTERN =
   /<script id="__NEXT_DATA__" type="application\/json">(?<payload>.*?)<\/script>/s;
 
 async function fetchFoundationHtml(url: string, label: string) {
   const response = await fetch(url, {
     headers: { "user-agent": FOUNDATION_USER_AGENT },
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
@@ -241,10 +239,7 @@ export async function tryFetchFoundationMintByUrl(url: string) {
   }
 }
 
-function mapFoundationProfile(
-  json: FoundationProfileNextData,
-  url: string,
-) {
+function mapFoundationProfile(json: FoundationProfileNextData, url: string) {
   const user = foundationProfileSchema.parse(json.props?.pageProps?.user);
   return {
     accountAddress: json.props?.pageProps?.publicKey ?? user.publicKey,
@@ -260,7 +255,10 @@ function mapFoundationProfile(
 export async function fetchFoundationProfileByUsername(username: string) {
   const url = buildFoundationProfileUrl(username);
   const html = await fetchFoundationHtml(url, "profile page");
-  const json = extractNextData(html, "profile page") as FoundationProfileNextData;
+  const json = extractNextData(
+    html,
+    "profile page",
+  ) as FoundationProfileNextData;
   return mapFoundationProfile(json, url);
 }
 

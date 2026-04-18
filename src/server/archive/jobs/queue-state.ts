@@ -1,7 +1,4 @@
-import {
-  type QueueJob,
-  QueueJobStatus,
-} from "~/server/prisma-client";
+import { type QueueJob, QueueJobStatus } from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { type DatabaseClient } from "./shared";
 
@@ -45,14 +42,34 @@ export async function markJobRunning(client: DatabaseClient, job: QueueJob) {
 
 const STALE_RUNNING_JOB_MS = 10 * 60 * 1000;
 
-async function applyStaleJobRecovery(
+type RunningJobRecoveryReason = "stale" | "unavailable-worker";
+
+function recoverySummary(
+  job: QueueJob,
+  exhausted: boolean,
+  reason: RunningJobRecoveryReason,
+) {
+  if (reason === "unavailable-worker") {
+    return exhausted
+      ? `${job.kind.toLowerCase()} was marked failed after the saver went offline.`
+      : `${job.kind.toLowerCase()} was re-queued after the saver went offline.`;
+  }
+
+  return exhausted
+    ? `${job.kind.toLowerCase()} was marked failed after stalling on the server worker.`
+    : `${job.kind.toLowerCase()} was recovered after stalling on the server worker.`;
+}
+
+async function applyRunningJobRecovery(
   client: DatabaseClient,
   job: QueueJob,
+  input: {
+    message: string;
+    reason: RunningJobRecoveryReason;
+  },
 ) {
   const exhausted = job.attempts >= job.maxAttempts;
-  const message =
-    job.lastError ??
-    "Recovered a stale running job after the archive worker was interrupted.";
+  const message = job.lastError ?? input.message;
 
   const updated = await client.queueJob.updateMany({
     where: {
@@ -78,9 +95,7 @@ async function applyStaleJobRecovery(
 
   await emitArchiveEvent(client, {
     type: exhausted ? "queue.job-failed" : "queue.job-recovered",
-    summary: exhausted
-      ? `${job.kind.toLowerCase()} was marked failed after stalling on the server worker.`
-      : `${job.kind.toLowerCase()} was recovered after stalling on the server worker.`,
+    summary: recoverySummary(job, exhausted, input.reason),
     data: {
       jobId: job.id,
       kind: job.kind,
@@ -104,10 +119,41 @@ export async function recoverStaleRunningJobs(client: DatabaseClient) {
   });
 
   for (const job of staleJobs) {
-    await applyStaleJobRecovery(client, job);
+    await applyRunningJobRecovery(client, job, {
+      message:
+        "Recovered a stale running job after the archive worker was interrupted.",
+      reason: "stale",
+    });
   }
 
   return staleJobs.length;
+}
+
+export async function recoverRunningJobsForUnavailableWorker(
+  client: DatabaseClient,
+  input: {
+    limit?: number;
+    message?: string;
+  } = {},
+) {
+  const runningJobs = await client.queueJob.findMany({
+    where: {
+      status: QueueJobStatus.RUNNING,
+    },
+    orderBy: [{ startedAt: "asc" }, { createdAt: "asc" }],
+    take: input.limit ?? 100,
+  });
+
+  for (const job of runningJobs) {
+    await applyRunningJobRecovery(client, job, {
+      message:
+        input.message ??
+        "Recovered a running job after the archive saver stopped sending heartbeats.",
+      reason: "unavailable-worker",
+    });
+  }
+
+  return runningJobs.length;
 }
 
 export async function finalizeJobSuccess(
@@ -202,7 +248,8 @@ export async function finalizeJobFailure(
   job: QueueJob,
   error: unknown,
 ) {
-  const message = error instanceof Error ? error.message : "Unknown queue error";
+  const message =
+    error instanceof Error ? error.message : "Unknown queue error";
   const exhausted = job.attempts >= job.maxAttempts;
 
   const updated = await client.queueJob.updateMany({

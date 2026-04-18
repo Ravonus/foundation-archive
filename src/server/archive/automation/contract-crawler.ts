@@ -1,18 +1,18 @@
 import { archiveIngressGuardForPendingJobs } from "~/lib/archive-pace";
+import { getRpcClient } from "~/server/archive/chains";
 import { fetchFoundationWorksByCollection } from "~/server/archive/foundation-api";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import {
   enqueueContractTokenIngest,
   persistDiscoveredFoundationWorks,
 } from "~/server/archive/jobs";
+import { discoverTokenIdsFromLogs } from "~/server/archive/jobs/ethereum-rpc";
 import { getArchivePolicyState } from "~/server/archive/state";
-import { getAddress, parseAbiItem } from "viem";
 
 import {
   API_REVISIT_INTERVAL_MS,
   crawlerTypePriority,
   type DatabaseClient,
-  getEthereumClient,
 } from "./types";
 
 type PolicyState = Awaited<ReturnType<typeof getArchivePolicyState>>;
@@ -24,36 +24,6 @@ type CrawlerCandidate = Awaited<
     ReturnType<DatabaseClient["contractRegistry"]["findUniqueOrThrow"]>
   >;
 };
-
-async function discoverTokenIdsFromLogs(input: {
-  contractAddress: string;
-  fromBlock: number;
-  toBlock: number;
-}) {
-  const client = getEthereumClient();
-
-  const logs = await client.getLogs({
-    address: getAddress(input.contractAddress),
-    event: parseAbiItem(
-      "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
-    ),
-    fromBlock: BigInt(input.fromBlock),
-    toBlock: BigInt(input.toBlock),
-  });
-
-  const tokenIds = new Set<string>();
-
-  for (const log of logs) {
-    const tokenId = log.args.tokenId;
-    if (tokenId !== undefined) {
-      tokenIds.add(tokenId.toString());
-    }
-  }
-
-  return Array.from(tokenIds).sort(
-    (left, right) => Number(left) - Number(right),
-  );
-}
 
 function disabledCrawlerResult() {
   return {
@@ -496,6 +466,7 @@ async function runBlockCrawlerForContract({
   );
 
   const tokenIds = await discoverTokenIdsFromLogs({
+    chainId: crawler.contract.chainId,
     contractAddress: crawler.contract.address,
     fromBlock: startBlock,
     toBlock,
@@ -548,21 +519,27 @@ async function recordCrawlerFailure({
   });
 }
 
-async function ensureLatestBlock(latestBlockRef: { value: number | null }) {
-  latestBlockRef.value ??= Number(await getEthereumClient().getBlockNumber());
-  return latestBlockRef.value;
+async function ensureLatestBlock(
+  chainId: number,
+  latestBlockByChain: Map<number, number>,
+) {
+  const cached = latestBlockByChain.get(chainId);
+  if (cached !== undefined) return cached;
+  const tip = Number(await getRpcClient(chainId).getBlockNumber());
+  latestBlockByChain.set(chainId, tip);
+  return tip;
 }
 
 async function runSingleCrawler({
   client,
   crawler,
   policy,
-  latestBlockRef,
+  latestBlockByChain,
 }: {
   client: DatabaseClient;
   crawler: CrawlerCandidate;
   policy: PolicyState;
-  latestBlockRef: { value: number | null };
+  latestBlockByChain: Map<number, number>;
 }) {
   const runStartedAt = new Date();
 
@@ -584,7 +561,10 @@ async function runSingleCrawler({
       });
     }
 
-    const latestBlock = await ensureLatestBlock(latestBlockRef);
+    const latestBlock = await ensureLatestBlock(
+      crawler.contract.chainId,
+      latestBlockByChain,
+    );
 
     return await runBlockCrawlerForContract({
       client,
@@ -609,14 +589,14 @@ async function runCrawlerLoop({
 }) {
   let scannedContracts = 0;
   let queuedTokens = 0;
-  const latestBlockRef: { value: number | null } = { value: null };
+  const latestBlockByChain = new Map<number, number>();
 
   for (const crawler of crawlers) {
     const result = await runSingleCrawler({
       client,
       crawler,
       policy,
-      latestBlockRef,
+      latestBlockByChain,
     });
     scannedContracts += result.scanned;
     queuedTokens += result.queuedTokens;

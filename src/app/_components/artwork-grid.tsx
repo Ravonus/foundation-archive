@@ -291,7 +291,7 @@ function HealthBadge({ health }: { health: Health }) {
         healthClass(health),
       )}
       title={explanation}
-      aria-label={`${healthLabel(health)} — ${explanation}`}
+      aria-label={`${healthLabel(health)}: ${explanation}`}
     >
       {health === "pending" ? (
         <span

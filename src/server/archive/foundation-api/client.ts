@@ -17,7 +17,7 @@ export function isFoundationWorkIpfsArchivable(
 ) {
   return Boolean(
     firstIpfsReference(RootKind.METADATA, [work.metadataUrl]) ??
-      firstIpfsReference(RootKind.MEDIA, [work.sourceUrl, work.mediaUrl]),
+    firstIpfsReference(RootKind.MEDIA, [work.sourceUrl, work.mediaUrl]),
   );
 }
 
@@ -39,6 +39,7 @@ export async function fetchFoundationGraphql<T>(
       query,
       variables,
     }),
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {

@@ -347,7 +347,8 @@ export async function seedKnownContracts(client: DatabaseClient) {
   const results = [];
 
   for (const contract of KNOWN_CONTRACTS) {
-    results.push(await upsertContractEntry(client, contract));
+    const { seedCrawler: _seedCrawler, ...upsertInput } = contract;
+    results.push(await upsertContractEntry(client, upsertInput));
   }
 
   return results;
@@ -375,6 +376,7 @@ export async function enqueueContractScan(
   const normalizedAddress = normalizeAddress(input.contractAddress);
 
   await upsertContractEntry(client, {
+    chainId: input.chainId,
     address: normalizedAddress,
     label: input.label ?? null,
     foundationContractType: input.foundationContractType ?? null,
@@ -386,9 +388,8 @@ export async function enqueueContractScan(
     payload: {
       ...input,
       contractAddress: normalizedAddress,
-      chainId: 1,
     },
-    dedupeKey: `${normalizedAddress}:${input.fromBlock ?? "range"}:${input.startTokenId ?? "na"}:${input.endTokenId ?? "na"}`,
+    dedupeKey: `${input.chainId}:${normalizedAddress}:${input.fromBlock ?? "range"}:${input.startTokenId ?? "na"}:${input.endTokenId ?? "na"}`,
     priority: CONTRACT_SCAN_PRIORITY,
   });
 }

@@ -21,11 +21,15 @@
     "forceConsistentCasingInFileNames": true,
     "checkJs": true,
     /* Bundled projects */
-    "lib": ["dom", "dom.iterable", "ES2022"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2022"
+    ],
     "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "plugins": [
       {
         "name": "next"
@@ -33,9 +37,12 @@
     ],
     "incremental": true,
     /* Path Aliases */
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./src/*"]
+      "~/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -43,11 +50,17 @@
     "**/*.js",
     "**/*.ts",
     "**/*.tsx",
+    ".next-dev-*/dev/types/**/*.ts",
     ".next-dev-*/types/**/*.ts",
     ".next-dev/types/**/*.ts",
+    ".next-prod/dev/types/**/*.ts",
     ".next-prod/types/**/*.ts",
     ".next/types/**/*.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    ".next-dev-3001/dev/types/**/*.ts",
+    ".next-dev-3001/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

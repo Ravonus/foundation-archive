@@ -52,7 +52,5 @@ export function useInitialStorage({
       window.localStorage.setItem(RELAY_OWNER_KEY, nextOwnerToken);
       setOwnerToken(nextOwnerToken);
     }
-    // Initial-mount-only: storage read must not re-run when setters are recreated per render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setBridgeUrlState, setOwnerToken, setSession]);
 }

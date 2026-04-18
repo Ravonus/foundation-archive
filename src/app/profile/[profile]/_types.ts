@@ -14,9 +14,18 @@ export type ResolvedProfile = {
   username: string | null;
   name: string | null;
   profileImageUrl: string | null;
+  bio: string | null;
+  coverImageUrl: string | null;
+};
+
+export type ProfileItemCounts = {
+  total: number;
+  saved: number;
+  syncing: number;
+  found: number;
 };
 
 export type PartitionedItems = {
-  onServerItems: ArtworkGridItem[];
-  missingItems: ArtworkGridItem[];
+  items: ArtworkGridItem[];
+  counts: ProfileItemCounts;
 };

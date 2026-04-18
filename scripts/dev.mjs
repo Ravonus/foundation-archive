@@ -74,7 +74,6 @@ function isPortAvailable(port) {
 
 async function findOpenPort(startPort) {
   for (let port = startPort; port <= MAX_PORT; port += 1) {
-    // eslint-disable-next-line no-await-in-loop
     if (await isPortAvailable(port)) {
       return port;
     }

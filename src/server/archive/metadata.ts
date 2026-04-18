@@ -3,14 +3,16 @@ import { z } from "zod";
 
 import { buildGatewayUrl, parseIpfsReference } from "~/server/archive/ipfs";
 
-const metadataSchema = z.object({
-  name: z.string().nullable().optional(),
-  description: z.string().nullable().optional(),
-  image: z.string().nullable().optional(),
-  image_url: z.string().nullable().optional(),
-  animation: z.string().nullable().optional(),
-  animation_url: z.string().nullable().optional(),
-}).passthrough();
+const metadataSchema = z
+  .object({
+    name: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    image: z.string().nullable().optional(),
+    image_url: z.string().nullable().optional(),
+    animation: z.string().nullable().optional(),
+    animation_url: z.string().nullable().optional(),
+  })
+  .passthrough();
 
 type MetadataRecord = z.infer<typeof metadataSchema>;
 
@@ -165,6 +167,7 @@ export async function fetchTokenMetadata(tokenUri: string) {
     headers: {
       "user-agent": "foundation-archive/0.1 (+metadata fetch)",
     },
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
@@ -176,7 +179,8 @@ export async function fetchTokenMetadata(tokenUri: string) {
   const fileUrl = metadataFileUrl(json);
   const mediaUrl = metadataPrimaryMediaUrl(json) ?? fileUrl ?? imageUrl;
   const mediaKind = mediaKindFromUrl(mediaUrl);
-  const previewUrl = imageUrl ?? (mediaKind === MediaKind.IMAGE ? mediaUrl : null);
+  const previewUrl =
+    imageUrl ?? (mediaKind === MediaKind.IMAGE ? mediaUrl : null);
 
   return {
     metadataUrl: tokenUri,

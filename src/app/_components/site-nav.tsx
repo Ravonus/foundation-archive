@@ -8,9 +8,10 @@ import { Menu, X } from "lucide-react";
 import { cn } from "~/lib/utils";
 
 const items = [
-  { href: "/", label: "Home" },
   { href: "/archive", label: "Archive" },
-  { href: "/desktop", label: "Desktop app" },
+  { href: "/decentralization", label: "Decentralization" },
+  { href: "/about", label: "About" },
+  { href: "/desktop", label: "Desktop" },
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -19,16 +20,19 @@ function isActivePath(pathname: string, href: string) {
 
 export function SiteNav() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  const [openPathname, setOpenPathname] = useState<string | null>(null);
+  const open = openPathname === pathname;
+  const toggleMenu = () => {
+    setOpenPathname((current) => (current === pathname ? null : pathname));
+  };
+  const closeMenu = () => {
+    setOpenPathname(null);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") closeMenu();
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -65,7 +69,7 @@ export function SiteNav() {
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
         aria-controls="mobile-nav-drawer"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={toggleMenu}
         className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[var(--color-ink)] sm:hidden"
       >
         {open ? (
@@ -87,7 +91,7 @@ export function SiteNav() {
             type="button"
             aria-label="Close menu"
             className="absolute inset-0 bg-[var(--color-ink)]/40 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
+            onClick={closeMenu}
           />
           <div className="absolute inset-x-0 top-0 border-b border-[var(--color-line)] bg-[var(--color-bg)] shadow-[0_30px_90px_-70px_rgba(17,17,17,0.35)]">
             <div className="flex items-center justify-between border-b border-[var(--color-line)] px-6 py-5">
@@ -97,7 +101,7 @@ export function SiteNav() {
               <button
                 type="button"
                 aria-label="Close menu"
-                onClick={() => setOpen(false)}
+                onClick={closeMenu}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line-strong)] text-[var(--color-ink)]"
               >
                 <X aria-hidden className="h-4 w-4" />
@@ -110,6 +114,7 @@ export function SiteNav() {
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      onClick={closeMenu}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex items-center justify-between px-6 py-4 text-base text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)]",

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import {
   AlertTriangle,
@@ -87,11 +87,13 @@ function CardPoster({
   title: string;
   candidates: string[];
 }) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    setIndex(0);
-  }, [candidates]);
+  const candidateSeed = candidates.join("\u0001");
+  const [candidateState, setCandidateState] = useState(() => ({
+    seed: candidateSeed,
+    index: 0,
+  }));
+  const index =
+    candidateState.seed === candidateSeed ? candidateState.index : 0;
 
   const active = candidates[index] ?? null;
 
@@ -109,7 +111,12 @@ function CardPoster({
       src={active}
       alt={title}
       loading="lazy"
-      onError={() => setIndex((value) => value + 1)}
+      onError={() =>
+        setCandidateState((current) => ({
+          seed: candidateSeed,
+          index: current.seed === candidateSeed ? current.index + 1 : index + 1,
+        }))
+      }
       className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
     />
   );

@@ -52,6 +52,13 @@ export function useRelaySocket(
   relaySocketRef: MutableRefObject<WebSocket | null>,
   setters: SocketSetters,
 ) {
+  const {
+    setRelaySocketConnected,
+    setRelayDevices,
+    setRelayInventories,
+    setError,
+  } = setters;
+
   useEffect(() => {
     if (!ownerToken) return;
 
@@ -67,7 +74,7 @@ export function useRelaySocket(
       relaySocketRef.current = socket;
 
       socket.addEventListener("open", () => {
-        setters.setRelaySocketConnected(true);
+        setRelaySocketConnected(true);
         socket.send(
           JSON.stringify({
             type: "owner.refresh",
@@ -79,14 +86,19 @@ export function useRelaySocket(
         const payload = JSON.parse(
           event.data as string,
         ) as RelayOwnerWireMessage;
-        handleRelayMessage(payload, setters);
+        handleRelayMessage(payload, {
+          setRelaySocketConnected,
+          setRelayDevices,
+          setRelayInventories,
+          setError,
+        });
       });
 
       socket.addEventListener("close", () => {
         if (relaySocketRef.current === socket) {
           relaySocketRef.current = null;
         }
-        setters.setRelaySocketConnected(false);
+        setRelaySocketConnected(false);
 
         if (!cancelled) {
           retryHandle = window.setTimeout(connectRelaySocket, 1500);
@@ -94,7 +106,7 @@ export function useRelaySocket(
       });
 
       socket.addEventListener("error", () => {
-        setters.setRelaySocketConnected(false);
+        setRelaySocketConnected(false);
       });
     };
 
@@ -108,7 +120,12 @@ export function useRelaySocket(
       relaySocketRef.current?.close();
       relaySocketRef.current = null;
     };
-    // Setters are stable via useState; retry loop only needs to restart on token change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerToken]);
+  }, [
+    ownerToken,
+    relaySocketRef,
+    setError,
+    setRelayDevices,
+    setRelayInventories,
+    setRelaySocketConnected,
+  ]);
 }

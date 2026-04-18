@@ -1,10 +1,26 @@
 import Link from "next/link";
-import { ArrowRight, Search, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Globe,
+  Heart,
+  Leaf,
+  Search,
+  Shield,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 
 import { ArchiveLiveBoard } from "~/app/_components/archive-live-board";
 import { ArtworkGrid, type ArtworkGridItem } from "~/app/_components/artwork-grid";
-import { CountUp, FadeUp, WordReveal } from "~/app/_components/motion";
+import {
+  BracketFrame,
+  CaptionTag,
+  FeaturePanel,
+  ThemedImage,
+} from "~/app/_components/brand";
+import { CountUp, FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
+import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
@@ -23,6 +39,60 @@ type HomeArtwork = Awaited<ReturnType<typeof db.artwork.findMany>>[number] & {
     gatewayUrl: string | null;
   } | null;
 };
+
+function emptyArchiveLiveSnapshot(): ArchiveLiveSnapshot {
+  return {
+    stats: {
+      artworks: 0,
+      contracts: 0,
+      pendingJobs: 0,
+      runningJobs: 0,
+      failedJobs: 0,
+      preservedRoots: 0,
+      downloadedRoots: 0,
+      pinnedRoots: 0,
+      deferredRoots: 0,
+    },
+    worker: null,
+    policy: null,
+    crawlers: [],
+    latestArchived: [],
+    recentEvents: [],
+  };
+}
+
+function isTransientDatabaseError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    cause?: unknown;
+  };
+  const code = typeof candidate.code === "string" ? candidate.code : null;
+  const message =
+    typeof candidate.message === "string"
+      ? candidate.message.toLowerCase()
+      : "";
+
+  if (code === "57P03") {
+    return true;
+  }
+
+  if (
+    message.includes("database system is in recovery mode") ||
+    message.includes("the database is unavailable") ||
+    message.includes("can't reach database server") ||
+    message.includes("can't reach database") ||
+    message.includes("connection refused")
+  ) {
+    return true;
+  }
+
+  return isTransientDatabaseError(candidate.cause);
+}
 
 function archiveMediaUrlOf(artwork: HomeArtwork) {
   const isCaptured =
@@ -84,13 +154,14 @@ function HeroIntro() {
             aria-hidden
             className="inline-block h-px w-8 bg-[var(--color-line-strong)]"
           />
-          Est. 2025 — Independent preservation
+          Est. 2025 · Independent preservation
         </p>
       </FadeUp>
 
       <WordReveal
         as="h1"
         text={"A preservation archive\nfor Foundation artists."}
+        highlight="preservation"
         className="mt-4 font-serif text-4xl leading-[1.05] tracking-tight text-[var(--color-ink)] sm:text-6xl"
         delay={0.1}
       />
@@ -103,11 +174,121 @@ function HeroIntro() {
         </p>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--color-muted)] sm:text-base">
           Artists and collectors can also run our desktop app to keep an extra
-          copy on their own computer — an optional way to help back up work you
-          care about.
+          copy on their own computer. It&apos;s an optional way to help back up
+          work you care about.
         </p>
       </FadeUp>
     </>
+  );
+}
+
+function HeroArt() {
+  return (
+    <FadeUp delay={0.4} duration={0.6}>
+      <BracketFrame padding="lg" className="ml-auto w-full max-w-md">
+        <ThemedImage
+          light="/image_1_light.png"
+          dark="/image_1_dark.png"
+          alt="Foundation Archive study: overlapping squares with a crescent of light"
+          width={620}
+          height={620}
+          className="h-auto w-full rounded-md"
+          sizes="(min-width: 1024px) 440px, 80vw"
+          priority
+        />
+        <div className="mt-4 flex items-end justify-between gap-3">
+          <CaptionTag
+            entries={[
+              { label: "Artist", value: "ravonus.eth" },
+              { label: "Title", value: "Signal Study" },
+              { label: "Cid", value: "bafyb…c0f1" },
+            ]}
+          />
+          <span className="font-mono text-[0.55rem] uppercase tracking-[0.22em] text-[var(--color-brand-green)]">
+            Preserved
+          </span>
+        </div>
+      </BracketFrame>
+    </FadeUp>
+  );
+}
+
+const HOME_FEATURES = [
+  {
+    eyebrow: "Protected",
+    title: "Smart protection",
+    body: "Content-addressed storage with continuous integrity checks so saved work doesn't drift.",
+    icon: <Shield aria-hidden className="h-5 w-5" />,
+  },
+  {
+    eyebrow: "Fast",
+    title: "Blazing fast",
+    body: "Optimized systems deliver performance across regions and gateways without interruption.",
+    icon: <Zap aria-hidden className="h-5 w-5" />,
+  },
+  {
+    eyebrow: "Growing",
+    title: "Always growing",
+    body: "New features and continuous improvements built to evolve alongside artists.",
+    icon: <Leaf aria-hidden className="h-5 w-5" />,
+  },
+  {
+    eyebrow: "Trusted",
+    title: "More than a service. A community.",
+    body: "We believe in lasting relationships between artists, developers, and the people saving their work.",
+    icon: <Heart aria-hidden className="h-5 w-5" />,
+    tone: "ink" as const,
+  },
+  {
+    eyebrow: "Always online",
+    title: "Reliable uptime",
+    body: "Reliable uptime keeps your community running through outages and platform handoffs.",
+    icon: <Globe aria-hidden className="h-5 w-5" />,
+    tone: "ink" as const,
+  },
+  {
+    eyebrow: "Powerful",
+    title: "Made for communities",
+    body: "Powerful tools to connect, manage, and grow together. Preservation as shared infrastructure.",
+    icon: <Sparkles aria-hidden className="h-5 w-5" />,
+    tone: "ink" as const,
+  },
+];
+
+function FeatureGridSection() {
+  return (
+    <section className="mt-14 sm:mt-20">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <FadeUp inView>
+          <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+            Built for people. Powered by purpose.
+          </p>
+          <h2 className="mt-1.5 font-serif text-2xl leading-tight text-[var(--color-ink)] sm:text-3xl">
+            More than a service. A community.
+          </h2>
+        </FadeUp>
+        <Link
+          href="/decentralization"
+          className="group inline-flex items-center gap-1 text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+        >
+          <span className="link-editorial">See the full plan</span>
+          <ArrowRight aria-hidden className="arrow-slide h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      <Stagger className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {HOME_FEATURES.map((f) => (
+          <FeaturePanel
+            key={f.title}
+            eyebrow={f.eyebrow}
+            title={f.title}
+            body={f.body}
+            icon={f.icon}
+            tone={f.tone ?? "paper"}
+          />
+        ))}
+      </Stagger>
+    </section>
   );
 }
 
@@ -234,8 +415,14 @@ function RecentSection({ items }: { items: ArtworkGridItem[] }) {
 }
 
 async function loadHomeData() {
-  const [artworkCount, pinnedRootCount, pendingJobCount, recentArtworks, liveSnapshot] =
-    await Promise.all([
+  try {
+    const [
+      artworkCount,
+      pinnedRootCount,
+      pendingJobCount,
+      recentArtworks,
+      liveSnapshot,
+    ] = await Promise.all([
       db.artwork.count({
         where: {
           OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
@@ -257,13 +444,31 @@ async function loadHomeData() {
       }),
       getArchiveLiveSnapshot(db),
     ]);
-  return {
-    artworkCount,
-    pinnedRootCount,
-    pendingJobCount,
-    recentArtworks,
-    liveSnapshot,
-  };
+
+    return {
+      artworkCount,
+      pinnedRootCount,
+      pendingJobCount,
+      recentArtworks,
+      liveSnapshot,
+      degraded: false,
+    };
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) {
+      throw error;
+    }
+
+    console.error("Home page data unavailable, rendering fallback state.", error);
+
+    return {
+      artworkCount: 0,
+      pinnedRootCount: 0,
+      pendingJobCount: 0,
+      recentArtworks: [] as HomeArtwork[],
+      liveSnapshot: emptyArchiveLiveSnapshot(),
+      degraded: true,
+    };
+  }
 }
 
 export default async function HomePage() {
@@ -273,18 +478,35 @@ export default async function HomePage() {
     pendingJobCount,
     recentArtworks,
     liveSnapshot,
+    degraded,
   } = await loadHomeData();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 sm:px-6">
       <section className="pt-10 pb-8 sm:pt-16 sm:pb-12">
-        <HeroIntro />
-        <HeroSearch />
-        <HeroStats
-          artworkCount={artworkCount}
-          pinnedRootCount={pinnedRootCount}
-          pendingJobCount={pendingJobCount}
-        />
+        <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_1fr]">
+          <div>
+            <HeroIntro />
+            {degraded ? (
+              <FadeUp delay={0.56} duration={0.45}>
+                <div className="mt-4 max-w-2xl rounded-2xl border border-[var(--color-warn)]/30 bg-[var(--tint-warn)] px-4 py-3 text-sm text-[var(--color-body)]">
+                  Live archive data is temporarily unavailable while the
+                  database reconnects. The page should recover automatically in
+                  a moment.
+                </div>
+              </FadeUp>
+            ) : null}
+            <HeroSearch />
+            <HeroStats
+              artworkCount={artworkCount}
+              pinnedRootCount={pinnedRootCount}
+              pendingJobCount={pendingJobCount}
+            />
+          </div>
+          <div className="hidden lg:block">
+            <HeroArt />
+          </div>
+        </div>
       </section>
 
       <section
@@ -300,6 +522,8 @@ export default async function HomePage() {
           showCrawler={false}
         />
       </section>
+
+      <FeatureGridSection />
 
       <RecentSection
         items={recentArtworks.map((artwork) => toGridItem(artwork))}

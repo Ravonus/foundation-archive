@@ -19,7 +19,7 @@ export function ThemeToggle() {
   if (!hydrated) {
     return (
       <button
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent"
+        className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-transparent"
         aria-label="Toggle theme"
       >
         <span className="h-3.5 w-3.5" />
@@ -42,26 +42,28 @@ export function ThemeToggle() {
       onClick={handleToggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-muted)] hover:border-[var(--color-line-strong)] hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)]"
+      className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-[var(--color-line)] text-[var(--color-muted)] hover:border-[var(--color-line-strong)] hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)]"
     >
-      <AnimatePresence mode="popLayout" initial={false}>
+      <AnimatePresence mode="wait" initial={false}>
         {isDark ? (
           <motion.span
             key="moon"
+            className="absolute inset-0 inline-flex items-center justify-center"
             initial={{ rotate: -90, opacity: 0, scale: 0.7 }}
             animate={{ rotate: 0, opacity: 1, scale: 1 }}
             exit={{ rotate: 90, opacity: 0, scale: 0.7 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <Moon className="h-3.5 w-3.5" />
           </motion.span>
         ) : (
           <motion.span
             key="sun"
+            className="absolute inset-0 inline-flex items-center justify-center"
             initial={{ rotate: 90, opacity: 0, scale: 0.7 }}
             animate={{ rotate: 0, opacity: 1, scale: 1 }}
             exit={{ rotate: -90, opacity: 0, scale: 0.7 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <Sun className="h-3.5 w-3.5" />
           </motion.span>

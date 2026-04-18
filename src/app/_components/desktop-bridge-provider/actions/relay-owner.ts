@@ -1,7 +1,4 @@
-import type {
-  RelayOwnerClientMessage,
-  RelayPinEnrichmentMatch,
-} from "~/lib/desktop-relay";
+import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
 
 import { parseBridgeError, withJsonHeaders } from "../lib/bridge-api";
 import { pickRelayDevice } from "../lib/builders";
@@ -17,7 +14,6 @@ export type RelayOwnerDeps = {
   ownerToken: string | null;
   relayDevices: RelayOwnerDevice[];
   pinEnrichment: Record<string, RelayPinEnrichmentMatch[]>;
-  relaySocketRef: { current: WebSocket | null };
   setRelayDevices: (devices: RelayOwnerDevice[]) => void;
   setRelayInventories: (
     updater: (
@@ -42,6 +38,11 @@ export type RelayOwnerActions = {
     cids: string[],
   ) => Promise<Record<string, RelayPinEnrichmentMatch[]>>;
 };
+
+export type RelayOwnerBaseActions = Omit<
+  RelayOwnerActions,
+  "requestRelayInventory" | "queueWorkToRelay"
+>;
 
 function requireOwnerToken(token: string | null): string {
   if (!token) {
@@ -98,21 +99,6 @@ function createCreateRelayPairing(deps: RelayOwnerDeps) {
   };
 }
 
-function createRequestRelayInventory(deps: RelayOwnerDeps) {
-  return (deviceId: string) => {
-    const socket = deps.relaySocketRef.current;
-    // `readyState` is typed `number` but the socket itself may be null or closed mid-teardown.
-    if (socket?.readyState !== window.WebSocket.OPEN) return;
-
-    socket.send(
-      JSON.stringify({
-        type: "owner.requestInventory",
-        deviceId,
-      } satisfies RelayOwnerClientMessage),
-    );
-  };
-}
-
 function createDisconnectRelayDevice(
   deps: RelayOwnerDeps,
   refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
@@ -146,7 +132,7 @@ function createDisconnectRelayDevice(
   };
 }
 
-function createQueueWorkToRelay(
+export function createQueueWorkToRelay(
   deps: RelayOwnerDeps,
   refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
   requestRelayInventory: (deviceId: string) => void,
@@ -258,27 +244,19 @@ function createEnrichPins(deps: RelayOwnerDeps) {
 
 export function createRelayOwnerActions(
   deps: RelayOwnerDeps,
-): RelayOwnerActions {
+): RelayOwnerBaseActions {
   const refreshRelayDevices = createRefreshRelayDevices(deps);
   const createRelayPairing = createCreateRelayPairing(deps);
-  const requestRelayInventory = createRequestRelayInventory(deps);
   const disconnectRelayDevice = createDisconnectRelayDevice(
     deps,
     refreshRelayDevices,
-  );
-  const queueWorkToRelay = createQueueWorkToRelay(
-    deps,
-    refreshRelayDevices,
-    requestRelayInventory,
   );
   const enrichPins = createEnrichPins(deps);
 
   return {
     refreshRelayDevices,
     createRelayPairing,
-    requestRelayInventory,
     disconnectRelayDevice,
-    queueWorkToRelay,
     enrichPins,
   };
 }

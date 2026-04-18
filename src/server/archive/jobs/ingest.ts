@@ -222,6 +222,7 @@ function tokenRange(startTokenId: number, endTokenId: number) {
 }
 
 async function resolveScanTokenIds(payload: {
+  chainId: number;
   fromBlock?: number;
   toBlock?: number;
   startTokenId?: number;
@@ -230,6 +231,7 @@ async function resolveScanTokenIds(payload: {
 }) {
   if (typeof payload.fromBlock === "number") {
     return discoverTokenIdsFromLogs({
+      chainId: payload.chainId,
       contractAddress: payload.contractAddress,
       fromBlock: payload.fromBlock,
       toBlock: payload.toBlock,

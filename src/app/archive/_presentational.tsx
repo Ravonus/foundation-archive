@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import { Info, Search } from "lucide-react";
 
 import { CountUp, FadeUp } from "~/app/_components/motion";
@@ -49,6 +52,7 @@ type ArchiveSearchFormProps = {
   sort: ArchiveSort;
   status: ArchiveStatusFilter;
   media: ArchiveMediaFilter;
+  compact?: boolean;
 };
 
 function ArchiveSearchForm({
@@ -56,13 +60,18 @@ function ArchiveSearchForm({
   sort,
   status,
   media,
+  compact = false,
 }: ArchiveSearchFormProps) {
   return (
     <form
       action="/archive"
       role="search"
       aria-label="Search the archive"
-      className="mt-4 flex items-center gap-2 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-2.5 focus-within:border-[var(--color-ink)] sm:px-5 sm:py-3"
+      className={`flex items-center gap-2 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] transition-[padding,margin] duration-300 ease-out focus-within:border-[var(--color-ink)] ${
+        compact
+          ? "mt-0 px-3 py-1 sm:px-3.5"
+          : "mt-4 px-4 py-2.5 sm:px-5 sm:py-3"
+      }`}
     >
       <Search
         aria-hidden
@@ -76,7 +85,9 @@ function ArchiveSearchForm({
         name="q"
         defaultValue={query}
         placeholder="Try an artist's name, title, or paste a Foundation link"
-        className="h-7 min-w-0 flex-1 bg-transparent text-sm text-[var(--color-ink)] outline-none placeholder:text-[var(--color-subtle)] sm:text-[0.95rem]"
+        className={`min-w-0 flex-1 bg-transparent text-sm text-[var(--color-ink)] outline-none placeholder:text-[var(--color-subtle)] ${
+          compact ? "h-6" : "h-7 sm:text-[0.95rem]"
+        }`}
       />
       <SearchShortcutHint />
       <input type="hidden" name="sort" value={sort} />
@@ -84,7 +95,9 @@ function ArchiveSearchForm({
       <input type="hidden" name="media" value={media} />
       <button
         type="submit"
-        className="inline-flex shrink-0 items-center rounded-full bg-[var(--color-ink)] px-3.5 py-1.5 text-sm text-[var(--color-bg)] hover:opacity-90 sm:px-4"
+        className={`inline-flex shrink-0 items-center rounded-full bg-[var(--color-ink)] text-sm text-[var(--color-bg)] transition-[padding] duration-300 ease-out hover:opacity-90 ${
+          compact ? "px-3 py-1" : "px-3.5 py-1.5 sm:px-4"
+        }`}
       >
         Search
       </button>
@@ -147,41 +160,94 @@ export type ArchiveStickyHeaderProps = {
 };
 
 export function ArchiveStickyHeader(props: ArchiveStickyHeaderProps) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setStuck(!!entry && !entry.isIntersecting),
+      { rootMargin: "-65px 0px 0px 0px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <div className="sticky top-[calc(var(--header-offset,64px))] z-30 -mx-4 border-b border-[var(--color-line)] bg-[var(--color-bg)]/90 px-4 pt-6 pb-4 backdrop-blur-md sm:-mx-6 sm:px-6 sm:pt-8">
-      <FadeUp duration={0.4}>
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <div>
-            <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
-              Archive
-            </p>
-            <h1 className="mt-1 font-serif text-3xl leading-tight text-[var(--color-ink)] sm:text-4xl">
-              Search the archive
-            </h1>
+    <>
+      <div ref={sentinelRef} aria-hidden className="h-0" />
+      <div
+        className={`sticky top-[calc(var(--header-offset,64px))] z-30 -mx-4 border-b border-[var(--color-line)] bg-[var(--color-bg)]/90 px-4 backdrop-blur-md transition-[padding] duration-300 ease-out sm:-mx-6 sm:px-6 ${
+          stuck ? "pt-2 pb-2" : "pt-6 pb-4 sm:pt-8"
+        }`}
+      >
+        <div
+          className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            stuck ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+          }`}
+          aria-hidden={stuck}
+        >
+          <div className="min-h-0">
+            <FadeUp duration={0.4}>
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+                    Archive
+                  </p>
+                  <h1 className="mt-1 font-serif text-3xl leading-tight text-[var(--color-ink)] sm:text-4xl">
+                    Search the archive
+                  </h1>
+                </div>
+                <HeaderStats
+                  totalIndexedWorks={props.totalIndexedWorks}
+                  publicQueueCount={props.publicQueueCount}
+                />
+              </div>
+            </FadeUp>
           </div>
-          <HeaderStats
-            totalIndexedWorks={props.totalIndexedWorks}
-            publicQueueCount={props.publicQueueCount}
-          />
         </div>
-      </FadeUp>
 
-      <FadeUp delay={0.1} duration={0.4}>
-        <ArchiveSearchForm
-          query={props.query}
-          sort={props.sort}
-          status={props.status}
-          media={props.media}
-        />
-      </FadeUp>
+        <div className="flex items-center gap-3">
+          <FadeUp delay={0.1} duration={0.4} className="min-w-0 flex-1">
+            <ArchiveSearchForm
+              query={props.query}
+              sort={props.sort}
+              status={props.status}
+              media={props.media}
+              compact={stuck}
+            />
+          </FadeUp>
+          <div
+            className={`hidden shrink-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-300 ease-out sm:block ${
+              stuck ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+            }`}
+            aria-hidden={!stuck}
+          >
+            <HeaderStats
+              totalIndexedWorks={props.totalIndexedWorks}
+              publicQueueCount={props.publicQueueCount}
+            />
+          </div>
+        </div>
 
-      <ResultsSummary
-        query={props.query}
-        archivedShown={props.archivedShown}
-        liveOnlyShown={props.liveOnlyShown}
-        profileCount={props.profileCount}
-      />
-    </div>
+        <div
+          className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            stuck ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+          }`}
+          aria-hidden={stuck}
+        >
+          <div className="min-h-0">
+            <ResultsSummary
+              query={props.query}
+              archivedShown={props.archivedShown}
+              liveOnlyShown={props.liveOnlyShown}
+              profileCount={props.profileCount}
+            />
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -213,7 +279,7 @@ export function ArchiveInfoDetails() {
           </p>
           <p className="mt-2 text-sm text-[var(--color-body)]">
             Artists and collectors can also save works to their own computer
-            from the work&apos;s page. This is optional — the public archive
+            from the work&apos;s page. It&apos;s optional. The public archive
             works without it.
           </p>
         </div>

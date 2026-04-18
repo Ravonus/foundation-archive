@@ -55,6 +55,6 @@ const lanOnlyAdminMiddleware = t.middleware(({ ctx, next }) => {
   return next();
 });
 
-export const lanAdminProcedure = t.procedure.use(timingMiddleware).use(
-  lanOnlyAdminMiddleware,
-);
+export const lanAdminProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(lanOnlyAdminMiddleware);

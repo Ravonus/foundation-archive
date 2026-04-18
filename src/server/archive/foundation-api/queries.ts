@@ -65,10 +65,11 @@ export async function fetchFoundationWorksByCreator(
   perPage = 24,
   page = 0,
 ) {
+  const creator = getAddress(accountAddress);
   const data = foundationNftsByCreatorSchema.parse(
     await fetchFoundationGraphql(NFTS_BY_CREATOR_QUERY, {
       by: {
-        creator: accountAddress,
+        creator,
       },
       page,
       perPage,
@@ -95,13 +96,14 @@ export async function fetchAllFoundationWorksByCreator(
   perPage = 24,
   maxPages = 12,
 ) {
+  const creator = getAddress(accountAddress);
   const worksByKey = new Map<string, FoundationLookupWork>();
 
   for (let page = 0; page < maxPages; page += 1) {
     const data = foundationNftsByCreatorSchema.parse(
       await fetchFoundationGraphql(NFTS_BY_CREATOR_QUERY, {
         by: {
-          creator: accountAddress,
+          creator,
         },
         page,
         perPage,

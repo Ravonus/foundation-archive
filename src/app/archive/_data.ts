@@ -359,3 +359,41 @@ export async function loadArchivedMatchesForWorks(
     select: ARCHIVED_SELECT,
   });
 }
+
+export async function loadArchivedWorksForArtist(input: {
+  accountAddress: string;
+  username?: string | null;
+}) {
+  const artistFilters: Prisma.ArtworkWhereInput[] = [
+    {
+      artistWallet: input.accountAddress.toLowerCase(),
+    },
+  ];
+
+  if (input.username) {
+    artistFilters.push({
+      artistUsername: {
+        equals: input.username,
+        mode: "insensitive",
+      },
+    });
+  }
+
+  return db.artwork.findMany({
+    where: {
+      AND: [
+        {
+          OR: [
+            { metadataRootId: { not: null } },
+            { mediaRootId: { not: null } },
+          ],
+        },
+        {
+          OR: artistFilters,
+        },
+      ],
+    },
+    orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
+    select: ARCHIVED_SELECT,
+  });
+}

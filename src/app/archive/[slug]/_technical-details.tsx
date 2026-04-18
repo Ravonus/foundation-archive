@@ -102,7 +102,7 @@ function RootCardDetails({
         <div>
           <dt className="text-[var(--color-muted)]">Path</dt>
           <dd className="mt-1 truncate text-[var(--color-ink)]">
-            {root.relativePath ?? "—"}
+            {root.relativePath ?? "None"}
           </dd>
         </div>
       </div>

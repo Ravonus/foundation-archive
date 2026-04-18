@@ -1,6 +1,5 @@
-import { env } from "~/env";
 import { ContractKind, type PrismaClient } from "~/server/prisma-client";
-import { createPublicClient, getAddress, http } from "viem";
+import { getAddress } from "viem";
 
 export type DatabaseClient = PrismaClient;
 export type DiscoverySource = "drops" | "editions" | "collections";
@@ -12,18 +11,6 @@ export const API_REVISIT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export function activeCollectionDiscoveryQuery(index: number) {
   return COLLECTION_DISCOVERY_TERMS[index % COLLECTION_DISCOVERY_TERMS.length] ?? "";
-}
-
-export function getEthereumClient() {
-  if (!env.ETHEREUM_RPC_URL) {
-    throw new Error(
-      "ETHEREUM_RPC_URL is required for block-based contract crawling.",
-    );
-  }
-
-  return createPublicClient({
-    transport: http(env.ETHEREUM_RPC_URL),
-  });
 }
 
 export function normalizeAddress(address: string) {

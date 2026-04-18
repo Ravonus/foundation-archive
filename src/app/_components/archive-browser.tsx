@@ -371,7 +371,7 @@ function StatusChipRow({
               }
               className={chipClass(chip.tone, status === chip.id)}
               title={chip.hint}
-              aria-label={`${chip.label} — ${chip.hint}`}
+              aria-label={`${chip.label}: ${chip.hint}`}
             >
               {chip.label}
             </button>
@@ -413,7 +413,7 @@ function MediaChipRow({
               }
               className={chipClass("neutral", media === chip.id)}
               title={chip.hint}
-              aria-label={`${chip.label} — ${chip.hint}`}
+              aria-label={`${chip.label}: ${chip.hint}`}
             >
               {chip.label}
             </button>

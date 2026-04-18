@@ -22,7 +22,7 @@ async function main() {
 
   if (drain) {
     let processed = 0;
-    while (true) {
+    for (;;) {
       const result = await processQueuedJobs(db, 25);
       processed += result.processed;
       if (result.processed === 0) break;

@@ -6,11 +6,20 @@ import {
   runAutomaticContractCrawlerTick,
 } from "~/server/archive/automation";
 import { emitArchiveEvent } from "~/server/archive/live-events";
-import { processQueuedJobs, rebalanceAutomaticBackupQueue } from "~/server/archive/jobs";
+import {
+  processQueuedJobs,
+  rebalanceAutomaticBackupQueue,
+} from "~/server/archive/jobs";
 
 type DatabaseClient = PrismaClient;
 
-export type WorkerStatus = "STARTING" | "IDLE" | "RUNNING" | "ERROR" | "STOPPED";
+export type WorkerStatus =
+  | "STARTING"
+  | "IDLE"
+  | "RUNNING"
+  | "ERROR"
+  | "STOPPED";
+const RUNNING_HEARTBEAT_INTERVAL_MS = 20_000;
 
 function cycleHadActivity(input: {
   processed: number;
@@ -42,6 +51,30 @@ function cycleHadActivity(input: {
   );
 }
 
+function disabledDiscoveryResult() {
+  return {
+    source: "paused",
+    page: 0,
+    query: null as string | null,
+    seenContracts: 0,
+    newContracts: 0,
+    pausedForBacklog: true,
+    backlogMaxPendingJobs: 0,
+    backlogHeadroomJobs: 0,
+  };
+}
+
+function disabledCrawlerResult() {
+  return {
+    scannedContracts: 0,
+    queuedTokens: 0,
+    pausedForBacklog: true,
+    backlogMaxPendingJobs: 0,
+    backlogHeadroomJobs: 0,
+    allowedCrawlerContracts: 0,
+  };
+}
+
 export async function updateWorkerHeartbeat(
   client: DatabaseClient,
   input: {
@@ -53,6 +86,7 @@ export async function updateWorkerHeartbeat(
     lastProcessedCount?: number;
     lastRunStartedAt?: Date | null;
     lastRunFinishedAt?: Date | null;
+    emitEvent?: boolean;
   },
 ) {
   const heartbeat = await client.workerHeartbeat.upsert({
@@ -80,17 +114,19 @@ export async function updateWorkerHeartbeat(
     },
   });
 
-  await emitArchiveEvent(client, {
-    type: "worker.status",
-    summary: `${input.label} is ${input.status.toLowerCase()}.`,
-    data: {
-      workerKey: heartbeat.workerKey,
-      status: heartbeat.status,
-      mode: heartbeat.mode,
-      lastProcessedCount: heartbeat.lastProcessedCount,
-      lastError: heartbeat.lastError,
-    },
-  });
+  if (input.emitEvent !== false) {
+    await emitArchiveEvent(client, {
+      type: "worker.status",
+      summary: `${input.label} is ${input.status.toLowerCase()}.`,
+      data: {
+        workerKey: heartbeat.workerKey,
+        status: heartbeat.status,
+        mode: heartbeat.mode,
+        lastProcessedCount: heartbeat.lastProcessedCount,
+        lastError: heartbeat.lastError,
+      },
+    });
+  }
 
   return heartbeat;
 }
@@ -108,28 +144,48 @@ export async function runWorkerCycle(
     label?: string;
     limit?: number;
     mode?: string;
+    allowIngress?: boolean;
   } = {},
 ) {
   const workerKey = input.workerKey ?? "default-worker";
   const label = input.label ?? "Automatic queue worker";
   const mode = input.mode ?? "daemon";
   const limit = input.limit ?? 25;
+  const allowIngress = input.allowIngress ?? true;
   const startedAt = new Date();
-
-  await updateWorkerHeartbeat(client, {
-    workerKey,
-    label,
-    mode,
-    status: "RUNNING",
-    lastError: null,
-    lastRunStartedAt: startedAt,
-  });
+  let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 
   try {
+    await updateWorkerHeartbeat(client, {
+      workerKey,
+      label,
+      mode,
+      status: "RUNNING",
+      lastError: null,
+      lastRunStartedAt: startedAt,
+    });
+
+    keepAliveInterval = setInterval(() => {
+      void updateWorkerHeartbeat(client, {
+        workerKey,
+        label,
+        mode,
+        status: "RUNNING",
+        lastError: null,
+        lastRunStartedAt: startedAt,
+        emitEvent: false,
+      }).catch(() => null);
+    }, RUNNING_HEARTBEAT_INTERVAL_MS);
+    keepAliveInterval.unref();
+
     const queueResult = await processQueuedJobs(client, limit);
     const budgetResult = await maybeAdvanceSmartPinBudget(client);
-    const discoveryResult = await runAutomaticContractDiscoveryTick(client);
-    const crawlResult = await runAutomaticContractCrawlerTick(client);
+    const discoveryResult = allowIngress
+      ? await runAutomaticContractDiscoveryTick(client)
+      : disabledDiscoveryResult();
+    const crawlResult = allowIngress
+      ? await runAutomaticContractCrawlerTick(client)
+      : disabledCrawlerResult();
     const rebalanceResult = await rebalanceAutomaticBackupQueue(client);
     const hadActivity = cycleHadActivity({
       processed: queueResult.processed,
@@ -173,5 +229,9 @@ export async function runWorkerCycle(
     });
 
     throw error;
+  } finally {
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+    }
   }
 }

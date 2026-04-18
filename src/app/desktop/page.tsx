@@ -8,6 +8,7 @@ import {
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { DesktopBridgeProvider } from "~/app/_components/desktop-bridge-provider";
 import { DesktopStatusConsole } from "~/app/_components/desktop-status-console";
 
 const DESKTOP_APP_REPO_URL = "https://github.com/Ravonus/foundation-share-bridge";
@@ -37,7 +38,10 @@ export default function DesktopPage() {
 
       <header className="mt-6 border-b border-[var(--color-line)] pb-8">
         <h1 className="font-serif text-4xl leading-tight text-[var(--color-ink)] sm:text-5xl">
-          Keep a copy on your own computer
+          Keep a copy on your{" "}
+          <span className="font-semibold text-[var(--color-brand-green)]">
+            own computer
+          </span>
         </h1>
         <p className="mt-3 max-w-2xl text-[var(--color-body)]">
           The archive site already saves every work we know about. This is for
@@ -112,9 +116,11 @@ export default function DesktopPage() {
       </section>
 
       <section className="mt-8 space-y-6">
-        <Suspense fallback={<ConsoleFallback />}>
-          <DesktopStatusConsole />
-        </Suspense>
+        <DesktopBridgeProvider>
+          <Suspense fallback={<ConsoleFallback />}>
+            <DesktopStatusConsole />
+          </Suspense>
+        </DesktopBridgeProvider>
       </section>
 
       <div className="mt-12 rounded-sm border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5 text-sm text-[var(--color-muted)]">

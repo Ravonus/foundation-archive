@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 const SEARCH_INPUT_IDS = ["home-search", "archive-search"];
 
@@ -30,12 +30,16 @@ function findSearchInput(): HTMLInputElement | null {
   return null;
 }
 
-export function SearchShortcutHint() {
-  const [isMac, setIsMac] = useState<boolean | null>(null);
+function subscribe() {
+  return () => undefined;
+}
 
-  useEffect(() => {
-    setIsMac(detectMac());
-  }, []);
+export function SearchShortcutHint() {
+  const isMac = useSyncExternalStore<boolean | null>(
+    subscribe,
+    detectMac,
+    () => null,
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

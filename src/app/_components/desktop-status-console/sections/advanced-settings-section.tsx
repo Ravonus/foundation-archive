@@ -141,8 +141,8 @@ function SyncToggle({
           Also keep plain file copies in your folder
         </p>
         <p className="mt-1 text-sm text-[var(--color-body)]">
-          Off by default. The app always keeps the originals safe either way —
-          this just adds a normal folder of files you can browse.
+          Off by default. The app always keeps the originals safe either way.
+          This just adds a normal folder of files you can browse.
         </p>
       </div>
     </label>

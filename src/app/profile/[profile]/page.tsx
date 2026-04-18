@@ -6,12 +6,17 @@ import { persistDiscoveredFoundationWorks } from "~/server/archive/jobs";
 import { db } from "~/server/db";
 
 import {
+  enrichProfileFromArchived,
   enrichProfileFromWorks,
   foundationUrlFor,
+  hydrateProfileFromFoundation,
+  loadArchivedProfileWorks,
+  normalizeProfileView,
   partitionWorksByArchiveState,
   resolveProfileFromKey,
   selectVisibleItems,
 } from "./_data";
+import { ProfileLiveShell } from "./_live-shell";
 import { ProfileHeader, ViewTabs } from "./_presentational";
 import { type ProfilePageProps } from "./_types";
 
@@ -58,46 +63,59 @@ export default async function ProfilePage({
   const { profile } = await params;
   const { view = "all" } = await searchParams;
   const key = decodeURIComponent(profile).trim();
+  const activeView = normalizeProfileView(view);
 
   const initialProfile = await resolveProfileFromKey(key);
-
   const works = await fetchAllFoundationWorksByCreator(
     initialProfile.accountAddress,
     24,
     24,
   );
+
   await persistDiscoveredFoundationWorks(db, works, {
     indexedFrom: "foundation-profile",
   });
 
-  const resolved = enrichProfileFromWorks(initialProfile, works);
-  const partitioned = await partitionWorksByArchiveState(works);
-  const items = selectVisibleItems(view, partitioned);
+  let resolved = enrichProfileFromWorks(initialProfile, works);
+  let archivedWorks = await loadArchivedProfileWorks(resolved);
+  resolved = enrichProfileFromArchived(resolved, archivedWorks);
+
+  const hydratedProfile = await hydrateProfileFromFoundation(resolved);
+  if ((hydratedProfile.username ?? null) !== (resolved.username ?? null)) {
+    archivedWorks = await loadArchivedProfileWorks(hydratedProfile);
+    resolved = enrichProfileFromArchived(hydratedProfile, archivedWorks);
+  } else {
+    resolved = hydratedProfile;
+  }
+
+  const partitioned = partitionWorksByArchiveState(works, archivedWorks);
+  const items = selectVisibleItems(activeView, partitioned.items);
   const foundationUrl = foundationUrlFor(resolved);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 pt-14 pb-20">
-      <ProfileHeader
-        resolved={resolved}
-        worksCount={works.length}
-        onServerCount={partitioned.onServerItems.length}
-        missingCount={partitioned.missingItems.length}
-        foundationUrl={foundationUrl}
-      />
-      <ViewTabs
-        profile={profile}
-        view={view}
-        worksCount={works.length}
-        onServerCount={partitioned.onServerItems.length}
-        missingCount={partitioned.missingItems.length}
-      />
-      <section className="mt-10">
-        <ArtworkGrid
-          items={items}
-          emptyTitle="Nothing in this filter yet"
-          emptyBody="Works will appear here as they're saved."
+    <ProfileLiveShell
+      accountAddress={resolved.accountAddress}
+      username={resolved.username}
+    >
+      <main className="mx-auto w-full max-w-6xl px-6 pt-14 pb-20">
+        <ProfileHeader
+          resolved={resolved}
+          counts={partitioned.counts}
+          foundationUrl={foundationUrl}
         />
-      </section>
-    </main>
+        <ViewTabs
+          profile={profile}
+          view={activeView}
+          counts={partitioned.counts}
+        />
+        <section className="mt-10">
+          <ArtworkGrid
+            items={items}
+            emptyTitle="Nothing in this slice yet"
+            emptyBody="As works are found or move through the archive, they'll appear here automatically."
+          />
+        </section>
+      </main>
+    </ProfileLiveShell>
   );
 }

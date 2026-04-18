@@ -11,9 +11,9 @@ T3 app for preserving Foundation works for the decentralized marketplace.
 
 Foundation Archive is an open-source preservation project released under the Apache License, Version 2.0. The goal is to make it practical for artists, collectors, and archivists to keep durable local copies of Foundation works alongside pinned CIDs on their own infrastructure.
 
-Maintainer: Chad Koslovsky <chadkoslovsky@gmail.com>.
+Maintainer: Ravonus <chadkoslovsky@gmail.com>.
 
-It pairs with the companion Rust desktop helper [`foundation-share-bridge`](https://github.com/ravonus/foundation-share-bridge), which is what the `/desktop` board verifies.
+It pairs with the companion Rust desktop helper [`foundation-share-bridge`](https://github.com/ravonus/foundation-share-bridge), which is what the `/desktop` board verifies. The standalone desktop bridge now lives in that repo, while the `rust-archiver/` crate in this repo remains the server-side archive sidecar used by the web app and Docker deploy.
 
 It does three things in the first version:
 
@@ -66,7 +66,8 @@ Useful variables:
 - `FOUNDATION_BASE_URL="https://foundation.app"`
 - `FOUNDATION_GRAPHQL_API_URL="https://api.prod.foundation.app/graphql"`
 - `IPFS_GATEWAY_BASE_URL="https://ipfs.io"`
-- `ETHEREUM_RPC_URL="https://..."`
+- `ETHEREUM_RPC_URL="https://..."` (Ethereum mainnet, chain 1)
+- `BASE_RPC_URL="https://mainnet.base.org"` (Base, chain 8453 — required to archive Foundation drops on Base)
 - `KUBO_API_URL="http://127.0.0.1:5001"`
 - `KUBO_API_AUTH_HEADER="Bearer ..."` or another full `Authorization` header value
 - `ARCHIVE_ARCHIVER_URL="http://127.0.0.1:43131"` to enable the Rust sidecar from the Next/worker process
@@ -189,7 +190,7 @@ That gives you a local hosting layer for backed-up metadata and media.
 - Foundation does not expose a clean public registry of every historical creator contract, so the app combines contract-driven discovery, Foundation GraphQL lookups, and Foundation-page scraping.
 - CID version is stored alongside every root, and the worker uses the original CID text when pinning so v0/v1 stays faithful to the source reference.
 - The Rust sidecar listens on `127.0.0.1:43131` by default. Override it with `ARCHIVE_ARCHIVER_BIND`. You can also tune `ARCHIVE_ARCHIVER_MEMORY_CACHE_ITEMS` and `ARCHIVE_ARCHIVER_INLINE_MEMORY_MAX_BYTES`.
-- The Rust helper now exposes a basic native toolbar/taskbar icon on macOS, Windows, and Linux with a small menu for opening `/desktop`, opening local health, and quitting cleanly.
+- The standalone `foundation-share-bridge` helper exposes a basic native toolbar/taskbar icon on macOS, Windows, and Linux with a small menu for opening `/desktop`, opening local health, and quitting cleanly.
 - The public archive and admin screens use sockets for live updates. The default live socket port is `43129`.
 - `/desktop` is the live verification board for the local Rust bridge. It is meant to confirm that artists' own helper nodes are reachable and self-repairing, not to replace a durable personal IPFS pinning setup.
 

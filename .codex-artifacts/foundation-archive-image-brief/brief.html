@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foundation Archive Image Brief</title>
+    <style>
+      @page {
+        size: Letter;
+        margin: 0.55in;
+      }
+
+      :root {
+        --bg: #fafaf7;
+        --paper: #ffffff;
+        --paper-alt: #f4f1ea;
+        --ink: #111111;
+        --body: #2a2a2a;
+        --muted: #6a6a66;
+        --line: #d7d1c6;
+        --ok: #2e6f4a;
+        --info: #2f4a7d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--body);
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        font-size: 11pt;
+        line-height: 1.45;
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(46, 111, 74, 0.06), transparent 26%),
+          radial-gradient(circle at top right, rgba(47, 74, 125, 0.07), transparent 28%),
+          var(--bg);
+      }
+
+      .page {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        padding: 28px 30px 26px;
+      }
+
+      .page + .page {
+        page-break-before: always;
+      }
+
+      .eyebrow {
+        font-size: 8pt;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        color: var(--ink);
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 600;
+      }
+
+      h1 {
+        font-size: 28pt;
+        line-height: 1.02;
+        max-width: 8.6in;
+      }
+
+      h2 {
+        font-size: 18pt;
+        margin-bottom: 10px;
+      }
+
+      h3 {
+        font-size: 12pt;
+        margin-bottom: 6px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .intro {
+        display: grid;
+        grid-template-columns: 1.5fr 0.9fr;
+        gap: 20px;
+        margin-top: 18px;
+      }
+
+      .card {
+        background: var(--paper-alt);
+        border: 1px solid var(--line);
+        padding: 14px 16px;
+      }
+
+      .card p + p {
+        margin-top: 8px;
+      }
+
+      .bullets {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .bullets li + li {
+        margin-top: 6px;
+      }
+
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .swatch {
+        border: 1px solid var(--line);
+        padding: 6px;
+        background: var(--paper);
+      }
+
+      .swatch-chip {
+        height: 28px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        margin-bottom: 6px;
+      }
+
+      .swatch code {
+        display: block;
+        font-size: 8pt;
+        color: var(--muted);
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--line);
+        margin: 18px 0;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .ref {
+        break-inside: avoid;
+      }
+
+      .ref img {
+        display: block;
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        border: 1px solid var(--line);
+        background: #ece8e0;
+      }
+
+      .ref-meta {
+        margin-top: 8px;
+      }
+
+      .ref-meta p + p {
+        margin-top: 4px;
+      }
+
+      .small {
+        font-size: 9pt;
+        color: var(--muted);
+      }
+
+      .source {
+        color: var(--info);
+        word-break: break-word;
+      }
+
+      .prompt {
+        background: #fbf8f1;
+        border: 1px solid var(--line);
+        padding: 14px 16px;
+        white-space: pre-wrap;
+        font-size: 10pt;
+        line-height: 1.55;
+      }
+
+      .prompt + .prompt {
+        margin-top: 14px;
+      }
+
+      .tag {
+        display: inline-block;
+        margin-right: 8px;
+        margin-bottom: 8px;
+        padding: 5px 8px;
+        border: 1px solid var(--line);
+        background: var(--paper);
+        font-size: 8.5pt;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .footer {
+        margin-top: 16px;
+        font-size: 8.5pt;
+        color: var(--muted);
+      }
+
+      .accent {
+        color: var(--ok);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="page">
+      <p class="eyebrow">Foundation Archive • Image Generation Brief</p>
+      <h1>Logo and OG Image direction for a preservation-first art archive.</h1>
+
+      <div class="intro">
+        <div class="card">
+          <h3>Project voice</h3>
+          <p>
+            The product already points toward an editorial, archival, and cultural-institution
+            tone rather than a loud tech brand. The core idea is preservation, trust, legibility,
+            and care for artists' work.
+          </p>
+          <div class="divider"></div>
+          <p class="small">
+            Key cues pulled from the product:
+          </p>
+          <ul class="bullets">
+            <li><strong>“Independent preservation”</strong></li>
+            <li><strong>“A preservation archive for Foundation artists.”</strong></li>
+            <li>Warm paper background, ink-black typography, muted neutrals, restrained green and blue utility accents</li>
+            <li>Editorial serif headline + mono metadata feel</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Best-fit direction</h3>
+          <p>
+            <span class="accent">Museum-grade restraint</span> plus
+            <span class="accent">archival framing</span> plus
+            <span class="accent">editorial poster composition</span>.
+          </p>
+          <div class="divider"></div>
+          <p class="small">Avoid:</p>
+          <ul class="bullets">
+            <li>Crypto or NFT visual clichés</li>
+            <li>Neon gradients as the main identity</li>
+            <li>Cloud-backup, chain, hexagon, or padlock icons</li>
+            <li>Playful mascot energy</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="swatches">
+        <div class="swatch">
+          <div class="swatch-chip" style="background:#fafaf7"></div>
+          <code>#FAFAF7</code>
+        </div>
+        <div class="swatch">
+          <div class="swatch-chip" style="background:#f4f1ea"></div>
+          <code>#F4F1EA</code>
+        </div>
+        <div class="swatch">
+          <div class="swatch-chip" style="background:#111111"></div>
+          <code>#111111</code>
+        </div>
+        <div class="swatch">
+          <div class="swatch-chip" style="background:#2e6f4a"></div>
+          <code>#2E6F4A</code>
+        </div>
+        <div class="swatch">
+          <div class="swatch-chip" style="background:#2f4a7d"></div>
+          <code>#2F4A7D</code>
+        </div>
+      </div>
+
+      <div class="footer">
+        Built from the current site voice and palette in
+        <strong>src/app/page.tsx</strong> and <strong>src/styles/globals.css</strong>.
+      </div>
+    </section>
+
+    <section class="page">
+      <p class="eyebrow">Reference Set</p>
+      <h2>Visual references to guide generation</h2>
+      <p class="small" style="margin-bottom:16px;">
+        These are not for copying literally. They define the tone, structure, and level of restraint
+        that fits Foundation Archive best.
+      </p>
+
+      <div class="grid">
+        <article class="ref">
+          <img src="images/intersectional-archives-design-system.png" alt="Intersectional Archives design system" />
+          <div class="ref-meta">
+            <h3>1. Identity system clarity</h3>
+            <p>Useful for clean mark systems, compact lockups, and disciplined identity application.</p>
+            <p class="small source">Source: https://dribbble.com/shots/26998421-Intersectional-Archives-design-system</p>
+          </div>
+        </article>
+
+        <article class="ref">
+          <img src="images/thorvaldsens-museum.jpg" alt="Thorvaldsens Museum logo" />
+          <div class="ref-meta">
+            <h3>2. Museum logo reduction</h3>
+            <p>Useful for a serious, timeless mark with strong negative space and institutional confidence.</p>
+            <p class="small source">Source: https://dribbble.com/shots/6097905-Thorvaldsens-Museum</p>
+          </div>
+        </article>
+
+        <article class="ref">
+          <img src="images/architectural-archive-index.png" alt="Architectural Archive Index Branding" />
+          <div class="ref-meta">
+            <h3>3. Archival index composition</h3>
+            <p>Useful for the OG image: editorial hierarchy, archival layout, and structured information density.</p>
+            <p class="small source">Source: https://dribbble.com/shots/26170045-Architectural-Archive-Index-Branding</p>
+          </div>
+        </article>
+
+        <article class="ref">
+          <img src="images/editorial-poster-style.png" alt="Poster design in editorial style" />
+          <div class="ref-meta">
+            <h3>4. Warm editorial poster tone</h3>
+            <p>Useful for paper texture, quiet luxury, and a balanced headline-to-image relationship.</p>
+            <p class="small source">Source: https://dribbble.com/shots/26126694-Poster-design-in-editorial-style</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="divider"></div>
+      <h3>Optional alternate energy</h3>
+      <p class="small" style="margin-bottom:10px;">
+        This one is more expressive and campaign-like. Good as a secondary reference for motion or a temporary launch visual,
+        but not as strong as the core brand direction.
+      </p>
+      <article class="ref">
+        <img src="images/internet-archive-25.png" alt="Internet Archive turns 25 campaign" style="height:220px;" />
+        <div class="ref-meta">
+          <h3>5. Bright archive campaign language</h3>
+          <p>Useful only in moderation for liveliness and historical-tech energy.</p>
+          <p class="small source">Source: https://dribbble.com/shots/16106759-Internet-Archive-turns-25-campaign-branding-and-art-direction</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="page">
+      <p class="eyebrow">Generation Prompts</p>
+      <h2>Copy-paste prompts for ChatGPT image generation</h2>
+
+      <div style="margin: 6px 0 12px;">
+        <span class="tag">Editorial</span>
+        <span class="tag">Preservation</span>
+        <span class="tag">Museum-grade</span>
+        <span class="tag">Warm paper</span>
+        <span class="tag">Serif + mono</span>
+      </div>
+
+      <h3>Logo prompt</h3>
+      <div class="prompt">Design a logo for “Foundation Archive,” an independent preservation archive for Foundation artists. The concept should feel like a cultural institution and a living digital system at once: four archival corner marks form an open square or frame around a small preserved artwork tile or spark, subtly suggesting protection, indexing, and retrieval. Pair the mark with a refined editorial serif wordmark and restrained mono metadata accents. Use a warm paper, ink-black, stone, and muted green or slate palette. Style: timeless, precise, quiet, museum-grade, high negative space, subtle print grain. Avoid folders, clouds, padlocks, chains, hexagons, neon gradients, mascots, and generic NFT or web3 clichés. Show a primary mark, a horizontal lockup, a small favicon version, and monochrome versions.</div>
+
+      <h3 style="margin-top:16px;">OG image prompt</h3>
+      <div class="prompt">Create a 1200x630 open graph image for “Foundation Archive.” Use a premium editorial poster composition on warm off-white paper with subtle grain. Large serif headline: “A preservation archive for Foundation artists.” Surround the headline with a restrained grid of three to four abstract art tiles or framed placeholders, each held by archival corner marks, with tiny mono caption lines suggesting artist, title, and CID metadata. Add thin rules, registration marks, muted green or slate status dots, and a faint sense of networked preservation without looking sci-fi. Mood: calm, trustworthy, cultural, contemporary, archival. Keep the headline highly legible at link-preview size with generous margins. Avoid busy collage chaos, tiny unreadable labels, crypto clichés, coins, neon, and literal cloud-backup graphics.</div>
+
+      <div class="divider"></div>
+      <h3>One-line creative direction</h3>
+      <p>
+        Foundation Archive should look like <strong>an art institution that quietly knows how to keep culture alive online</strong>.
+      </p>
+    </section>
+  </body>
+</html>

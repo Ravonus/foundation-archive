@@ -1,23 +1,13 @@
-import { env } from "~/env";
-import { createPublicClient, getAddress, http, parseAbiItem } from "viem";
+import { getAddress, parseAbiItem } from "viem";
 
-export function getEthereumClient() {
-  if (!env.ETHEREUM_RPC_URL) {
-    throw new Error(
-      "ETHEREUM_RPC_URL is required for contract-driven scans and token metadata lookup.",
-    );
-  }
-
-  return createPublicClient({
-    transport: http(env.ETHEREUM_RPC_URL),
-  });
-}
+import { getRpcClient } from "~/server/archive/chains";
 
 export async function resolveTokenUriFromContract(input: {
+  chainId: number;
   contractAddress: string;
   tokenId: string;
 }) {
-  const rpc = getEthereumClient();
+  const rpc = getRpcClient(input.chainId);
 
   return rpc.readContract({
     address: getAddress(input.contractAddress),
@@ -28,11 +18,12 @@ export async function resolveTokenUriFromContract(input: {
 }
 
 export async function discoverTokenIdsFromLogs(input: {
+  chainId: number;
   contractAddress: string;
   fromBlock: number;
   toBlock?: number;
 }) {
-  const client = getEthereumClient();
+  const client = getRpcClient(input.chainId);
 
   const logs = await client.getLogs({
     address: getAddress(input.contractAddress),

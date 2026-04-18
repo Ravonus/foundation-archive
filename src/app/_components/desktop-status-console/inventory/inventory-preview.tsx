@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ImageIcon } from "lucide-react";
 
 export function InventoryPreview({
@@ -10,11 +10,13 @@ export function InventoryPreview({
   title: string;
   previewCandidates: string[];
 }) {
-  const [candidateIndex, setCandidateIndex] = useState(0);
-
-  useEffect(() => {
-    setCandidateIndex(0);
-  }, [previewCandidates]);
+  const previewSeed = previewCandidates.join("\u0001");
+  const [candidateState, setCandidateState] = useState(() => ({
+    seed: previewSeed,
+    index: 0,
+  }));
+  const candidateIndex =
+    candidateState.seed === previewSeed ? candidateState.index : 0;
 
   const activePreview = previewCandidates[candidateIndex] ?? null;
 
@@ -33,7 +35,11 @@ export function InventoryPreview({
       alt={title}
       loading="lazy"
       onError={() => {
-        setCandidateIndex((current) => current + 1);
+        setCandidateState((current) => ({
+          seed: previewSeed,
+          index:
+            current.seed === previewSeed ? current.index + 1 : candidateIndex + 1,
+        }));
       }}
       className="mt-4 block aspect-[1.2/1] w-full max-w-full rounded-[1.2rem] object-cover"
     />

@@ -1,3 +1,5 @@
+/* eslint-disable complexity */
+
 import "dotenv/config";
 
 import { updateWorkerHeartbeat, runWorkerCycle } from "~/server/archive/worker";
@@ -45,8 +47,12 @@ async function main() {
     process.exit(0);
   };
 
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
+  process.on("SIGINT", () => {
+    void stop("SIGINT");
+  });
+  process.on("SIGTERM", () => {
+    void stop("SIGTERM");
+  });
 
   await updateWorkerHeartbeat(db, {
     workerKey,
@@ -56,7 +62,12 @@ async function main() {
     lastError: null,
   });
 
-  do {
+  for (;;) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- stop requests arrive from signal handlers outside the loop body.
+    if (stopping) {
+      return;
+    }
+
     try {
       const result = await runWorkerCycle(db, {
         workerKey,
@@ -98,7 +109,7 @@ async function main() {
 
       await sleep(intervalMs);
     }
-  } while (!stopping);
+  }
 }
 
 void main().finally(async () => {

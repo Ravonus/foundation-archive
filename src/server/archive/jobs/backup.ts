@@ -62,14 +62,18 @@ type ProcessedOutcome = {
 function isRootAlreadySatisfied(root: RootRecord) {
   return (
     root.pinStatus === BackupStatus.PINNED ||
-    (root.backupStatus === BackupStatus.DOWNLOADED && Boolean(root.localDirectory))
+    (root.backupStatus === BackupStatus.DOWNLOADED &&
+      Boolean(root.localDirectory))
   );
 }
 
 async function headProbeRoot(root: RootRecord) {
   const sourceUrl = root.gatewayUrl ?? root.originalUrl;
   if (!sourceUrl) {
-    return { estimatedByteSize: null as number | null, mimeType: root.mimeType };
+    return {
+      estimatedByteSize: null as number | null,
+      mimeType: root.mimeType,
+    };
   }
 
   let estimatedByteSize = root.byteSize ?? root.estimatedByteSize ?? null;
@@ -82,6 +86,7 @@ async function headProbeRoot(root: RootRecord) {
         headers: {
           "user-agent": "foundation-archive/0.1 (+https://foundation.app)",
         },
+        signal: AbortSignal.timeout(15_000),
       });
 
       const headerBytes = headResponse.headers.get("content-length");
@@ -271,7 +276,8 @@ async function recordRootFailure(args: {
   error: unknown;
 }) {
   const { client, input, root, startedAt, error } = args;
-  const message = error instanceof Error ? error.message : "Unknown backup failure";
+  const message =
+    error instanceof Error ? error.message : "Unknown backup failure";
 
   await client.ipfsRoot.update({
     where: { id: root.id },
@@ -375,11 +381,7 @@ async function removeMissingArtworkJobs(
   });
 }
 
-type RootResult =
-  | ProcessedOutcome
-  | DeferredOutcome
-  | SkippedOutcome
-  | null;
+type RootResult = ProcessedOutcome | DeferredOutcome | SkippedOutcome | null;
 
 async function emitFullyArchivedEvent(args: {
   client: DatabaseClient;

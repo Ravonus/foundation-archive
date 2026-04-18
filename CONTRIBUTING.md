@@ -15,7 +15,7 @@ A sibling project, `foundation-share-bridge` (Rust), is the IPFS pinning helper 
 Every PR **must** pass:
 
 ```bash
-pnpm check   # runs: next lint && tsc --noEmit
+pnpm check   # runs: pnpm lint && tsc --noEmit
 ```
 
 CI will reject anything that does not. No exceptions, no `// eslint-disable` without a WHY comment and maintainer sign-off.

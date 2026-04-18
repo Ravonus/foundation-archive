@@ -43,7 +43,7 @@ function ConnectIntro({ reachable }: { reachable: boolean }) {
       {reachable ? (
         <p className="mt-3 text-sm text-[var(--color-muted)]">
           Good news: the app is already running on this computer. You can
-          connect in one click — no link needed.
+          connect in one click. No link needed.
         </p>
       ) : null}
     </>

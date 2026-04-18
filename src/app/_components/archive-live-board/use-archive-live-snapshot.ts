@@ -6,6 +6,7 @@ import type {
   ArchiveLiveSnapshot,
   ArchiveSocketEnvelope,
 } from "~/lib/archive-live";
+import { ARCHIVE_WORKER_FRESH_MS as WORKER_FRESH_MS } from "~/lib/archive-live";
 
 import { resolveSocketHealthUrl, resolveSocketUrl } from "./socket-urls";
 
@@ -40,6 +41,111 @@ function bindSocketHandlers(socket: Socket, handlers: ArchiveSocketHandlers) {
   });
 }
 
+const FALLBACK_RECOVERY_POLL_MS = 15_000;
+
+function workerSeenRecently(lastSeenAt: string | null) {
+  return Boolean(
+    lastSeenAt && Date.now() - new Date(lastSeenAt).getTime() < WORKER_FRESH_MS,
+  );
+}
+
+function shouldPollRecoveryRoute(input: {
+  daemonReachable: boolean | null;
+  isConnected: boolean;
+  pendingJobs: number;
+  runningJobs: number;
+  workerLastSeenAt: string | null;
+  workerStatus: string | null;
+}) {
+  if (input.isConnected || input.daemonReachable !== false) {
+    return false;
+  }
+
+  const hasBacklog = input.pendingJobs > 0 || input.runningJobs > 0;
+  if (!hasBacklog) {
+    return false;
+  }
+
+  const workerIsRunning = input.workerStatus?.toLowerCase() === "running";
+  return !workerSeenRecently(input.workerLastSeenAt) || !workerIsRunning;
+}
+
+function useRecoveryFallback(input: {
+  daemonReachable: boolean | null;
+  isConnected: boolean;
+  pendingJobs: number;
+  runningJobs: number;
+  workerLastSeenAt: string | null;
+  workerStatus: string | null;
+  setSnapshot: (snapshot: ArchiveLiveSnapshot) => void;
+  setLatestEvent: (event: ArchiveLiveEvent | null) => void;
+}) {
+  const {
+    daemonReachable,
+    isConnected,
+    pendingJobs,
+    runningJobs,
+    workerLastSeenAt,
+    workerStatus,
+    setSnapshot,
+    setLatestEvent,
+  } = input;
+
+  useEffect(() => {
+    if (
+      !shouldPollRecoveryRoute({
+        daemonReachable,
+        isConnected,
+        pendingJobs,
+        runningJobs,
+        workerLastSeenAt,
+        workerStatus,
+      })
+    ) {
+      return;
+    }
+
+    let active = true;
+
+    const refreshFromRecoveryRoute = async () => {
+      try {
+        const response = await fetch("/api/archive/live/recover", {
+          method: "POST",
+          cache: "no-store",
+        });
+        if (!response.ok || !active) return;
+
+        const nextSnapshot = (await response.json()) as ArchiveLiveSnapshot;
+
+        setSnapshot(nextSnapshot);
+        setLatestEvent(nextSnapshot.recentEvents[0] ?? null);
+      } catch {
+        // The socket health probe already surfaces daemon outages. The fallback
+        // route is best-effort and should fail quietly.
+      }
+    };
+
+    void refreshFromRecoveryRoute();
+    const recoveryInterval = window.setInterval(() => {
+      void refreshFromRecoveryRoute();
+    }, FALLBACK_RECOVERY_POLL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(recoveryInterval);
+    };
+  }, [
+    daemonReachable,
+    isConnected,
+    pendingJobs,
+    runningJobs,
+    workerLastSeenAt,
+    workerStatus,
+    setLatestEvent,
+    setSnapshot,
+  ]);
+}
+
 export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [isConnected, setIsConnected] = useState(false);
@@ -48,6 +154,10 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
   const [latestEvent, setLatestEvent] = useState<ArchiveLiveEvent | null>(
     initialSnapshot.recentEvents[0] ?? null,
   );
+  const pendingJobs = snapshot.stats.pendingJobs;
+  const runningJobs = snapshot.stats.runningJobs;
+  const workerLastSeenAt = snapshot.worker?.lastSeenAt ?? null;
+  const workerStatus = snapshot.worker?.status ?? null;
 
   useEffect(() => {
     const socketUrl = resolveSocketUrl();
@@ -76,6 +186,7 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       reconnection: true,
       reconnectionDelay: 1_000,
       timeout: 5_000,
+      upgrade: false,
     });
 
     bindSocketHandlers(socket, {
@@ -93,6 +204,16 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       socket.disconnect();
     };
   }, []);
+  useRecoveryFallback({
+    daemonReachable,
+    isConnected,
+    pendingJobs,
+    runningJobs,
+    workerLastSeenAt,
+    workerStatus,
+    setSnapshot,
+    setLatestEvent,
+  });
 
   return {
     snapshot,

@@ -1,7 +1,10 @@
+/* eslint-disable max-lines-per-function */
+
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
 
+import type { RelayOwnerClientMessage } from "~/lib/desktop-relay";
 import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
 
 import {
@@ -9,6 +12,7 @@ import {
   type LocalBridgeDeps,
 } from "./actions/local-bridge";
 import {
+  createQueueWorkToRelay,
   createRelayOwnerActions,
   type RelayOwnerDeps,
 } from "./actions/relay-owner";
@@ -18,7 +22,6 @@ import {
   buildWorkShareUrl as buildWorkShareUrlPure,
 } from "./lib/builders";
 import { trimTrailingSlash } from "./lib/bridge-api";
-import { buildDesktopBridgeContextValue } from "./lib/build-context-value";
 import {
   BRIDGE_SESSION_KEY,
   BRIDGE_URL_KEY,
@@ -30,6 +33,7 @@ import type {
   BridgeConfig,
   BridgeHealth,
   BridgeSession,
+  DesktopBridgeContextValue,
   BridgeStatus,
   DesktopShareableWork,
   PinVerificationResult,
@@ -102,12 +106,37 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     ownerToken,
     relayDevices,
     pinEnrichment,
-    relaySocketRef,
     setRelayDevices,
     setRelayInventories,
     setPinEnrichment,
   };
-  const relayOwnerActions = createRelayOwnerActions(relayOwnerDeps);
+  const requestRelayInventory = (deviceId: string) => {
+    const socket = relaySocketRef.current;
+    // `readyState` is typed `number` but the socket itself may be null or closed mid-teardown.
+    if (socket?.readyState !== window.WebSocket.OPEN) return;
+
+    socket.send(
+      JSON.stringify({
+        type: "owner.requestInventory",
+        deviceId,
+      } satisfies RelayOwnerClientMessage),
+    );
+  };
+  const relayOwnerBaseActions = createRelayOwnerActions(relayOwnerDeps);
+  const queueWorkToRelay = (
+    work: DesktopShareableWork,
+    deviceId?: string | null,
+  ) =>
+    createQueueWorkToRelay(
+      relayOwnerDeps,
+      relayOwnerBaseActions.refreshRelayDevices,
+      requestRelayInventory,
+    )(work, deviceId);
+  const relayOwnerActions = {
+    ...relayOwnerBaseActions,
+    requestRelayInventory,
+    queueWorkToRelay,
+  };
 
   const localBridgeDeps: LocalBridgeDeps = {
     bridgeUrl,
@@ -121,12 +150,12 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     setError,
     persistSession,
     bridgeConfigFromHealth,
-    createRelayPairing: relayOwnerActions.createRelayPairing,
-    refreshRelayDevices: relayOwnerActions.refreshRelayDevices,
+    createRelayPairing: relayOwnerBaseActions.createRelayPairing,
+    refreshRelayDevices: relayOwnerBaseActions.refreshRelayDevices,
   };
   const localBridgeActions = createLocalBridgeActions(localBridgeDeps);
 
-  useOwnerRefresh(ownerToken, relayOwnerActions.refreshRelayDevices);
+  useOwnerRefresh(ownerToken, relayOwnerBaseActions.refreshRelayDevices);
 
   const verifyPins = async (cids?: string[]) => {
     const result = await localBridgeActions.verifyPins(cids);
@@ -157,7 +186,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     return buildWorkShareUrlPure(bridgeUrl, activeSession, work);
   };
 
-  const value = buildDesktopBridgeContextValue({
+  const value: DesktopBridgeContextValue = {
     bridgeUrl,
     setBridgeUrl,
     status,
@@ -175,13 +204,28 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     pinEnrichment,
     error,
     reachable,
-    localBridgeActions,
-    relayOwnerActions,
+    connect: localBridgeActions.connect,
+    disconnect: localBridgeActions.disconnect,
+    unlinkLocalRelay: localBridgeActions.unlinkLocalRelay,
+    refreshHealth: localBridgeActions.refreshHealth,
+    fetchConfig: localBridgeActions.fetchConfig,
+    updateConfig: localBridgeActions.updateConfig,
+    listPins: localBridgeActions.listPins,
+    repairPins: localBridgeActions.repairPins,
+    syncPins: localBridgeActions.syncPins,
+    refreshRelayDevices: relayOwnerActions.refreshRelayDevices,
+    requestRelayInventory: relayOwnerActions.requestRelayInventory,
+    disconnectRelayDevice: relayOwnerActions.disconnectRelayDevice,
+    createRelayPairing: relayOwnerActions.createRelayPairing,
+    linkLocalBridgeToRelay: localBridgeActions.linkLocalBridgeToRelay,
     buildRelayPairingUrl,
+    enrichPins: relayOwnerActions.enrichPins,
+    queueWorkToRelay: relayOwnerActions.queueWorkToRelay,
+    shareWork: localBridgeActions.shareWork,
     buildWorkShareUrl,
     buildSessionViewUrl: () => buildSessionViewUrlPure(bridgeUrl, session),
     clearError: () => setError(null),
-  });
+  };
 
   return (
     <DesktopBridgeContext.Provider value={value}>

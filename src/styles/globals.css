@@ -34,6 +34,11 @@
   --color-err: #9a2a2a;
   --color-info: #2f4a7d;
 
+  --color-brand-green: #2e6f4a;
+  --color-brand-green-bright: #3d8c5d;
+  --color-brand-green-soft: #e4efe7;
+  --color-brand-ink: #0f1512;
+
   --tint-ok: #e8f1ea;
   --tint-info: #eef2f8;
   --tint-warn: #f3efe4;
@@ -68,6 +73,11 @@
   --color-warn: #d6b278;
   --color-err: #d69797;
   --color-info: #9fb7df;
+
+  --color-brand-green: #7fbf97;
+  --color-brand-green-bright: #a6e0ba;
+  --color-brand-green-soft: #1c2a22;
+  --color-brand-ink: #0b100d;
 
   --tint-ok: #1c2a22;
   --tint-info: #1b2230;
@@ -123,6 +133,45 @@ body::before {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   opacity: var(--noise-opacity);
   mix-blend-mode: var(--noise-blend);
+}
+
+/* Very slow, very minimal ambient drift — two soft blobs tinted with the
+ * brand green. Sits above the paper grain but still behind all content. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -20vmax;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      38vmax 38vmax at 22% 28%,
+      color-mix(in oklab, var(--color-brand-green) 10%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      42vmax 42vmax at 78% 72%,
+      color-mix(in oklab, var(--color-ink) 6%, transparent),
+      transparent 70%
+    );
+  filter: blur(40px);
+  opacity: 0.6;
+  animation: ambient-drift 90s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.dark body::after {
+  opacity: 0.45;
+}
+@keyframes ambient-drift {
+  0% {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(1.5%, 2%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(2%, -1.5%, 0) scale(1);
+  }
 }
 
 ::selection {
@@ -268,6 +317,76 @@ textarea:focus-visible {
     animation: none;
     mix-blend-mode: normal;
   }
+}
+
+/* Viewfinder-style corner brackets used around hero art, panels, and thumbnails */
+.bracket-frame {
+  --bracket-size: 14px;
+  --bracket-weight: 2px;
+  --bracket-offset: -1px;
+}
+.bracket-frame__corner {
+  position: absolute;
+  width: var(--bracket-size);
+  height: var(--bracket-size);
+  pointer-events: none;
+  color: var(--bracket-stroke, var(--color-brand-green));
+}
+.bracket-frame__tl {
+  top: var(--bracket-offset);
+  left: var(--bracket-offset);
+  border-top: var(--bracket-weight) solid currentColor;
+  border-left: var(--bracket-weight) solid currentColor;
+}
+.bracket-frame__tr {
+  top: var(--bracket-offset);
+  right: var(--bracket-offset);
+  border-top: var(--bracket-weight) solid currentColor;
+  border-right: var(--bracket-weight) solid currentColor;
+}
+.bracket-frame__bl {
+  bottom: var(--bracket-offset);
+  left: var(--bracket-offset);
+  border-bottom: var(--bracket-weight) solid currentColor;
+  border-left: var(--bracket-weight) solid currentColor;
+}
+.bracket-frame__br {
+  bottom: var(--bracket-offset);
+  right: var(--bracket-offset);
+  border-bottom: var(--bracket-weight) solid currentColor;
+  border-right: var(--bracket-weight) solid currentColor;
+}
+
+/* Subtle ambient green glow on hover for feature panels */
+.feature-panel-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 100% 0%,
+    color-mix(in oklab, var(--color-brand-green) 16%, transparent),
+    transparent 55%
+  );
+  opacity: 0;
+  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.group:hover .feature-panel-glow {
+  opacity: 1;
+}
+
+/* Atmospheric botanical background wash — used on hero and panels */
+.brand-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--brand-bg-light);
+  background-size: cover;
+  background-position: center;
+  opacity: 0.55;
+}
+.dark .brand-bg {
+  background-image: var(--brand-bg-dark);
+  opacity: 0.75;
 }
 
 @media (prefers-reduced-motion: reduce) {

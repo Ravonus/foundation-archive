@@ -33,7 +33,7 @@ function HeaderIntro() {
       <p className="mt-3 max-w-2xl text-[var(--color-body)]">
         The archive site already backs up every work we know about. This app is
         for artists, collectors, and supporters who want a second copy on their
-        own computer too — no setup knowledge required.
+        own computer too. No setup knowledge required.
       </p>
     </div>
   );

@@ -1,4 +1,13 @@
-import { copyFile, link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  link,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
 import { env } from "~/env";
@@ -18,23 +27,45 @@ type RustArchiverPinResponse = {
   reference: string | null;
 };
 
+const RUST_ARCHIVER_RETRY_COOLDOWN_MS = 30_000;
+
+class RustArchiverUnavailableError extends Error {
+  override cause: unknown;
+
+  constructor(cause: unknown) {
+    super("Rust archiver is unreachable.");
+    this.name = "RustArchiverUnavailableError";
+    this.cause = cause;
+  }
+}
+
+let rustArchiverRetryAt = 0;
+
 function toAbsoluteStorageRoot() {
   return path.isAbsolute(env.ARCHIVE_STORAGE_DIR)
     ? env.ARCHIVE_STORAGE_DIR
-    : path.resolve(process.cwd(), env.ARCHIVE_STORAGE_DIR);
+    : path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        env.ARCHIVE_STORAGE_DIR,
+      );
 }
 
 function toAbsoluteHotStorageRoot() {
   return path.isAbsolute(env.ARCHIVE_HOT_STORAGE_DIR)
     ? env.ARCHIVE_HOT_STORAGE_DIR
-    : path.resolve(process.cwd(), env.ARCHIVE_HOT_STORAGE_DIR);
+    : path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        env.ARCHIVE_HOT_STORAGE_DIR,
+      );
 }
 
 function cleanRelativePath(relativePath: string | null | undefined) {
   const safePath = (relativePath ?? "").replace(/^\/+/, "");
 
   if (safePath.includes("..")) {
-    throw new Error("Refusing to work with a relative path that escapes the archive root.");
+    throw new Error(
+      "Refusing to work with a relative path that escapes the archive root.",
+    );
   }
 
   return safePath || ROOT_FILE_SENTINEL;
@@ -42,6 +73,52 @@ function cleanRelativePath(relativePath: string | null | undefined) {
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/g, "");
+}
+
+function shouldAttemptRustArchiver() {
+  return Date.now() >= rustArchiverRetryAt;
+}
+
+function clearRustArchiverCooldown() {
+  rustArchiverRetryAt = 0;
+}
+
+function pauseRustArchiverRetries() {
+  const now = Date.now();
+  const wasCoolingDown = rustArchiverRetryAt > now;
+  rustArchiverRetryAt = now + RUST_ARCHIVER_RETRY_COOLDOWN_MS;
+  return !wasCoolingDown;
+}
+
+function formatErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function warnRustArchiverFallback(
+  action: "download" | "pin",
+  fallbackTarget: "Node storage path" | "Node Kubo path",
+  error: unknown,
+) {
+  if (error instanceof RustArchiverUnavailableError) {
+    if (!pauseRustArchiverRetries()) {
+      return;
+    }
+
+    console.warn(
+      `[archive] Rust archiver unavailable for ${action}, falling back to ${fallbackTarget} for ${RUST_ARCHIVER_RETRY_COOLDOWN_MS / 1000}s:`,
+      formatErrorMessage(error.cause),
+    );
+    return;
+  }
+
+  console.warn(
+    `[archive] Rust archiver ${action} failed, falling back to ${fallbackTarget}:`,
+    formatErrorMessage(error),
+  );
 }
 
 function temporaryFilePath(targetPath: string) {
@@ -88,23 +165,30 @@ async function requestRustArchiver<T>(
     return null;
   }
 
-  const response = await fetch(
-    `${trimTrailingSlash(env.ARCHIVE_ARCHIVER_URL)}${endpoint}`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
+  let response: Response;
+  try {
+    response = await fetch(
+      `${trimTrailingSlash(env.ARCHIVE_ARCHIVER_URL)}${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20_000),
       },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(20_000),
-    },
-  );
+    );
+  } catch (error) {
+    throw new RustArchiverUnavailableError(error);
+  }
 
   if (!response.ok) {
-    const detail = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null;
-    throw new Error(detail?.error ?? `Rust archiver request failed with ${response.status}.`);
+    const detail = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(
+      detail?.error ?? `Rust archiver request failed with ${response.status}.`,
+    );
   }
 
   return (await response.json()) as T;
@@ -144,7 +228,9 @@ async function downloadFileToArchiveWithJs(input: {
 
   const sourceUrl = input.gatewayUrl ?? input.originalUrl;
   if (!sourceUrl) {
-    throw new Error(`Unable to download CID ${input.cid} because no source URL was available.`);
+    throw new Error(
+      `Unable to download CID ${input.cid} because no source URL was available.`,
+    );
   }
 
   const response = await fetch(sourceUrl, {
@@ -204,13 +290,17 @@ async function pinCidWithKuboFromNode(cid: string) {
           Authorization: env.KUBO_API_AUTH_HEADER,
         }
       : undefined,
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
     throw new Error(`Kubo pin failed for ${cid}: ${response.status}`);
   }
 
-  const result = (await response.json()) as { Pins?: string[]; Pinned?: string };
+  const result = (await response.json()) as {
+    Pins?: string[];
+    Pinned?: string;
+  };
 
   return {
     pinned: true,
@@ -235,7 +325,10 @@ export function getHotCidDirectory(cid: string) {
   return path.join(getArchiveHotStorageRoot(), "ipfs", cid);
 }
 
-export function getArchivedFilePath(cid: string, relativePath: string | null | undefined) {
+export function getArchivedFilePath(
+  cid: string,
+  relativePath: string | null | undefined,
+) {
   const safeRelativePath = cleanRelativePath(relativePath);
   return path.join(getCidDirectory(cid), safeRelativePath);
 }
@@ -254,7 +347,7 @@ export async function downloadFileToArchive(input: {
   gatewayUrl: string | null | undefined;
   originalUrl: string | null | undefined;
 }) {
-  if (env.ARCHIVE_ARCHIVER_URL) {
+  if (env.ARCHIVE_ARCHIVER_URL && shouldAttemptRustArchiver()) {
     try {
       const response = await requestRustArchiver<RustArchiverDownloadResponse>(
         "/archive/root",
@@ -269,6 +362,7 @@ export async function downloadFileToArchive(input: {
       );
 
       if (response) {
+        clearRustArchiverCooldown();
         return {
           absolutePath: response.absolute_path,
           localDirectory: response.local_directory,
@@ -277,10 +371,7 @@ export async function downloadFileToArchive(input: {
         };
       }
     } catch (error) {
-      console.warn(
-        "[archive] Rust archiver download failed, falling back to Node storage path:",
-        error instanceof Error ? error.message : error,
-      );
+      warnRustArchiverFallback("download", "Node storage path", error);
     }
   }
 
@@ -297,7 +388,10 @@ export async function readArchivedAsset(cid: string, parts: string[]) {
   };
 }
 
-export async function archivedAssetExists(cid: string, relativePath: string | null | undefined) {
+export async function archivedAssetExists(
+  cid: string,
+  relativePath: string | null | undefined,
+) {
   try {
     await stat(getArchivedFilePath(cid, relativePath));
     return true;
@@ -308,11 +402,17 @@ export async function archivedAssetExists(cid: string, relativePath: string | nu
 
 export async function ensureArchiveRoot() {
   await mkdir(path.join(getArchiveStorageRoot(), "ipfs"), { recursive: true });
-  await mkdir(path.join(getArchiveHotStorageRoot(), "ipfs"), { recursive: true });
+  await mkdir(path.join(getArchiveHotStorageRoot(), "ipfs"), {
+    recursive: true,
+  });
 }
 
 export async function pinCidWithKubo(cid: string) {
-  if (env.ARCHIVE_ARCHIVER_URL && env.KUBO_API_URL) {
+  if (
+    env.ARCHIVE_ARCHIVER_URL &&
+    env.KUBO_API_URL &&
+    shouldAttemptRustArchiver()
+  ) {
     try {
       const response = await requestRustArchiver<RustArchiverPinResponse>(
         "/pin/cid",
@@ -324,13 +424,11 @@ export async function pinCidWithKubo(cid: string) {
       );
 
       if (response) {
+        clearRustArchiverCooldown();
         return response;
       }
     } catch (error) {
-      console.warn(
-        "[archive] Rust archiver pin failed, falling back to Node Kubo path:",
-        error instanceof Error ? error.message : error,
-      );
+      warnRustArchiverFallback("pin", "Node Kubo path", error);
     }
   }
 

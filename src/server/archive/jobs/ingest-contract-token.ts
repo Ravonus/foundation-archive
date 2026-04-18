@@ -64,6 +64,7 @@ async function fetchContractTokenContext(
     chainId,
   );
   const tokenUri = await resolveTokenUriFromContract({
+    chainId,
     contractAddress,
     tokenId: input.tokenId,
   });

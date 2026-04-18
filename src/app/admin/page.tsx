@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { forbidden } from "next/navigation";
 
 import { ArchiveLiveBoard } from "~/app/_components/archive-live-board";
 import { FadeUp } from "~/app/_components/motion";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const requestHeaders = await headers();
   if (!isAllowedAdminRequest(requestHeaders)) {
-    notFound();
+    forbidden();
   }
 
   const snapshot = await getArchiveLiveSnapshot(db);
@@ -22,15 +22,15 @@ export default async function AdminPage() {
       <FadeUp duration={0.4}>
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--color-line)] pb-5">
           <div>
-            <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+            <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
               Archive control
             </p>
             <h1 className="mt-1 font-serif text-3xl text-[var(--color-ink)] sm:text-4xl">
               Admin
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--color-body)]">
-              Start or pause scanning, adjust how fast the archive runs, and
-              see where it is right now.
+              Start or pause scanning, adjust how fast the archive runs, and see
+              where it is right now.
             </p>
           </div>
         </div>

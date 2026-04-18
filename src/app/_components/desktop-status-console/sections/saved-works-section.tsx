@@ -115,7 +115,7 @@ function ActionBar({
       {unreachableCount > 0 ? (
         <span className="text-[0.78rem] text-[var(--color-muted)]">
           {unreachableCount} work{unreachableCount === 1 ? "" : "s"} not visible
-          on the network yet. Your copy is safe — the network just hasn&apos;t
+          on the network yet. Your copy is safe. The network just hasn&apos;t
           picked them up yet. &ldquo;Re-save&rdquo; can help.
         </span>
       ) : null}

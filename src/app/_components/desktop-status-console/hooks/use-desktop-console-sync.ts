@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 import type {
   BridgePinsResponse,
@@ -20,6 +20,10 @@ export function useDesktopConsolePinEnrichment({
   relayInventories,
   enrichPins,
 }: PinEnrichmentArgs) {
+  const requestEnrichment = useEffectEvent((cids: string[]) => {
+    void enrichPins(cids).catch(() => null);
+  });
+
   useEffect(() => {
     const localCids = localInventory?.items.map((item) => item.cid) ?? [];
     const relayCids = Object.values(relayInventories).flatMap((snapshot) =>
@@ -28,8 +32,8 @@ export function useDesktopConsolePinEnrichment({
     const allCids = Array.from(new Set([...localCids, ...relayCids]));
 
     if (allCids.length === 0) return;
-    void enrichPins(allCids).catch(() => null);
-  }, [localInventory, relayInventories, enrichPins]);
+    requestEnrichment(allCids);
+  }, [localInventory, relayInventories]);
 }
 
 type RelayInventoryArgs = {
@@ -43,13 +47,16 @@ export function useDesktopConsoleRelayInventoryRequests({
   relayInventories,
   requestRelayInventory,
 }: RelayInventoryArgs) {
+  const requestInventory = useEffectEvent((deviceId: string) => {
+    requestRelayInventory(deviceId);
+  });
+
   useEffect(() => {
     for (const device of relayDevices) {
       if (device.connected && !relayInventories[device.id]) {
-        requestRelayInventory(device.id);
+        requestInventory(device.id);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relayDevices, relayInventories]);
 }
 

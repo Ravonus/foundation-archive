@@ -16,6 +16,7 @@ type ArtworkCardRow = {
   title: string;
   artistName: string | null;
   artistUsername: string | null;
+  artistWallet: string | null;
   staticPreviewUrl: string | null;
   previewUrl: string | null;
   foundationUrl: string | null;
@@ -40,6 +41,7 @@ export function toLiveArtworkCard(
     title: artwork.title,
     artistName: artwork.artistName,
     artistUsername: artwork.artistUsername,
+    artistWallet: artwork.artistWallet,
     posterUrl: artwork.staticPreviewUrl ?? artwork.previewUrl,
     contractAddress: artwork.contractAddress,
     tokenId: artwork.tokenId,
@@ -258,6 +260,7 @@ async function fetchLatestArchivedArtworks(client: DatabaseClient) {
       title: true,
       artistName: true,
       artistUsername: true,
+      artistWallet: true,
       staticPreviewUrl: true,
       previewUrl: true,
       foundationUrl: true,

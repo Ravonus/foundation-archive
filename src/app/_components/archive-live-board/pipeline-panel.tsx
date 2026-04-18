@@ -241,7 +241,7 @@ export function StatusRow({
       {drainModeActive ? (
         <span
           className="inline-flex items-center gap-1 rounded-full bg-[var(--tint-info)] px-2.5 py-1 text-[var(--color-info)]"
-          title="The line is long — we're finishing current saves before looking for more."
+          title="The line is long. We're finishing current saves before looking for more."
         >
           Catching up
         </span>

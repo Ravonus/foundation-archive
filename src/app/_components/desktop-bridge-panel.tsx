@@ -130,7 +130,7 @@ export function DesktopBridgePanel() {
           <div className="rounded-sm border border-[var(--color-line)] bg-[var(--color-surface-alt)] p-3 text-xs text-[var(--color-muted)]">
             <p>
               Reachable: {reachable ? "yes" : "no"} · Session:{" "}
-              {session ? session.session_id : "—"}
+              {session ? session.session_id : "none"}
             </p>
             <p className="mt-1">
               The community archive does not depend on this helper. Use it when

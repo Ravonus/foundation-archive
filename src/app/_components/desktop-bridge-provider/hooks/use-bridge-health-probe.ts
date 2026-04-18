@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { requestBridgeJson } from "../lib/bridge-api";
@@ -40,18 +41,51 @@ function nextBackoff(current: number) {
   return Math.min(Math.max(current * 2, INITIAL_BACKOFF_MS), MAX_BACKOFF_MS);
 }
 
+function isLoopbackHost(hostname: string) {
+  return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
+function shouldProbeBridge(
+  bridgeUrl: string,
+  session: BridgeSession | null,
+  pathname: string,
+) {
+  if (typeof window === "undefined") return true;
+
+  try {
+    const bridgeHostname = new URL(bridgeUrl).hostname;
+    if (!isLoopbackHost(bridgeHostname)) {
+      return true;
+    }
+
+    if (isLoopbackHost(window.location.hostname)) {
+      return true;
+    }
+
+    if (session) {
+      return true;
+    }
+
+    return pathname === "/desktop" || pathname.startsWith("/desktop/");
+  } catch {
+    return true;
+  }
+}
+
 export function useBridgeHealthProbe(
   bridgeUrl: string,
   session: BridgeSession | null,
   setters: HealthProbeSetters,
 ) {
   const { setHealth, setConfig, setReachable, setStatus } = setters;
+  const pathname = usePathname();
 
   const [networkStatus, setNetworkStatus] = useState<BridgeNetworkStatus>(
     INITIAL_NETWORK_STATUS,
   );
   const [retryTick, setRetryTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const probeEnabled = shouldProbeBridge(bridgeUrl, session, pathname);
 
   useEffect(() => {
     const clearScheduled = () => {
@@ -60,6 +94,16 @@ export function useBridgeHealthProbe(
         timerRef.current = null;
       }
     };
+
+    if (!probeEnabled) {
+      clearScheduled();
+      setHealth(null);
+      setConfig(null);
+      setReachable(false);
+      setStatus("disconnected");
+      setNetworkStatus(INITIAL_NETWORK_STATUS);
+      return clearScheduled;
+    }
 
     // Indirection through a function the narrower can't trace, so checks
     // after `await` aren't proven tautologically false.
@@ -140,10 +184,16 @@ export function useBridgeHealthProbe(
       controller.abort();
       clearScheduled();
     };
-    // Setters are stable via useState; we re-run the probe loop when the bridge
-    // URL, session, or an explicit retry trigger changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridgeUrl, session, retryTick]);
+  }, [
+    bridgeUrl,
+    retryTick,
+    session,
+    setConfig,
+    setHealth,
+    probeEnabled,
+    setReachable,
+    setStatus,
+  ]);
 
   const retryNow = useCallback(() => {
     setRetryTick((tick) => tick + 1);

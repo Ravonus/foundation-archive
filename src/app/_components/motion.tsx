@@ -127,6 +127,8 @@ export function WordReveal({
   stagger = 0.045,
   duration = 0.7,
   as = "h1",
+  highlight,
+  highlightClassName = "font-semibold text-[var(--color-brand-green)]",
 }: {
   text: string;
   className?: string;
@@ -134,13 +136,36 @@ export function WordReveal({
   stagger?: number;
   duration?: number;
   as?: "h1" | "h2" | "p";
+  highlight?: string;
+  highlightClassName?: string;
 }) {
   const reduce = useReducedMotion();
   const Tag = motion[as] as React.ComponentType<HTMLMotionProps<"h1">>;
+  const normalized = highlight?.trim().toLowerCase();
+  const isHighlighted = (token: string) =>
+    Boolean(normalized) && token.replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase() === normalized;
 
   if (reduce) {
     const Plain = as;
-    return <Plain className={className}>{text}</Plain>;
+    return (
+      <Plain className={className}>
+        {text.split("\n").map((line, li, arr) => (
+          <span key={li} style={{ display: "block" }}>
+            {line.split(/(\s+)/).map((token, i) => {
+              if (/^\s+$/.test(token)) return token;
+              return isHighlighted(token) ? (
+                <span key={`${li}-${i}`} className={highlightClassName}>
+                  {token}
+                </span>
+              ) : (
+                token
+              );
+            })}
+            {li < arr.length - 1 ? null : null}
+          </span>
+        ))}
+      </Plain>
+    );
   }
 
   const parent: Variants = {
@@ -171,6 +196,7 @@ export function WordReveal({
               <motion.span
                 key={`${li}-${i}`}
                 variants={child}
+                className={isHighlighted(token) ? highlightClassName : undefined}
                 style={{ display: "inline-block" }}
               >
                 {token}
@@ -192,12 +218,10 @@ export function CountUp({
 }) {
   const reduce = useReducedMotion();
   const [n, setN] = useState(reduce ? value : 0);
+  const displayValue = reduce ? value : n;
 
   useEffect(() => {
-    if (reduce) {
-      setN(value);
-      return;
-    }
+    if (reduce) return;
     let raf = 0;
     let start: number | null = null;
     const step = (ts: number) => {
@@ -213,7 +237,7 @@ export function CountUp({
 
   return (
     <span className="tabular-nums" aria-label={value.toLocaleString()}>
-      {n.toLocaleString()}
+      {displayValue.toLocaleString()}
     </span>
   );
 }

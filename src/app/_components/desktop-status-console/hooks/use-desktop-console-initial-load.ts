@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 import type {
   BridgeConfig,
@@ -61,13 +61,7 @@ export function useDesktopConsoleInitialLoad({
   setFeedback,
 }: InitialLoadArgs) {
   const { bridgeUrl, reachable } = bridge;
-
-  useEffect(() => {
-    if (!reachable) {
-      setLocalInventory(null);
-      return;
-    }
-
+  const runLoad = useEffectEvent(() => {
     let cancelled = false;
 
     void loadBridgeData({
@@ -91,8 +85,16 @@ export function useDesktopConsoleInitialLoad({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridgeUrl, reachable]);
+  });
+
+  useEffect(() => {
+    if (!reachable) {
+      setLocalInventory(null);
+      return;
+    }
+
+    return runLoad();
+  }, [bridgeUrl, reachable, setLocalInventory]);
 }
 
 export function useDesktopConsoleConfigDraftSync(

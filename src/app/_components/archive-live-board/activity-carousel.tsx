@@ -27,6 +27,9 @@ function useActivityCarouselState(
   const [freshKey, setFreshKey] = useState<string | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
   const thumbRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const registerThumbRef = (index: number, node: HTMLButtonElement | null) => {
+    thumbRefs.current[index] = node;
+  };
 
   const latestGroupIndex = useMemo(
     () =>
@@ -38,27 +41,37 @@ function useActivityCarouselState(
 
   useEffect(() => {
     if (groups.length === 0) {
-      setActiveIndex(0);
-      return undefined;
+      const frame = window.requestAnimationFrame(() => {
+        setActiveIndex(0);
+        setFreshKey(null);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
 
     if (latestGroupIndex >= 0) {
       const nextKey = groups[latestGroupIndex]?.key ?? null;
-      setActiveIndex(latestGroupIndex);
-      setFreshKey(nextKey);
+      const frame = window.requestAnimationFrame(() => {
+        setActiveIndex(latestGroupIndex);
+        setFreshKey(nextKey);
+      });
 
       if (nextKey) {
         const timeout = window.setTimeout(() => {
           setFreshKey((current) => (current === nextKey ? null : current));
         }, 4_800);
-        return () => window.clearTimeout(timeout);
+        return () => {
+          window.cancelAnimationFrame(frame);
+          window.clearTimeout(timeout);
+        };
       }
 
-      return undefined;
+      return () => window.cancelAnimationFrame(frame);
     }
 
-    setActiveIndex((current) => Math.min(current, groups.length - 1));
-    return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      setActiveIndex((current) => Math.min(current, groups.length - 1));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [groups, latestGroupIndex]);
 
   useEffect(() => {
@@ -95,7 +108,7 @@ function useActivityCarouselState(
     setActiveIndex,
     freshKey,
     railRef,
-    thumbRefs,
+    registerThumbRef,
   };
 }
 
@@ -487,18 +500,15 @@ function CarouselThumbRail({
   freshKey,
   setActiveIndex,
   railRef,
-  thumbRefs,
+  registerThumbRef,
 }: {
   groups: Array<ActivityGroup>;
   activeIndex: number;
   freshKey: string | null;
   setActiveIndex: (index: number) => void;
   railRef: React.RefObject<HTMLDivElement | null>;
-  thumbRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
+  registerThumbRef: (index: number, node: HTMLButtonElement | null) => void;
 }) {
-  const registerRef = (index: number, node: HTMLButtonElement | null) => {
-    thumbRefs.current[index] = node;
-  };
   return (
     <div className="edge-fade-x w-full max-w-full min-w-0 overflow-x-auto pb-2 scroll-smooth">
       <div
@@ -513,7 +523,7 @@ function CarouselThumbRail({
             selected={index === activeIndex}
             fresh={group.key === freshKey}
             onSelect={setActiveIndex}
-            registerRef={registerRef}
+            registerRef={registerThumbRef}
           />
         ))}
       </div>
@@ -546,7 +556,7 @@ export function ActivityCarousel({
     setActiveIndex,
     freshKey,
     railRef,
-    thumbRefs,
+    registerThumbRef,
   } = useActivityCarouselState(groups, latestEvent, compact);
 
   if (groups.length === 0) {
@@ -581,12 +591,12 @@ export function ActivityCarousel({
         />
         <CarouselThumbRail
           groups={groups}
-          activeIndex={activeIndex}
-          freshKey={freshKey}
-          setActiveIndex={setActiveIndex}
-          railRef={railRef}
-          thumbRefs={thumbRefs}
-        />
+        activeIndex={activeIndex}
+        freshKey={freshKey}
+        setActiveIndex={setActiveIndex}
+        railRef={railRef}
+        registerThumbRef={registerThumbRef}
+      />
       </div>
     </div>
   );

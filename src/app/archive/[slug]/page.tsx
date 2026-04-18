@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Check } from "lucide-react";
 
+import { DesktopBridgeProvider } from "~/app/_components/desktop-bridge-provider";
 import { DesktopShareButton } from "~/app/_components/desktop-share-button";
 import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
@@ -448,17 +449,19 @@ function DesktopSharePanel({ artwork, view }: SectionProps) {
         </p>
         {hasShareableRoots ? (
           <div className="mt-4">
-            <DesktopShareButton
-              work={{
-                title: artwork.title,
-                contractAddress: artwork.contractAddress,
-                tokenId: artwork.tokenId,
-                foundationUrl: artwork.foundationUrl,
-                artistUsername: artwork.artistUsername,
-                metadataCid: artwork.metadataRoot?.cid,
-                mediaCid: artwork.mediaRoot?.cid,
-              }}
-            />
+            <DesktopBridgeProvider>
+              <DesktopShareButton
+                work={{
+                  title: artwork.title,
+                  contractAddress: artwork.contractAddress,
+                  tokenId: artwork.tokenId,
+                  foundationUrl: artwork.foundationUrl,
+                  artistUsername: artwork.artistUsername,
+                  metadataCid: artwork.metadataRoot?.cid,
+                  mediaCid: artwork.mediaRoot?.cid,
+                }}
+              />
+            </DesktopBridgeProvider>
           </div>
         ) : null}
       </div>
