@@ -20,10 +20,14 @@ import {
   setArchiveAutoCrawlerEnabled,
   setArchivePace,
 } from "~/server/archive/state";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  lanAdminProcedure,
+  publicProcedure,
+} from "~/server/api/trpc";
 
 export const archiveRouter = createTRPCRouter({
-  enqueueFoundationUrl: publicProcedure
+  enqueueFoundationUrl: lanAdminProcedure
     .input(
       z.object({
         url: foundationMintUrlSchema,
@@ -36,7 +40,7 @@ export const archiveRouter = createTRPCRouter({
       };
     }),
 
-  enqueueContractScan: publicProcedure
+  enqueueContractScan: lanAdminProcedure
     .input(contractScanInputSchema)
     .mutation(async ({ ctx, input }) => {
       const job = await enqueueContractScan(ctx.db, input);
@@ -57,13 +61,13 @@ export const archiveRouter = createTRPCRouter({
       return requestProfileArchive(ctx.db, input);
     }),
 
-  processQueue: publicProcedure
+  processQueue: lanAdminProcedure
     .input(enqueueQueueProcessingSchema)
     .mutation(async ({ ctx, input }) => {
       return processQueuedJobs(ctx.db, input.limit);
     }),
 
-  setAutoCrawlerEnabled: publicProcedure
+  setAutoCrawlerEnabled: lanAdminProcedure
     .input(
       z.object({
         enabled: z.boolean(),
@@ -76,7 +80,7 @@ export const archiveRouter = createTRPCRouter({
       };
     }),
 
-  setArchivePace: publicProcedure
+  setArchivePace: lanAdminProcedure
     .input(
       z.object({
         pace: z.enum(["slow", "steady", "fast"]),
@@ -89,7 +93,7 @@ export const archiveRouter = createTRPCRouter({
       };
     }),
 
-  getAutoCrawlerState: publicProcedure.query(async ({ ctx }) => {
+  getAutoCrawlerState: lanAdminProcedure.query(async ({ ctx }) => {
     const policy = await getArchivePolicyState(ctx.db);
     return {
       autoCrawlerEnabled: policy.autoCrawlerEnabled,
@@ -97,7 +101,7 @@ export const archiveRouter = createTRPCRouter({
     };
   }),
 
-  seedKnownContracts: publicProcedure.mutation(async ({ ctx }) => {
+  seedKnownContracts: lanAdminProcedure.mutation(async ({ ctx }) => {
     const contracts = await seedKnownContracts(ctx.db);
     return {
       count: contracts.length,

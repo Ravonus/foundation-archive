@@ -6,8 +6,8 @@ export const ARCHIVE_PACE_CONFIG = {
     label: "Slow",
     contractsPerTick: 1,
     queueLimit: 1,
-    busyDelayMs: 22_000,
-    idleDelayMs: 75_000,
+    busyDelayMs: 28_000,
+    idleDelayMs: 90_000,
     maxPendingJobs: 96,
   },
   steady: {

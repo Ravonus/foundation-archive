@@ -1,11 +1,20 @@
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+
 import { ArchiveLiveBoard } from "~/app/_components/archive-live-board";
 import { FadeUp } from "~/app/_components/motion";
+import { isAllowedAdminRequest } from "~/server/admin-access";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { db } from "~/server/db";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  const requestHeaders = await headers();
+  if (!isAllowedAdminRequest(requestHeaders)) {
+    notFound();
+  }
+
   const snapshot = await getArchiveLiveSnapshot(db);
 
   return (

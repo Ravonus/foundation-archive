@@ -1,7 +1,8 @@
-import { initTRPC } from "@trpc/server";
+import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
+import { isAllowedAdminRequest } from "~/server/admin-access";
 import { db } from "~/server/db";
 
 export const createTRPCContext = (opts: { headers: Headers }) => ({
@@ -42,3 +43,18 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 });
 
 export const publicProcedure = t.procedure.use(timingMiddleware);
+
+const lanOnlyAdminMiddleware = t.middleware(({ ctx, next }) => {
+  if (!isAllowedAdminRequest(ctx.headers)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Admin access is limited to the local network.",
+    });
+  }
+
+  return next();
+});
+
+export const lanAdminProcedure = t.procedure.use(timingMiddleware).use(
+  lanOnlyAdminMiddleware,
+);
