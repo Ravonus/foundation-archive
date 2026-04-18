@@ -25,8 +25,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/decenterlizePage.png",
-        width: 1600,
-        height: 900,
+        width: 1731,
+        height: 909,
         alt: "Foundation Archive: about the maker",
       },
     ],

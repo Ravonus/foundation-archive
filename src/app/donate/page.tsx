@@ -33,9 +33,9 @@ export const metadata: Metadata = {
       "Support the archive today. Fund the decentralized preservation layer for tomorrow.",
     images: [
       {
-        url: "/donatePage.png",
-        width: 1600,
-        height: 900,
+        url: "/decenterlizePage.png",
+        width: 1731,
+        height: 909,
         alt: "Support preservation. Donate to Foundation Archive.",
       },
     ],
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     title: "Donate to Foundation Archive",
     description:
       "Support the archive today. Fund the decentralized preservation layer for tomorrow.",
-    images: ["/donatePage.png"],
+    images: ["/decenterlizePage.png"],
   },
 };
 

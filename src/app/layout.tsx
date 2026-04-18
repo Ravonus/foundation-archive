@@ -15,8 +15,8 @@ import { TRPCReactProvider } from "~/trpc/react";
 const siteUrl = "https://foundationarchive.org";
 const ogImage = {
   url: "/decenterlizePage.png",
-  width: 1600,
-  height: 900,
+  width: 1731,
+  height: 909,
   alt: "Foundation Archive: a preservation archive for Foundation artists",
 };
 

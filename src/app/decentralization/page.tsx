@@ -37,9 +37,9 @@ export const metadata: Metadata = {
       "Demand deserves decentralization. Meet agorix.io, the service layer under Foundation Archive.",
     images: [
       {
-        url: "/decenterlizePage2.png",
-        width: 1600,
-        height: 900,
+        url: "/decenterlizePage.png",
+        width: 1731,
+        height: 909,
         alt: "Demand deserves decentralization. agorix.io.",
       },
     ],
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     title: "Decentralization at Foundation Archive",
     description:
       "Demand deserves decentralization. Meet agorix.io, the service layer under Foundation Archive.",
-    images: ["/decenterlizePage2.png"],
+    images: ["/decenterlizePage.png"],
   },
 };
 
