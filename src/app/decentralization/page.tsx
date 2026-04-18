@@ -30,11 +30,11 @@ import { FadeUp, Stagger } from "~/app/_components/motion";
 export const metadata: Metadata = {
   title: "Decentralization",
   description:
-    "Why Foundation Archive is building agorix.io, a decentralized preservation service layer for keeping artwork reachable for the long haul.",
+    "Why Agorix is building a decentralized preservation layer under the public Foundation archive.",
   openGraph: {
-    title: "Decentralization at Foundation Archive",
+    title: "Decentralization at Agorix",
     description:
-      "Demand deserves decentralization. Meet agorix.io, the service layer under Foundation Archive.",
+      "Demand deserves decentralization. Meet agorix.io, the service layer under Agorix.",
     images: [
       {
         url: "/decenterlizePage.png",
@@ -46,9 +46,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Decentralization at Foundation Archive",
+    title: "Decentralization at Agorix",
     description:
-      "Demand deserves decentralization. Meet agorix.io, the service layer under Foundation Archive.",
+      "Demand deserves decentralization. Meet agorix.io, the service layer under Agorix.",
     images: ["/decenterlizePage.png"],
   },
 };
@@ -117,7 +117,7 @@ export default function DecentralizationPage() {
           .
         </>
       }
-      intro="Foundation Archive is the front line. agorix.io is the service layer underneath. Together they turn preservation from a single-host gamble into a network that carries the work forward, so artists aren't held hostage and culture stays accessible."
+      intro="Agorix is the broader system. This public Foundation archive is the front line we accelerated because of the recent news, and agorix.io is the service layer underneath that keeps the work moving beyond any single host."
       supporting="Decentralization here isn't ideology. It's a design requirement for keeping artwork reachable long after any single operator, product, or hosting bill changes."
       actions={[
         { href: "/donate", label: "Support the work" },
@@ -137,10 +137,10 @@ export default function DecentralizationPage() {
               </h2>
               <p className="mt-5 max-w-xl text-base leading-relaxed text-[var(--color-body)]">
                 agorix.io is the open service layer we&apos;re building under
-                Foundation Archive. It coordinates storage, replication,
-                verification, and retrieval across independent operators, so
-                the art above it keeps living even when any single participant
-                steps away.
+                Agorix. The public Foundation archive is the most visible part
+                right now, but the network coordinates storage, replication,
+                verification, and retrieval across independent operators so the
+                art keeps living even when any single participant steps away.
               </p>
               <p className="mt-3 max-w-xl text-sm leading-relaxed text-[var(--color-muted)]">
                 One side contributes compute, bandwidth, and uptime. The other
@@ -331,9 +331,10 @@ export default function DecentralizationPage() {
             layer.
           </h2>
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-[#c6d2ca] sm:text-lg">
-            Foundation Archive is already saving work. agorix.io is how we make
-            sure it stays reachable for the long haul. If that future matters
-            to you, there&apos;s a way to back it.
+            Agorix is already saving work through this public Foundation
+            archive. agorix.io is how we make sure it stays reachable for the
+            long haul. If that future matters to you, there&apos;s a way to back
+            it.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link

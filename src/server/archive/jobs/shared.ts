@@ -187,11 +187,14 @@ export async function loadArtworkLiveCard(
       artistName: true,
       artistUsername: true,
       artistWallet: true,
+      mediaKind: true,
+      sourceUrl: true,
       staticPreviewUrl: true,
       previewUrl: true,
       foundationUrl: true,
       contractAddress: true,
       tokenId: true,
+      mediaStatus: true,
       metadataRoot: {
         select: {
           cid: true,
@@ -200,6 +203,7 @@ export async function loadArtworkLiveCard(
       mediaRoot: {
         select: {
           cid: true,
+          relativePath: true,
         },
       },
     },

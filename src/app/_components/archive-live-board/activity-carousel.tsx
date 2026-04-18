@@ -169,6 +169,13 @@ function CarouselHeroImage({
           src={active.artwork.posterUrl}
           alt={active.artwork.title}
           className="h-full w-full object-cover"
+          loading="eager"
+          fetchPriority="high"
+          sizes={
+            compact
+              ? "(min-width: 1536px) 30rem, (min-width: 768px) 52vw, 100vw"
+              : "(min-width: 1536px) 32rem, (min-width: 1024px) 58vw, 100vw"
+          }
         />
       ) : (
         <div className="flex h-full items-center justify-center text-sm text-[var(--color-subtle)]">
@@ -403,7 +410,17 @@ function CarouselStatusRow({
   );
 }
 
-function CarouselThumbImage({ group }: { group: ActivityGroup }) {
+function CarouselThumbImage({
+  group,
+  prioritizeImage,
+  selected,
+  fresh,
+}: {
+  group: ActivityGroup;
+  prioritizeImage: boolean;
+  selected: boolean;
+  fresh: boolean;
+}) {
   return (
     <div className="aspect-[1.12/1] overflow-hidden bg-[var(--color-placeholder)]">
       {group.artwork.posterUrl ? (
@@ -411,6 +428,9 @@ function CarouselThumbImage({ group }: { group: ActivityGroup }) {
           src={group.artwork.posterUrl}
           alt={group.artwork.title}
           className="h-full w-full object-cover transition duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
+          loading={prioritizeImage ? "eager" : "lazy"}
+          fetchPriority={selected || fresh ? "high" : "auto"}
+          sizes="(min-width: 640px) 12.5rem, 11rem"
         />
       ) : (
         <div className="flex h-full items-center justify-center text-xs text-[var(--color-subtle)]">
@@ -449,6 +469,7 @@ function CarouselThumbButton({
   index,
   selected,
   fresh,
+  prioritizeImage,
   onSelect,
   registerRef,
 }: {
@@ -456,6 +477,7 @@ function CarouselThumbButton({
   index: number;
   selected: boolean;
   fresh: boolean;
+  prioritizeImage: boolean;
   onSelect: (index: number) => void;
   registerRef: (index: number, node: HTMLButtonElement | null) => void;
 }) {
@@ -487,7 +509,12 @@ function CarouselThumbButton({
         />
       ) : null}
       <div className="relative w-[11rem] sm:w-[12.5rem]">
-        <CarouselThumbImage group={group} />
+        <CarouselThumbImage
+          group={group}
+          prioritizeImage={prioritizeImage}
+          selected={selected}
+          fresh={fresh}
+        />
         <CarouselThumbMeta group={group} />
       </div>
     </motion.button>
@@ -522,6 +549,9 @@ function CarouselThumbRail({
             index={index}
             selected={index === activeIndex}
             fresh={group.key === freshKey}
+            prioritizeImage={
+              index === activeIndex || group.key === freshKey || index < 4
+            }
             onSelect={setActiveIndex}
             registerRef={registerThumbRef}
           />
@@ -591,12 +621,12 @@ export function ActivityCarousel({
         />
         <CarouselThumbRail
           groups={groups}
-        activeIndex={activeIndex}
-        freshKey={freshKey}
-        setActiveIndex={setActiveIndex}
-        railRef={railRef}
-        registerThumbRef={registerThumbRef}
-      />
+          activeIndex={activeIndex}
+          freshKey={freshKey}
+          setActiveIndex={setActiveIndex}
+          railRef={railRef}
+          registerThumbRef={registerThumbRef}
+        />
       </div>
     </div>
   );

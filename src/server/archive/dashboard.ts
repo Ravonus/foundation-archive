@@ -5,6 +5,7 @@ import type {
   ArchivePolicyCard,
   ArchiveWorkerStatusCard,
 } from "~/lib/archive-live";
+import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { readRecentArchiveEvents } from "~/server/archive/live-events";
 import type { PrismaClient } from "~/server/prisma-client";
 
@@ -17,18 +18,35 @@ type ArtworkCardRow = {
   artistName: string | null;
   artistUsername: string | null;
   artistWallet: string | null;
+  mediaKind: string;
+  sourceUrl: string | null;
   staticPreviewUrl: string | null;
   previewUrl: string | null;
   foundationUrl: string | null;
   contractAddress: string;
   tokenId: string;
+  mediaStatus: string;
   metadataRoot: {
     cid: string;
   } | null;
   mediaRoot: {
     cid: string;
+    relativePath: string | null;
   } | null;
 };
+
+function archivedPosterUrl(artwork: ArtworkCardRow) {
+  const isArchived =
+    artwork.mediaStatus === "DOWNLOADED" || artwork.mediaStatus === "PINNED";
+  if (!isArchived || artwork.mediaKind !== "IMAGE" || !artwork.mediaRoot) {
+    return null;
+  }
+
+  return buildArchivePublicPath(
+    artwork.mediaRoot.cid,
+    artwork.mediaRoot.relativePath,
+  );
+}
 
 export function toLiveArtworkCard(
   artwork: ArtworkCardRow | null | undefined,
@@ -42,7 +60,11 @@ export function toLiveArtworkCard(
     artistName: artwork.artistName,
     artistUsername: artwork.artistUsername,
     artistWallet: artwork.artistWallet,
-    posterUrl: artwork.staticPreviewUrl ?? artwork.previewUrl,
+    posterUrl:
+      archivedPosterUrl(artwork) ??
+      artwork.staticPreviewUrl ??
+      artwork.previewUrl ??
+      (artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null),
     contractAddress: artwork.contractAddress,
     tokenId: artwork.tokenId,
     foundationUrl: artwork.foundationUrl,
@@ -261,13 +283,16 @@ async function fetchLatestArchivedArtworks(client: DatabaseClient) {
       artistName: true,
       artistUsername: true,
       artistWallet: true,
+      mediaKind: true,
+      sourceUrl: true,
       staticPreviewUrl: true,
       previewUrl: true,
       foundationUrl: true,
       contractAddress: true,
       tokenId: true,
+      mediaStatus: true,
       metadataRoot: { select: { cid: true } },
-      mediaRoot: { select: { cid: true } },
+      mediaRoot: { select: { cid: true, relativePath: true } },
     },
   });
 }

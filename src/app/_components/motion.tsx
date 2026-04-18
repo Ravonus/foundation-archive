@@ -242,22 +242,35 @@ export function CountUp({
   );
 }
 
-export function BlurImage({
+function BlurImageFrame({
   src,
   alt,
   className,
+  loading = "lazy",
+  fetchPriority = "auto",
+  sizes,
 }: {
   src: string;
   alt: string;
   className?: string;
+  loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
+  sizes?: string;
 }) {
   const reduce = useReducedMotion();
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    if (ref.current?.complete) setLoaded(true);
+    if (ref.current?.complete && ref.current.naturalWidth > 0) {
+      setLoaded(true);
+    }
   }, []);
+
+  if (failed) {
+    return null;
+  }
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -265,8 +278,15 @@ export function BlurImage({
       ref={ref}
       src={src}
       alt={alt}
-      loading="lazy"
+      loading={loading}
+      fetchPriority={fetchPriority}
+      decoding="async"
+      sizes={sizes}
       onLoad={() => setLoaded(true)}
+      onError={() => {
+        setFailed(true);
+        setLoaded(true);
+      }}
       className={className}
       style={{
         display: "block",
@@ -277,6 +297,17 @@ export function BlurImage({
       }}
     />
   );
+}
+
+export function BlurImage(props: {
+  src: string;
+  alt: string;
+  className?: string;
+  loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
+  sizes?: string;
+}) {
+  return <BlurImageFrame key={props.src} {...props} />;
 }
 
 export function PageFade({ children }: { children: React.ReactNode }) {

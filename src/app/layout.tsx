@@ -12,23 +12,27 @@ import { ThemeProvider } from "~/app/_components/theme/theme-provider";
 import { ThemeToggle } from "~/app/_components/theme/theme-toggle";
 import { TRPCReactProvider } from "~/trpc/react";
 
-const siteUrl = "https://foundationarchive.org";
+const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+const siteUrl =
+  configuredSiteUrl && configuredSiteUrl.length > 0
+    ? configuredSiteUrl
+    : "https://foundation.agorix.io";
 const ogImage = {
   url: "/decenterlizePage.png",
   width: 1731,
   height: 909,
-  alt: "Foundation Archive: a preservation archive for Foundation artists",
+  alt: "Agorix: a public Foundation archive and preservation network",
 };
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Foundation Archive",
-    template: "%s | Foundation Archive",
+    default: "Agorix",
+    template: "%s | Agorix",
   },
   description:
-    "A preservation archive for Foundation artists. Search works, save ones you care about, and optionally keep your own copy with our desktop app.",
-  applicationName: "Foundation Archive",
+    "Agorix is building a public Foundation archive in response to the recent news. Search saved works, back up pieces you care about, and help keep them reachable.",
+  applicationName: "Agorix",
   keywords: [
     "Foundation",
     "Foundation.app",
@@ -45,18 +49,18 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: siteUrl,
-    siteName: "Foundation Archive",
-    title: "Foundation Archive: independent preservation for Foundation artists",
+    siteName: "Agorix",
+    title: "Agorix: a public Foundation archive and preservation network",
     description:
-      "Independent preservation for Foundation artists. Save the art. Build the decentralized service layer that keeps it reachable.",
+      "Agorix is building this public Foundation archive because of the recent news, while the wider network grows underneath it.",
     images: [ogImage],
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Foundation Archive: independent preservation for Foundation artists",
+    title: "Agorix: a public Foundation archive and preservation network",
     description:
-      "Independent preservation for Foundation artists. Save the art. Build the decentralized service layer that keeps it reachable.",
+      "Agorix is building this public Foundation archive because of the recent news, while the wider network grows underneath it.",
     creator: "@r4vonus",
     images: [ogImage.url],
   },
@@ -143,7 +147,7 @@ export default function RootLayout({
                   <Link
                     href="/"
                     className="group inline-flex min-w-0 items-center gap-2.5 sm:gap-3"
-                    aria-label="Foundation Archive home"
+                    aria-label="Agorix home"
                   >
                     <span
                       aria-hidden
@@ -152,7 +156,7 @@ export default function RootLayout({
                       <LogoMark size={28} />
                     </span>
                     <span className="truncate font-serif text-[1.05rem] leading-none tracking-tight text-[var(--color-ink)] sm:text-[1.2rem]">
-                      Foundation Archive
+                      Agorix
                     </span>
                   </Link>
 

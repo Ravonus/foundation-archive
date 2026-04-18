@@ -17,9 +17,9 @@ import { FadeUp, Stagger } from "~/app/_components/motion";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Foundation Archive is built by Ravonus, who has been working on archival and preservation tools for blockchain art since 2019.",
+    "Agorix is built by Ravonus, who has been working on archival and preservation tools for blockchain art since 2019.",
   openGraph: {
-    title: "About Foundation Archive",
+    title: "About Agorix",
     description:
       "Built by Ravonus. Archival tools for blockchain art since 2019.",
     images: [
@@ -27,13 +27,13 @@ export const metadata: Metadata = {
         url: "/decenterlizePage.png",
         width: 1731,
         height: 909,
-        alt: "Foundation Archive: about the maker",
+        alt: "Agorix: about the maker",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "About Foundation Archive",
+    title: "About Agorix",
     description:
       "Built by Ravonus. Archival tools for blockchain art since 2019.",
     images: ["/decenterlizePage.png"],
@@ -58,8 +58,8 @@ const timeline: { year: string; title: string; body: string }[] = [
   },
   {
     year: "2026",
-    title: "Foundation Archive + the decentralization plan",
-    body: "Foundation Archive is the most direct version of that work so far. Save Foundation art in public now, and build the decentralized service layer that keeps it reachable long after any single host, gateway, or team moves on.",
+    title: "Agorix launches the Foundation archive push",
+    body: "Agorix is the most direct public version of that work so far. The current Foundation archive accelerated because of the recent news, while the deeper service layer keeps growing underneath it.",
   },
 ];
 
@@ -76,7 +76,7 @@ export default function AboutPage() {
           tools for blockchain art since 2019.
         </>
       }
-      intro="Hi, I'm Ravonus. I've spent the last several years working on the unsexy half of this space: making sure the art actually stays reachable. Foundation Archive is the clearest version of that work yet."
+      intro="Hi, I'm Ravonus. I've spent the last several years working on the unsexy half of this space: making sure the art actually stays reachable. Agorix is the clearest public version of that work right now."
       supporting="The short version: too much digital art survives by accident. I'd rather it survive by design."
       actions={[
         { href: "/decentralization", label: "Read the decentralization plan" },
@@ -97,9 +97,9 @@ export default function AboutPage() {
                 I&apos;ve been writing archival and preservation tools for
                 blockchain art since 2019. That means indexing works, capturing
                 media, replicating it, and trying to keep the retrieval paths
-                alive when the industry underneath moves on. Foundation Archive
-                is the continuation of that work, focused on artists I&apos;ve
-                been watching for years.
+                alive when the industry underneath moves on. Agorix is the
+                continuation of that work, and this public Foundation archive is
+                the current response to the recent news I couldn&apos;t ignore.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <a
@@ -147,7 +147,7 @@ export default function AboutPage() {
                 <ThemedImage
                   light="/image_1_light.png"
                   dark="/image_1_dark.png"
-                  alt="Foundation Archive mark: two overlapping squares"
+                  alt="Agorix mark: two overlapping squares"
                   width={420}
                   height={420}
                   className="h-auto w-full rounded-md"
@@ -227,7 +227,7 @@ export default function AboutPage() {
         <SectionCard
           eyebrow="What I'm building next"
           title="A decentralized preservation layer named agorix.io"
-          body="Foundation Archive is a live preservation product today. agorix.io is the broader service layer underneath it: a network where demand, storage, verification, and retrieval coordinate so art can outlast any single operator. Read the decentralization page for the plan."
+          body="Agorix is a live preservation product today. The public Foundation archive is the first front, and agorix.io is the broader service layer underneath it: a network where demand, storage, verification, and retrieval coordinate so art can outlast any single operator. Read the decentralization page for the plan."
         />
         <SectionCard
           eyebrow="Why me"

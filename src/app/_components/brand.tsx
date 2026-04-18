@@ -17,7 +17,7 @@ export function LogoMark({
   return (
     <svg
       role="img"
-      aria-label="Foundation Archive mark"
+      aria-label="Agorix mark"
       width={size}
       height={size}
       viewBox="0 0 64 64"

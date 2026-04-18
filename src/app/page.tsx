@@ -154,28 +154,29 @@ function HeroIntro() {
             aria-hidden
             className="inline-block h-px w-8 bg-[var(--color-line-strong)]"
           />
-          Est. 2025 · Independent preservation
+          Agorix · Foundation archive response
         </p>
       </FadeUp>
 
       <WordReveal
         as="h1"
-        text={"A preservation archive\nfor Foundation artists."}
-        highlight="preservation"
+        text={"Agorix is building\na Foundation archive."}
+        highlight="Agorix"
         className="mt-4 font-serif text-4xl leading-[1.05] tracking-tight text-[var(--color-ink)] sm:text-6xl"
         delay={0.1}
       />
 
       <FadeUp delay={0.5} duration={0.6}>
         <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--color-body)] sm:text-lg">
-          We automatically find and save Foundation artwork so it stays online,
-          even if the original hosts go away. Search what&apos;s been saved, or
-          submit a work to be saved.
+          Recent news made the risk plain, so Agorix is running this public
+          Foundation archive to automatically find and save artwork before more
+          of it slips away. Search what&apos;s been saved, or submit a work to be
+          saved.
         </p>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--color-muted)] sm:text-base">
           Artists and collectors can also run our desktop app to keep an extra
           copy on their own computer. It&apos;s an optional way to help back up
-          work you care about.
+          work they care about while the broader Agorix network takes shape.
         </p>
       </FadeUp>
     </>
@@ -189,7 +190,7 @@ function HeroArt() {
         <ThemedImage
           light="/image_1_light.png"
           dark="/image_1_dark.png"
-          alt="Foundation Archive study: overlapping squares with a crescent of light"
+          alt="Agorix study: overlapping squares with a crescent of light"
           width={620}
           height={620}
           className="h-auto w-full rounded-md"

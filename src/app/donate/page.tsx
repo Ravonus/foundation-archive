@@ -26,25 +26,25 @@ const SOL_ADDRESS = "6Fv3zvKSBLwTeyDWR7a2xMYt1Yx8kWFT6DkcAWcpqJgQ";
 export const metadata: Metadata = {
   title: "Donate",
   description:
-    "Support Foundation Archive and help build agorix.io, the decentralized preservation layer that keeps artwork reachable for the long haul.",
+    "Support Agorix and help fund the public Foundation archive plus the wider preservation network underneath it.",
   openGraph: {
-    title: "Donate to Foundation Archive",
+    title: "Donate to Agorix",
     description:
-      "Support the archive today. Fund the decentralized preservation layer for tomorrow.",
+      "Support the archive today. Fund the wider preservation network for tomorrow.",
     images: [
       {
         url: "/decenterlizePage.png",
         width: 1731,
         height: 909,
-        alt: "Support preservation. Donate to Foundation Archive.",
+        alt: "Support preservation. Donate to Agorix.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Donate to Foundation Archive",
+    title: "Donate to Agorix",
     description:
-      "Support the archive today. Fund the decentralized preservation layer for tomorrow.",
+      "Support the archive today. Fund the wider preservation network for tomorrow.",
     images: ["/decenterlizePage.png"],
   },
 };
@@ -62,7 +62,7 @@ export default function DonatePage() {
           .
         </>
       }
-      intro="Foundation Archive exists because too much digital art still depends on fragile hosting, changing business incentives, and too few people keeping copies alive. Donations fund the public archive running today, and they fund agorix.io, the decentralized layer that makes disappearing media much harder to lose tomorrow."
+      intro="Agorix exists because too much digital art still depends on fragile hosting, changing business incentives, and too few people keeping copies alive. Donations fund the public Foundation archive we pushed forward because of the recent news, and they fund the wider Agorix network that makes disappearing media much harder to lose tomorrow."
       supporting="If you want to back the work directly, these are the wallet addresses we use for support."
       actions={[
         { href: "/decentralization", label: "Read the decentralization plan" },
@@ -80,11 +80,12 @@ export default function DonatePage() {
                 Your donation keeps it preserved.
               </h2>
               <p className="mt-5 max-w-xl text-base leading-relaxed text-[var(--color-body)]">
-                Foundation Archive is an independent preservation archive for
-                Foundation artists. Every contribution pays for the practical
-                work in front of us right now (indexing works, capturing media,
-                serving the public archive) and for the decentralized service
-                layer that extends that protection far beyond any one operator.
+                Agorix is using this public Foundation archive as the immediate
+                response to the recent news around the platform. Every
+                contribution pays for the practical work in front of us right
+                now (indexing works, capturing media, serving the public
+                archive) and for the decentralized service layer that extends
+                that protection far beyond any one operator.
               </p>
 
               <div className="mt-7 grid gap-4 sm:grid-cols-3">
@@ -131,7 +132,7 @@ export default function DonatePage() {
               </div>
 
               <p className="mt-7 font-mono text-[0.58rem] uppercase tracking-[0.22em] text-[var(--color-subtle)]">
-                foundationarchive.org / donate
+                foundation.agorix.io / donate
               </p>
             </div>
 

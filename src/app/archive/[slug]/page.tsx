@@ -44,7 +44,7 @@ export async function generateMetadata(
   });
 
   if (!artwork) {
-    return { title: "Not found · Foundation Archive" };
+    return { title: "Not found · Agorix" };
   }
 
   const artist =
@@ -53,14 +53,14 @@ export async function generateMetadata(
   const title = `${artwork.title} by ${artist}`;
   const description =
     artwork.description ??
-    `Preserved on the Foundation Archive. ${artwork.collectionName ? `Part of ${artwork.collectionName}. ` : ""}A free, open archive of Foundation artists' work.`;
+    `Preserved by Agorix's Foundation archive. ${artwork.collectionName ? `Part of ${artwork.collectionName}. ` : ""}A free, open archive of Foundation artists' work.`;
   const image =
     artwork.staticPreviewUrl ??
     artwork.previewUrl ??
     (artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null);
 
   return {
-    title: `${title} · Foundation Archive`,
+    title: `${title} · Agorix`,
     description,
     openGraph: {
       title,

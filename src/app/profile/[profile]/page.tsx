@@ -32,8 +32,8 @@ export async function generateMetadata({
     const displayName =
       resolved.name ??
       (resolved.username ? `@${resolved.username}` : resolved.accountAddress);
-    const title = `${displayName} · Foundation Archive`;
-    const description = `Works by ${displayName} saved to the Foundation Archive.`;
+    const title = `${displayName} · Agorix`;
+    const description = `Works by ${displayName} saved in Agorix's Foundation archive.`;
     const image = resolved.profileImageUrl ?? undefined;
     return {
       title,
@@ -52,7 +52,7 @@ export async function generateMetadata({
       },
     };
   } catch {
-    return { title: "Artist · Foundation Archive" };
+    return { title: "Artist · Agorix" };
   }
 }
 

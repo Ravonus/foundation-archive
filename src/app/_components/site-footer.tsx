@@ -59,16 +59,17 @@ export function SiteFooter() {
           <div className="flex items-center gap-2.5">
             <LogoMark size={24} />
             <span className="font-serif text-[1.05rem] tracking-tight text-[var(--color-ink)]">
-              Foundation Archive
+              Agorix
             </span>
           </div>
           <p className="mt-4 text-sm leading-relaxed text-[var(--color-muted)]">
-            An independent preservation archive for Foundation artists. Built
-            to keep work reachable long after any single host, gateway, or
-            platform stops carrying it. Not affiliated with Foundation.
+            Agorix is the broader preservation project. This public site is our
+            Foundation archive response to the recent news, built to keep work
+            reachable long after any single host, gateway, or platform stops
+            carrying it. Not affiliated with Foundation.
           </p>
           <p className="mt-3 font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-subtle)]">
-            Independent preservation · Lasting access
+            Public archive · Recent response · Lasting access
           </p>
         </div>
 
@@ -119,7 +120,7 @@ export function SiteFooter() {
       <div className="border-t border-[var(--color-line)]">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-3 px-6 py-5 text-xs text-[var(--color-subtle)] sm:flex-row sm:items-center">
           <p className="font-mono uppercase tracking-[0.22em]">
-            © {new Date().getFullYear()} Foundation Archive
+            © {new Date().getFullYear()} Agorix
           </p>
           <p className="font-mono uppercase tracking-[0.22em]">
             Independent · Decentralized · Artist-aligned
