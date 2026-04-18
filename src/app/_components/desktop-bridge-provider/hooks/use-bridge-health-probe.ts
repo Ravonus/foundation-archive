@@ -1,7 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 
 import { requestBridgeJson } from "../lib/bridge-api";
 import { bridgeConfigFromHealth } from "../lib/derive-config";
@@ -45,6 +53,45 @@ function isLoopbackHost(hostname: string) {
   return hostname === "127.0.0.1" || hostname === "localhost";
 }
 
+function clearScheduledTimer(
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+) {
+  if (timerRef.current) {
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+}
+
+function scheduleProbe(
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  delay: number,
+  fn: () => Promise<void>,
+) {
+  timerRef.current = setTimeout(() => {
+    void fn();
+  }, delay);
+}
+
+function setBridgeDisconnected(setters: HealthProbeSetters) {
+  setters.setHealth(null);
+  setters.setConfig(null);
+  setters.setReachable(false);
+  setters.setStatus("disconnected");
+}
+
+function setBridgeConnected(input: {
+  setters: HealthProbeSetters;
+  payload: BridgeHealth;
+  session: BridgeSession | null;
+}) {
+  const { setters, payload, session } = input;
+
+  setters.setHealth(payload);
+  setters.setConfig(bridgeConfigFromHealth(payload));
+  setters.setReachable(true);
+  setters.setStatus(session ? "connected" : "disconnected");
+}
+
 function shouldProbeBridge(
   bridgeUrl: string,
   session: BridgeSession | null,
@@ -72,37 +119,33 @@ function shouldProbeBridge(
   }
 }
 
-export function useBridgeHealthProbe(
-  bridgeUrl: string,
-  session: BridgeSession | null,
-  setters: HealthProbeSetters,
-) {
+function useBridgeProbeLoop(input: {
+  bridgeUrl: string;
+  probeEnabled: boolean;
+  retryTick: number;
+  session: BridgeSession | null;
+  setters: HealthProbeSetters;
+  setNetworkStatus: Dispatch<SetStateAction<BridgeNetworkStatus>>;
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
+}) {
+  const {
+    bridgeUrl,
+    probeEnabled,
+    retryTick,
+    session,
+    setters,
+    setNetworkStatus,
+    timerRef,
+  } = input;
   const { setHealth, setConfig, setReachable, setStatus } = setters;
-  const pathname = usePathname();
-
-  const [networkStatus, setNetworkStatus] = useState<BridgeNetworkStatus>(
-    INITIAL_NETWORK_STATUS,
-  );
-  const [retryTick, setRetryTick] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const probeEnabled = shouldProbeBridge(bridgeUrl, session, pathname);
 
   useEffect(() => {
-    const clearScheduled = () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
+    const bridgeSetters = { setHealth, setConfig, setReachable, setStatus };
 
     if (!probeEnabled) {
-      clearScheduled();
-      setHealth(null);
-      setConfig(null);
-      setReachable(false);
-      setStatus("disconnected");
-      setNetworkStatus(INITIAL_NETWORK_STATUS);
-      return clearScheduled;
+      clearScheduledTimer(timerRef);
+      setBridgeDisconnected(bridgeSetters);
+      return () => clearScheduledTimer(timerRef);
     }
 
     // Indirection through a function the narrower can't trace, so checks
@@ -111,12 +154,6 @@ export function useBridgeHealthProbe(
     const isCancelled = () => controller.signal.aborted;
     let currentAttempt = 0;
     let currentBackoff = INITIAL_BACKOFF_MS;
-
-    const schedule = (delay: number, fn: () => Promise<void>) => {
-      timerRef.current = setTimeout(() => {
-        void fn();
-      }, delay);
-    };
 
     const runProbe = async () => {
       if (isCancelled()) return;
@@ -138,27 +175,16 @@ export function useBridgeHealthProbe(
         });
         if (isCancelled()) return;
 
-        setHealth(payload);
-        setConfig(bridgeConfigFromHealth(payload));
-        setReachable(true);
-        setStatus(session ? "connected" : "disconnected");
-        setNetworkStatus({
-          attempts: 0,
-          nextRetryAt: null,
-          lastError: null,
-          retrying: false,
-        });
+        setBridgeConnected({ setters: bridgeSetters, payload, session });
+        setNetworkStatus(INITIAL_NETWORK_STATUS);
         currentBackoff = INITIAL_BACKOFF_MS;
 
         // Keep probing on a slower cadence once healthy so we catch disconnects.
-        schedule(HEALTHY_POLL_MS, runProbe);
+        scheduleProbe(timerRef, HEALTHY_POLL_MS, runProbe);
       } catch (error) {
         if (isCancelled()) return;
 
-        setHealth(null);
-        setConfig(null);
-        setReachable(false);
-        setStatus("disconnected");
+        setBridgeDisconnected(bridgeSetters);
 
         const message =
           error instanceof Error
@@ -174,7 +200,7 @@ export function useBridgeHealthProbe(
           retrying: false,
         });
 
-        schedule(delay, runProbe);
+        scheduleProbe(timerRef, delay, runProbe);
       }
     };
 
@@ -182,22 +208,52 @@ export function useBridgeHealthProbe(
 
     return () => {
       controller.abort();
-      clearScheduled();
+      clearScheduledTimer(timerRef);
     };
   }, [
     bridgeUrl,
+    probeEnabled,
     retryTick,
     session,
     setConfig,
     setHealth,
-    probeEnabled,
+    setNetworkStatus,
     setReachable,
     setStatus,
+    timerRef,
   ]);
+}
+
+export function useBridgeHealthProbe(
+  bridgeUrl: string,
+  session: BridgeSession | null,
+  setters: HealthProbeSetters,
+) {
+  const pathname = usePathname();
+
+  const [networkStatus, setNetworkStatus] = useState<BridgeNetworkStatus>(
+    INITIAL_NETWORK_STATUS,
+  );
+  const [retryTick, setRetryTick] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const probeEnabled = shouldProbeBridge(bridgeUrl, session, pathname);
+
+  useBridgeProbeLoop({
+    bridgeUrl,
+    probeEnabled,
+    retryTick,
+    session,
+    setters,
+    setNetworkStatus,
+    timerRef,
+  });
 
   const retryNow = useCallback(() => {
     setRetryTick((tick) => tick + 1);
   }, []);
 
-  return { networkStatus, retryNow };
+  return {
+    networkStatus: probeEnabled ? networkStatus : INITIAL_NETWORK_STATUS,
+    retryNow,
+  };
 }
