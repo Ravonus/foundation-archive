@@ -2,7 +2,9 @@
 
 import "dotenv/config";
 
+import { archivePaceConfigForContractsPerTick } from "~/lib/archive-pace";
 import { updateWorkerHeartbeat, runWorkerCycle } from "~/server/archive/worker";
+import { getArchivePolicyState } from "~/server/archive/state";
 import { db } from "~/server/db";
 
 function readFlag(name: string) {
@@ -16,6 +18,16 @@ function readBooleanFlag(name: string) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function nextLoopDelayMs(fallbackMs: number, hadActivity: boolean) {
+  try {
+    const policy = await getArchivePolicyState(db);
+    const pace = archivePaceConfigForContractsPerTick(policy.contractsPerTick);
+    return hadActivity ? pace.busyDelayMs : Math.max(fallbackMs, pace.idleDelayMs);
+  } catch {
+    return fallbackMs;
+  }
 }
 
 async function main() {
@@ -94,7 +106,7 @@ async function main() {
         return;
       }
 
-      const delay = result.hadActivity ? 1000 : intervalMs;
+      const delay = await nextLoopDelayMs(intervalMs, result.hadActivity);
       await sleep(delay);
     } catch (error) {
       const message =
@@ -107,7 +119,7 @@ async function main() {
         return;
       }
 
-      await sleep(intervalMs);
+      await sleep(await nextLoopDelayMs(intervalMs, false));
     }
   }
 }
