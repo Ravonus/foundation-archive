@@ -96,13 +96,17 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
 }
 
 body {
   min-height: 100vh;
+  max-width: 100%;
   background: var(--color-bg);
   color: var(--color-body);
   overflow-x: clip;
+  overscroll-behavior-x: none;
   font-feature-settings:
     "ss01",
     "cv11";
