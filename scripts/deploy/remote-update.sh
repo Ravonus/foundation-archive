@@ -22,7 +22,7 @@ cd "$repo_root"
 
 compose config >/dev/null
 compose run --rm storage-check
-compose build web worker socket db-init archiver
+compose build web archiver
 compose up -d postgres
 compose run --rm db-init
 compose up -d archiver socket worker web
