@@ -1,0 +1,362 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum QueueJobKind {
+  INGEST_FOUNDATION_URL
+  INGEST_CONTRACT_TOKEN
+  SCAN_CONTRACT_TOKENS
+  BACKUP_ARTWORK
+  VERIFY_ROOT
+}
+
+enum QueueJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MediaKind {
+  VIDEO
+  IMAGE
+  AUDIO
+  HTML
+  MODEL
+  UNKNOWN
+}
+
+enum SourceProtocol {
+  IPFS
+  ARWEAVE
+  HTTPS
+  UNKNOWN
+}
+
+enum RootKind {
+  METADATA
+  MEDIA
+  PREVIEW
+  UNKNOWN
+}
+
+enum BackupStatus {
+  PENDING
+  DOWNLOADED
+  PINNED
+  FAILED
+  SKIPPED
+}
+
+enum PinProvider {
+  NONE
+  KUBO
+  PINATA
+  OTHER
+}
+
+enum WorkerStatus {
+  STARTING
+  IDLE
+  RUNNING
+  ERROR
+  STOPPED
+}
+
+enum RelayJobKind {
+  SHARE_WORK
+}
+
+enum ContractKind {
+  FOUNDATION_GENESIS
+  FOUNDATION_COLLECTION
+  IMPORTED
+  MANUAL
+  UNKNOWN
+}
+
+model ContractRegistry {
+  id                     String       @id @default(cuid())
+  chainId                Int          @default(1)
+  address                String
+  label                  String
+  slug                   String?
+  contractKind           ContractKind @default(UNKNOWN)
+  foundationContractType String?
+  isFoundationNative     Boolean      @default(false)
+  notes                  String?
+  lastScanRequestedAt    DateTime?
+  lastScanCompletedAt    DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  artworks Artwork[]
+  crawler  ContractCrawlerState?
+
+  @@unique([chainId, address])
+  @@index([label])
+}
+
+model IpfsRoot {
+  id              String         @id @default(cuid())
+  cid             String         @unique
+  cidVersion      Int
+  protocol        SourceProtocol @default(IPFS)
+  kind            RootKind       @default(UNKNOWN)
+  originalUrl     String?
+  gatewayUrl      String?
+  relativePath    String?
+  fileName        String?
+  mimeType        String?
+  byteSize        Int?
+  estimatedByteSize Int?
+  localDirectory  String?
+  backupStatus    BackupStatus   @default(PENDING)
+  pinStatus       BackupStatus   @default(PENDING)
+  pinProvider     PinProvider    @default(NONE)
+  pinReference    String?
+  lastDownloadedAt DateTime?
+  lastPinnedAt    DateTime?
+  lastVerifiedAt  DateTime?
+  lastDeferredAt  DateTime?
+  deferredUntilByteSize Int?
+  deferCount      Int            @default(0)
+  lastError       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  metadataFor Artwork[]    @relation("ArtworkMetadataRoot")
+  mediaFor    Artwork[]    @relation("ArtworkMediaRoot")
+  backups     BackupRun[]
+
+  @@index([kind])
+  @@index([backupStatus])
+  @@index([pinStatus])
+  @@index([estimatedByteSize])
+}
+
+model Artwork {
+  id                     String       @id @default(cuid())
+  chainId                Int          @default(1)
+  contractAddress        String
+  tokenId                String
+  slug                   String       @unique
+  foundationUrl          String?      @unique
+  title                  String
+  description            String?
+  artistName             String?
+  artistUsername         String?
+  artistWallet           String?
+  ownerName              String?
+  ownerUsername          String?
+  ownerWallet            String?
+  collectionName         String?
+  collectionSlug         String?
+  tokenStandard          String?
+  foundationContractType String?
+  mediaKind              MediaKind    @default(UNKNOWN)
+  metadataUrl            String?
+  sourceUrl              String?
+  previewUrl             String?
+  staticPreviewUrl       String?
+  metadataStatus         BackupStatus @default(PENDING)
+  mediaStatus            BackupStatus @default(PENDING)
+  indexedFrom            String?
+  searchText             String?
+  contractId             String?
+  metadataRootId         String?
+  mediaRootId            String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  lastIndexedAt          DateTime?
+
+  contract     ContractRegistry? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  metadataRoot IpfsRoot?         @relation("ArtworkMetadataRoot", fields: [metadataRootId], references: [id], onDelete: SetNull)
+  mediaRoot    IpfsRoot?         @relation("ArtworkMediaRoot", fields: [mediaRootId], references: [id], onDelete: SetNull)
+  backups      BackupRun[]
+
+  @@unique([chainId, contractAddress, tokenId])
+  @@index([title])
+  @@index([artistName])
+  @@index([artistUsername])
+  @@index([collectionName])
+  @@index([searchText])
+  @@index([foundationContractType])
+}
+
+model BackupRun {
+  id              String       @id @default(cuid())
+  artworkId       String
+  rootId          String
+  provider        PinProvider  @default(NONE)
+  action          String
+  status          BackupStatus @default(PENDING)
+  notes           String?
+  responsePayload String?
+  errorMessage    String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  artwork Artwork  @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  root    IpfsRoot @relation(fields: [rootId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([provider])
+}
+
+model QueueJob {
+  id         String         @id @default(cuid())
+  kind       QueueJobKind
+  status     QueueJobStatus @default(PENDING)
+  priority   Int            @default(0)
+  payload    String
+  dedupeKey  String?
+  attempts   Int            @default(0)
+  maxAttempts Int           @default(3)
+  availableAt DateTime      @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  lastError  String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([kind, status, availableAt])
+  @@unique([kind, dedupeKey])
+}
+
+model WorkerHeartbeat {
+  id               String       @id @default(cuid())
+  workerKey        String       @unique
+  label            String
+  status           WorkerStatus @default(STARTING)
+  mode             String       @default("daemon")
+  lastSeenAt       DateTime     @default(now())
+  lastRunStartedAt DateTime?
+  lastRunFinishedAt DateTime?
+  lastProcessedCount Int        @default(0)
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model ArchivePolicyState {
+  id                    String   @id
+  autoCrawlerEnabled    Boolean  @default(true)
+  smartPinStartBytes    Int      @default(1048576)
+  smartPinMaxBytes      Int      @default(1048576)
+  smartPinCeilingBytes  Int      @default(268435456)
+  smartPinGrowthFactor  Float    @default(2)
+  smartPinDeferMs       Int      @default(60000)
+  blockWindowSize       Int      @default(50000)
+  contractsPerTick      Int      @default(1)
+  discoverySource       String   @default("editions")
+  discoveryPage         Int      @default(0)
+  discoveryQueryIndex   Int      @default(0)
+  discoveryPerPage      Int      @default(24)
+  totalDiscoveredContracts Int   @default(0)
+  lastCrawlerTickAt     DateTime?
+  lastDiscoveryTickAt   DateTime?
+  lastDiscoverySummary  String?
+  lastBudgetRaisedAt    DateTime?
+  lastBudgetReason      String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model ContractCrawlerState {
+  id                  String   @id @default(cuid())
+  contractId          String   @unique
+  autoEnabled         Boolean  @default(true)
+  scanMode            String   @default("blocks")
+  scanFromBlock       Int      @default(0)
+  scanToBlock         Int?
+  nextFromBlock       Int      @default(0)
+  lastScannedBlock    Int?
+  blockWindowSize     Int      @default(50000)
+  completed           Boolean  @default(false)
+  totalDiscoveredCount Int     @default(0)
+  lastDiscoveredCount Int      @default(0)
+  lastRunStartedAt    DateTime?
+  lastRunFinishedAt   DateTime?
+  lastError           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  contract ContractRegistry @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([autoEnabled, completed, updatedAt])
+}
+
+model ArchiveEvent {
+  id        String   @id @default(cuid())
+  type      String
+  summary   String
+  payload   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([type, createdAt])
+}
+
+model RelayPairing {
+  id              String   @id @default(cuid())
+  ownerToken      String
+  pairingCode     String   @unique
+  label           String?
+  expiresAt       DateTime
+  claimedAt       DateTime?
+  claimedByDeviceId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  claimedByDevice RelayDevice? @relation(fields: [claimedByDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([ownerToken, expiresAt])
+}
+
+model RelayDevice {
+  id                String   @id @default(cuid())
+  ownerToken        String
+  deviceLabel       String
+  deviceSecret      String   @unique
+  relayEnabled      Boolean  @default(true)
+  lastSeenAt        DateTime?
+  lastError         String?
+  lastCompletedJobAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  claimedPairings RelayPairing[]
+  jobs            RelayJob[]
+
+  @@index([ownerToken, lastSeenAt])
+}
+
+model RelayJob {
+  id            String         @id @default(cuid())
+  deviceId      String
+  ownerToken    String
+  kind          RelayJobKind
+  status        QueueJobStatus @default(PENDING)
+  payload       String
+  resultPayload String?
+  errorMessage  String?
+  availableAt   DateTime       @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  device RelayDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, status, availableAt])
+  @@index([ownerToken, createdAt])
+}

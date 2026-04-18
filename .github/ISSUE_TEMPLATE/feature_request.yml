@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement that serves the preservation mission
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are evaluated against the project's preservation scope. If you are not sure your idea fits, open the issue anyway — a maintainer will help triage.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What preservation or archivist workflow is currently painful, blocked, or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would the change look like? Be concrete — sketch the API, UI, or data flow.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you preferred the proposal.
+    validations:
+      required: false
+  - type: textarea
+    id: preservation
+    attributes:
+      label: Preservation relevance
+      description: |
+        How does this help the project rescue more art, improve artist control over their own archives, or harden the integrity of existing backups?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true

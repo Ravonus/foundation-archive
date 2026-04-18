@@ -1,0 +1,158 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-foundation_archive}
+      POSTGRES_USER: ${POSTGRES_USER:-foundation_archive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foundation_archive}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  storage-check:
+    image: alpine:3.20
+    entrypoint:
+      - /bin/sh
+      - -lc
+    command:
+      - |
+        set -eu
+        mkdir -p "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /data/archive-storage-hot
+        ls -ld /mnt/backups "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /data/archive-storage-hot
+    volumes:
+      - cold-storage:/mnt/backups
+      - hot-storage:/data/archive-storage-hot
+
+  db-init:
+    image: foundation-archive-app:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SKIP_ENV_VALIDATION: 1
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_ARCHIVE_SOCKET_URL: ${NEXT_PUBLIC_ARCHIVE_SOCKET_URL:-http://127.0.0.1:43129}
+    command:
+      - pnpm
+      - db:push
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - cold-storage:/mnt/backups
+      - hot-storage:/data/archive-storage-hot
+
+  web:
+    image: foundation-archive-app:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SKIP_ENV_VALIDATION: 1
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_ARCHIVE_SOCKET_URL: ${NEXT_PUBLIC_ARCHIVE_SOCKET_URL:-http://127.0.0.1:43129}
+    command:
+      - pnpm
+      - start
+      - --hostname
+      - 0.0.0.0
+      - --port
+      - "3000"
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      socket:
+        condition: service_started
+      archiver:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    restart: unless-stopped
+    volumes:
+      - cold-storage:/mnt/backups
+      - hot-storage:/data/archive-storage-hot
+
+  worker:
+    image: foundation-archive-app:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SKIP_ENV_VALIDATION: 1
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_ARCHIVE_SOCKET_URL: ${NEXT_PUBLIC_ARCHIVE_SOCKET_URL:-http://127.0.0.1:43129}
+    command:
+      - pnpm
+      - worker
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      archiver:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - cold-storage:/mnt/backups
+      - hot-storage:/data/archive-storage-hot
+
+  socket:
+    image: foundation-archive-app:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SKIP_ENV_VALIDATION: 1
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_ARCHIVE_SOCKET_URL: ${NEXT_PUBLIC_ARCHIVE_SOCKET_URL:-http://127.0.0.1:43129}
+    command:
+      - pnpm
+      - socket
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ARCHIVE_SOCKET_PORT:-43129}:${ARCHIVE_SOCKET_PORT:-43129}"
+    restart: unless-stopped
+    volumes:
+      - cold-storage:/mnt/backups
+      - hot-storage:/data/archive-storage-hot
+
+  archiver:
+    image: foundation-archive-archiver:local
+    build:
+      context: ..
+      dockerfile: Dockerfile.archiver
+    env_file:
+      - .env.production
+    restart: unless-stopped
+    volumes:
+      - cold-storage:/mnt/backups
+      - hot-storage:/data/archive-storage-hot
+
+volumes:
+  postgres-data:
+    name: foundation-archive-postgres-data
+  hot-storage:
+    name: foundation-archive-hot-storage
+  cold-storage:
+    name: foundation-archive-cold-storage
+    driver: local
+    driver_opts:
+      type: cifs
+      device: //${NAS_HOST}/${NAS_SHARE}
+      o: addr=${NAS_HOST},username=${NAS_USERNAME},password=${NAS_PASSWORD},vers=${NAS_SMB_VERS:-3.0},uid=1000,gid=1000,file_mode=0664,dir_mode=0775,iocharset=utf8

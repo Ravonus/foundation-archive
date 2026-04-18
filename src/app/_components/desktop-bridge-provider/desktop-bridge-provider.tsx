@@ -1,0 +1,191 @@
+"use client";
+
+import { useRef, useState, type ReactNode } from "react";
+
+import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
+
+import {
+  createLocalBridgeActions,
+  type LocalBridgeDeps,
+} from "./actions/local-bridge";
+import {
+  createRelayOwnerActions,
+  type RelayOwnerDeps,
+} from "./actions/relay-owner";
+import {
+  buildRelayPairingUrl as buildRelayPairingUrlPure,
+  buildSessionViewUrl as buildSessionViewUrlPure,
+  buildWorkShareUrl as buildWorkShareUrlPure,
+} from "./lib/builders";
+import { trimTrailingSlash } from "./lib/bridge-api";
+import { buildDesktopBridgeContextValue } from "./lib/build-context-value";
+import {
+  BRIDGE_SESSION_KEY,
+  BRIDGE_URL_KEY,
+  DEFAULT_BRIDGE_URL,
+} from "./constants";
+import { DesktopBridgeContext } from "./context";
+import { bridgeConfigFromHealth } from "./lib/derive-config";
+import type {
+  BridgeConfig,
+  BridgeHealth,
+  BridgeSession,
+  BridgeStatus,
+  DesktopShareableWork,
+  PinVerificationResult,
+  RelayInventorySnapshot,
+  RelayOwnerDevice,
+  RelayPairing,
+} from "./types";
+import { useBridgeHealthProbe } from "./hooks/use-bridge-health-probe";
+import { useInitialStorage } from "./hooks/use-initial-storage";
+import { useOwnerRefresh } from "./hooks/use-owner-refresh";
+import { usePinVerificationLoop } from "./hooks/use-pin-verification-loop";
+import { useRelaySocket } from "./hooks/use-relay-socket";
+
+export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
+  const [bridgeUrl, setBridgeUrlState] = useState(DEFAULT_BRIDGE_URL);
+  const [session, setSession] = useState<BridgeSession | null>(null);
+  const [status, setStatus] = useState<BridgeStatus>("checking");
+  const [health, setHealth] = useState<BridgeHealth | null>(null);
+  const [config, setConfig] = useState<BridgeConfig | null>(null);
+  const [ownerToken, setOwnerToken] = useState<string | null>(null);
+  const [relayDevices, setRelayDevices] = useState<RelayOwnerDevice[]>([]);
+  const [relayInventories, setRelayInventories] = useState<
+    Record<string, RelayInventorySnapshot>
+  >({});
+  const [relaySocketConnected, setRelaySocketConnected] = useState(false);
+  const [pinEnrichment, setPinEnrichment] = useState<
+    Record<string, RelayPinEnrichmentMatch[]>
+  >({});
+  const [reachable, setReachable] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pinVerifications, setPinVerifications] = useState<
+    Record<string, PinVerificationResult>
+  >({});
+  const relaySocketRef = useRef<WebSocket | null>(null);
+
+  useInitialStorage({ setBridgeUrlState, setSession, setOwnerToken });
+
+  const { networkStatus, retryNow: retryNetwork } = useBridgeHealthProbe(
+    bridgeUrl,
+    session,
+    { setHealth, setConfig, setReachable, setStatus },
+  );
+
+  useRelaySocket(ownerToken, relaySocketRef, {
+    setRelaySocketConnected,
+    setRelayDevices,
+    setRelayInventories,
+    setError,
+  });
+
+  const persistSession = (nextSession: BridgeSession | null) => {
+    setSession(nextSession);
+    if (nextSession) {
+      window.localStorage.setItem(
+        BRIDGE_SESSION_KEY,
+        JSON.stringify(nextSession),
+      );
+    } else {
+      window.localStorage.removeItem(BRIDGE_SESSION_KEY);
+    }
+  };
+
+  const setBridgeUrl = (nextUrl: string) => {
+    const normalized = trimTrailingSlash(nextUrl.trim() || DEFAULT_BRIDGE_URL);
+    setBridgeUrlState(normalized);
+    window.localStorage.setItem(BRIDGE_URL_KEY, normalized);
+  };
+
+  const relayOwnerDeps: RelayOwnerDeps = {
+    ownerToken,
+    relayDevices,
+    pinEnrichment,
+    relaySocketRef,
+    setRelayDevices,
+    setRelayInventories,
+    setPinEnrichment,
+  };
+  const relayOwnerActions = createRelayOwnerActions(relayOwnerDeps);
+
+  const localBridgeDeps: LocalBridgeDeps = {
+    bridgeUrl,
+    session,
+    config,
+    reachable,
+    setHealth,
+    setConfig,
+    setReachable,
+    setStatus,
+    setError,
+    persistSession,
+    bridgeConfigFromHealth,
+    createRelayPairing: relayOwnerActions.createRelayPairing,
+    refreshRelayDevices: relayOwnerActions.refreshRelayDevices,
+  };
+  const localBridgeActions = createLocalBridgeActions(localBridgeDeps);
+
+  useOwnerRefresh(ownerToken, relayOwnerActions.refreshRelayDevices);
+
+  const verifyPins = async (cids?: string[]) => {
+    const result = await localBridgeActions.verifyPins(cids);
+    setPinVerifications((prev) => {
+      const next = { ...prev };
+      for (const entry of result.results) next[entry.cid] = entry;
+      return next;
+    });
+    return result;
+  };
+
+  usePinVerificationLoop(reachable, verifyPins);
+
+  const buildRelayPairingUrl = (
+    pairing: RelayPairing,
+    relayServerUrl?: string | null,
+    deviceName?: string | null,
+  ) =>
+    buildRelayPairingUrlPure({
+      pairing,
+      relayServerUrl,
+      deviceName,
+      config,
+    });
+
+  const buildWorkShareUrl = async (work: DesktopShareableWork) => {
+    const activeSession = await localBridgeActions.ensureConnected();
+    return buildWorkShareUrlPure(bridgeUrl, activeSession, work);
+  };
+
+  const value = buildDesktopBridgeContextValue({
+    bridgeUrl,
+    setBridgeUrl,
+    status,
+    networkStatus,
+    retryNetwork,
+    pinVerifications,
+    verifyPins,
+    session,
+    health,
+    config,
+    ownerToken,
+    relayDevices,
+    relayInventories,
+    relaySocketConnected,
+    pinEnrichment,
+    error,
+    reachable,
+    localBridgeActions,
+    relayOwnerActions,
+    buildRelayPairingUrl,
+    buildWorkShareUrl,
+    buildSessionViewUrl: () => buildSessionViewUrlPure(bridgeUrl, session),
+    clearError: () => setError(null),
+  });
+
+  return (
+    <DesktopBridgeContext.Provider value={value}>
+      {children}
+    </DesktopBridgeContext.Provider>
+  );
+}
