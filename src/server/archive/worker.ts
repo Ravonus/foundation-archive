@@ -278,11 +278,30 @@ export async function runWorkerCycle(
     }, RUNNING_HEARTBEAT_INTERVAL_MS);
     keepAliveInterval.unref();
 
-    const queueResult = await processQueuedJobs(client, limit);
+    const initialQueueResult = await processQueuedJobs(client, limit);
     const { budget, discovery, crawl, rebalance } = await runIngressCycle(
       client,
       allowIngress,
     );
+    const remainingQueueCapacity = Math.max(
+      limit - initialQueueResult.processed,
+      0,
+    );
+    const postIngressQueueResult =
+      allowIngress && remainingQueueCapacity > 0
+        ? await processQueuedJobs(client, remainingQueueCapacity)
+        : { processed: 0, results: [] as typeof initialQueueResult.results };
+    const queueResult =
+      postIngressQueueResult.processed > 0
+        ? {
+            processed:
+              initialQueueResult.processed + postIngressQueueResult.processed,
+            results: [
+              ...initialQueueResult.results,
+              ...postIngressQueueResult.results,
+            ],
+          }
+        : initialQueueResult;
     const hadActivity = cycleHadActivity({
       processed: queueResult.processed,
       discovery,
