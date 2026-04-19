@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
+import { getAddress } from "viem";
 
-import { resolveProfileFromKey } from "./_data";
+import { db } from "~/server/db";
+import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
 
 export const runtime = "nodejs";
 export const alt = "Agorix artist profile";
@@ -40,17 +42,122 @@ async function inlineImage(url: string | null | undefined) {
   }
 }
 
-async function resolveOgProfile(profile: string) {
+type OgProfile = {
+  username: string | null;
+  name: string | null;
+  profileImageUrl: string | null;
+  coverImageUrl: string | null;
+  bio: string | null;
+  accountAddress: string | null;
+};
+
+const FOUNDATION_LOOKUP_TIMEOUT_MS = 1_800;
+
+/// Lean profile lookup for the OG route — skips the
+/// `resolveProfileFromKey` path used by the full page render because its
+/// discovery fallback can take >5 s and blow past Caddy's timeout. We
+/// race a direct Foundation user lookup against a hard timeout and fall
+/// back to DB-only data (name + username from any artwork row) so the
+/// card always renders quickly.
+async function resolveOgProfile(profile: string): Promise<OgProfile | null> {
+  const key = decodeURIComponent(profile).trim();
+  if (!key) return null;
+
+  const isAddress = /^0x[a-fA-F0-9]{40}$/.test(key);
+  const normalizedUsername = isAddress ? null : key.replace(/^@+/, "");
+  const normalizedAddress = isAddress
+    ? safeGetAddress(key)?.toLowerCase() ?? null
+    : null;
+
+  let foundationProfile: Awaited<
+    ReturnType<typeof fetchFoundationUserByUsername>
+  > | null = null;
+  if (normalizedUsername) {
+    foundationProfile = await withTimeout(
+      fetchFoundationUserByUsername(normalizedUsername),
+      FOUNDATION_LOOKUP_TIMEOUT_MS,
+    ).catch(() => null);
+  }
+
+  if (foundationProfile) {
+    const addressFromFoundation = foundationProfile.accountAddress
+      ? safeGetAddress(foundationProfile.accountAddress)?.toLowerCase() ?? null
+      : null;
+    return {
+      username: foundationProfile.username ?? normalizedUsername,
+      name: foundationProfile.name ?? null,
+      profileImageUrl: foundationProfile.profileImageUrl ?? null,
+      coverImageUrl: foundationProfile.coverImageUrl ?? null,
+      bio: foundationProfile.bio ?? null,
+      accountAddress: addressFromFoundation ?? normalizedAddress,
+    };
+  }
+
+  // DB fallback — populate at least name/username/address so the card
+  // always has headline text even when Foundation is unreachable.
+  const archived = await db.artwork
+    .findFirst({
+      where: normalizedUsername
+        ? {
+            artistUsername: { equals: normalizedUsername, mode: "insensitive" },
+          }
+        : { artistWallet: normalizedAddress ?? key },
+      orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
+      select: {
+        artistName: true,
+        artistUsername: true,
+        artistWallet: true,
+      },
+    })
+    .catch(() => null);
+
+  if (!archived) {
+    return {
+      username: normalizedUsername,
+      name: null,
+      profileImageUrl: null,
+      coverImageUrl: null,
+      bio: null,
+      accountAddress: normalizedAddress,
+    };
+  }
+
+  const archivedWalletAddress = archived.artistWallet
+    ? (safeGetAddress(archived.artistWallet)?.toLowerCase() ?? null)
+    : null;
+
+  return {
+    username: archived.artistUsername ?? normalizedUsername,
+    name: archived.artistName,
+    profileImageUrl: null,
+    coverImageUrl: null,
+    bio: null,
+    accountAddress: archivedWalletAddress ?? normalizedAddress,
+  };
+}
+
+function safeGetAddress(value: string) {
   try {
-    const key = decodeURIComponent(profile).trim();
-    // NB: deliberately skip hydrateProfileFromFoundation — that call does
-    // an extra Foundation roundtrip and was the main cause of the route
-    // stalling past the Caddy 5s timeout. resolveProfileFromKey already
-    // hits Foundation (for username keys) and returns avatar + banner.
-    return await resolveProfileFromKey(key);
+    return getAddress(value);
   } catch {
     return null;
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
 }
 
 function shortAddress(accountAddress: string) {
