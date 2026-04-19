@@ -1,8 +1,12 @@
-/* eslint-disable complexity */
+/* eslint-disable complexity, max-lines */
 
 import "dotenv/config";
 
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 
 import { Server as SocketIOServer, type Socket } from "socket.io";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
@@ -30,6 +34,12 @@ type CachedRelayInventory = {
   items: RelayPinInventoryItem[];
 };
 
+type CachedRelayDeviceState = {
+  generatedAt: string;
+  health: unknown;
+  config: unknown;
+};
+
 type OwnerRelayMessage =
   | {
       type: "owner.refresh";
@@ -43,6 +53,11 @@ type DeviceRelayMessage =
   | {
       type: "device.inventory";
       items: RelayPinInventoryItem[];
+    }
+  | {
+      type: "device.state";
+      health: unknown;
+      config: unknown;
     }
   | {
       type: "device.jobResult";
@@ -91,9 +106,9 @@ async function checkExistingArchiveSocketServer(port: number) {
       return false;
     }
 
-    const body = (await response.json().catch(() => null)) as
-      | { ok?: boolean }
-      | null;
+    const body = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+    } | null;
 
     return body?.ok === true;
   } catch {
@@ -118,7 +133,10 @@ async function readJsonBody(request: IncomingMessage) {
   }
 
   if (chunks.length === 0) return null;
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
+    string,
+    unknown
+  >;
 }
 
 function rawDataToString(data: RawData) {
@@ -154,6 +172,7 @@ async function main() {
   const ownerSockets = new Map<string, Set<WebSocket>>();
   const deviceSockets = new Map<string, DeviceSocketClient>();
   const cachedInventory = new Map<string, CachedRelayInventory>();
+  const cachedDeviceState = new Map<string, CachedRelayDeviceState>();
   let stopping = false;
 
   function writeJson(
@@ -206,6 +225,19 @@ async function main() {
         items: inventory.items,
       });
     }
+
+    for (const device of devices) {
+      const state = cachedDeviceState.get(device.id);
+      if (!state) continue;
+
+      broadcastToOwner(ownerToken, {
+        type: "owner.deviceState",
+        deviceId: device.id,
+        generatedAt: state.generatedAt,
+        health: state.health,
+        config: state.config,
+      });
+    }
   }
 
   async function dispatchPendingJobs(deviceId: string) {
@@ -245,7 +277,10 @@ async function main() {
   ) {
     const payload = parseJson<OwnerRelayMessage>(message);
     if (!payload) {
-      safeSend(socket, { type: "owner.error", message: "Invalid relay owner message." });
+      safeSend(socket, {
+        type: "owner.error",
+        message: "Invalid relay owner message.",
+      });
       return;
     }
 
@@ -279,7 +314,10 @@ async function main() {
     });
   }
 
-  async function handleDeviceMessage(client: DeviceSocketClient, message: string) {
+  async function handleDeviceMessage(
+    client: DeviceSocketClient,
+    message: string,
+  ) {
     const payload = parseJson<DeviceRelayMessage>(message);
     if (!payload) {
       return;
@@ -300,6 +338,24 @@ async function main() {
         deviceId: client.deviceId,
         generatedAt: snapshot.generatedAt,
         items: snapshot.items,
+      });
+      await broadcastOwnerSnapshot(client.ownerToken);
+      return;
+    }
+
+    if (payload.type === "device.state") {
+      const snapshot = {
+        generatedAt: new Date().toISOString(),
+        health: payload.health,
+        config: payload.config,
+      } satisfies CachedRelayDeviceState;
+      cachedDeviceState.set(client.deviceId, snapshot);
+      broadcastToOwner(client.ownerToken, {
+        type: "owner.deviceState",
+        deviceId: client.deviceId,
+        generatedAt: snapshot.generatedAt,
+        health: snapshot.health,
+        config: snapshot.config,
       });
       await broadcastOwnerSnapshot(client.ownerToken);
       return;
@@ -348,9 +404,13 @@ async function main() {
         return;
       }
 
-      if (request.method === "POST" && requestUrl.pathname === "/relay/internal/dispatch") {
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/relay/internal/dispatch"
+      ) {
         const body = await readJsonBody(request).catch(() => null);
-        const deviceId = typeof body?.deviceId === "string" ? body.deviceId : null;
+        const deviceId =
+          typeof body?.deviceId === "string" ? body.deviceId : null;
 
         if (!deviceId) {
           writeJson(response, 400, { error: "deviceId is required." });
@@ -362,9 +422,13 @@ async function main() {
         return;
       }
 
-      if (request.method === "POST" && requestUrl.pathname === "/relay/internal/disconnect") {
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/relay/internal/disconnect"
+      ) {
         const body = await readJsonBody(request).catch(() => null);
-        const deviceId = typeof body?.deviceId === "string" ? body.deviceId : null;
+        const deviceId =
+          typeof body?.deviceId === "string" ? body.deviceId : null;
         const reason =
           typeof body?.reason === "string" && body.reason.trim().length > 0
             ? body.reason
@@ -406,7 +470,8 @@ async function main() {
       });
       response.end(
         JSON.stringify({
-          error: error instanceof Error ? error.message : "Socket server error.",
+          error:
+            error instanceof Error ? error.message : "Socket server error.",
         }),
       );
     });
@@ -433,7 +498,10 @@ async function main() {
       const snapshot = await getArchiveLiveSnapshot(db);
       socket.emit("archive:snapshot", snapshot);
     } catch (error) {
-      logSocketError("Unable to load archive snapshot for a new client.", error);
+      logSocketError(
+        "Unable to load archive snapshot for a new client.",
+        error,
+      );
     }
   }
 
@@ -543,7 +611,9 @@ async function main() {
 
         socket.on("message", (buffer) => {
           const message = rawDataToString(buffer);
-          void handleOwnerMessage(ownerToken, socket, message).catch(() => null);
+          void handleOwnerMessage(ownerToken, socket, message).catch(
+            () => null,
+          );
         });
 
         socket.on("close", () => {

@@ -8,6 +8,7 @@ import { ArrowUpRight } from "lucide-react";
 import { formatDate, shortAddress } from "~/lib/utils";
 import type { BridgePinInventoryItem } from "~/app/_components/desktop-bridge-provider";
 import { buildPublicUtilityGatewayUrl } from "~/lib/desktop-relay";
+import { ChainBadge } from "~/app/_components/chain-badge";
 
 import { InventoryPreview } from "./inventory-preview";
 import { itemContext, itemLabel, type PinMatch } from "../types";
@@ -57,9 +58,12 @@ function CardMeta({
       <p>Verified {formatDate(item.lastVerifiedAt)}</p>
       {item.syncPath ? <p>Saved in {item.syncPath}</p> : null}
       {primaryMatch ? (
-        <p>
-          Foundation: {shortAddress(primaryMatch.contractAddress)} #
-          {primaryMatch.tokenId}
+        <p className="flex flex-wrap items-center gap-2">
+          <ChainBadge chainId={primaryMatch.chainId} />
+          <span>
+            Foundation: {shortAddress(primaryMatch.contractAddress)} #
+            {primaryMatch.tokenId}
+          </span>
         </p>
       ) : (
         <p>Independent IPFS root</p>

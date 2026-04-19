@@ -1,9 +1,13 @@
+/* eslint-disable complexity */
+
 import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
 
 import { parseBridgeError, withJsonHeaders } from "../lib/bridge-api";
 import { pickRelayDevice } from "../lib/builders";
 import type {
+  BridgeConfig,
   DesktopShareableWork,
+  RelayDeviceStateSnapshot,
   RelayInventorySnapshot,
   RelayOwnerDevice,
   RelayPairing,
@@ -20,6 +24,11 @@ export type RelayOwnerDeps = {
       current: Record<string, RelayInventorySnapshot>,
     ) => Record<string, RelayInventorySnapshot>,
   ) => void;
+  setRelayDeviceStates: (
+    updater: (
+      current: Record<string, RelayDeviceStateSnapshot>,
+    ) => Record<string, RelayDeviceStateSnapshot>,
+  ) => void;
   setPinEnrichment: (
     enrichment: Record<string, RelayPinEnrichmentMatch[]>,
   ) => void;
@@ -30,6 +39,12 @@ export type RelayOwnerActions = {
   createRelayPairing: (label?: string | null) => Promise<RelayPairing>;
   requestRelayInventory: (deviceId: string) => void;
   disconnectRelayDevice: (deviceId: string) => Promise<void>;
+  updateRelayDeviceConfig: (
+    deviceId: string,
+    input: Partial<BridgeConfig>,
+  ) => Promise<RelayQueuedJob>;
+  repairRelayDevicePins: (deviceId: string) => Promise<RelayQueuedJob>;
+  syncRelayDevicePins: (deviceId: string) => Promise<RelayQueuedJob>;
   queueWorkToRelay: (
     work: DesktopShareableWork,
     deviceId?: string | null,
@@ -44,11 +59,45 @@ export type RelayOwnerBaseActions = Omit<
   "requestRelayInventory" | "queueWorkToRelay"
 >;
 
+const RELAY_JOB_POLL_INTERVAL_MS = 1_000;
+const RELAY_JOB_TIMEOUT_MS = 20_000;
+
 function requireOwnerToken(token: string | null): string {
   if (!token) {
     throw new Error("Pair vault is not ready yet.");
   }
   return token;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function waitForRelayJobCompletion(
+  refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
+  deviceId: string,
+  jobId: string,
+) {
+  const deadline = Date.now() + RELAY_JOB_TIMEOUT_MS;
+  let latestDevices: RelayOwnerDevice[] = [];
+
+  while (Date.now() <= deadline) {
+    latestDevices = await refreshRelayDevices();
+    const device = latestDevices.find((entry) => entry.id === deviceId) ?? null;
+    const job = device?.recentJobs.find((entry) => entry.id === jobId) ?? null;
+
+    if (job?.status === "COMPLETED" || job?.status === "FAILED") {
+      return { device, job };
+    }
+
+    await sleep(RELAY_JOB_POLL_INTERVAL_MS);
+  }
+
+  const device = latestDevices.find((entry) => entry.id === deviceId) ?? null;
+  const job = device?.recentJobs.find((entry) => entry.id === jobId) ?? null;
+  return { device, job };
 }
 
 function createRefreshRelayDevices(deps: RelayOwnerDeps) {
@@ -69,7 +118,18 @@ function createRefreshRelayDevices(deps: RelayOwnerDeps) {
     }
 
     const payload = (await response.json()) as { devices: RelayOwnerDevice[] };
+    const deviceIds = new Set(payload.devices.map((device) => device.id));
     deps.setRelayDevices(payload.devices);
+    deps.setRelayInventories((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([deviceId]) => deviceIds.has(deviceId)),
+      ),
+    );
+    deps.setRelayDeviceStates((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([deviceId]) => deviceIds.has(deviceId)),
+      ),
+    );
     return payload.devices;
   };
 }
@@ -128,8 +188,91 @@ function createDisconnectRelayDevice(
       delete next[deviceId];
       return next;
     });
+    deps.setRelayDeviceStates((current) => {
+      const next = { ...current };
+      delete next[deviceId];
+      return next;
+    });
     await refreshRelayDevices().catch(() => undefined);
   };
+}
+
+function createQueueRelayDeviceAction(deps: RelayOwnerDeps) {
+  return async <T extends object>({
+    deviceId,
+    kind,
+    payload,
+    fallback,
+  }: {
+    deviceId: string;
+    kind: "UPDATE_CONFIG" | "REPAIR_PINS" | "SYNC_PINS";
+    payload: T;
+    fallback: string;
+  }) => {
+    const ownerToken = requireOwnerToken(deps.ownerToken);
+
+    const response = await fetch(
+      "/api/relay/owner/device-action",
+      withJsonHeaders({
+        ownerToken,
+        deviceId,
+        kind,
+        payload,
+      }),
+    );
+
+    if (!response.ok) {
+      throw new Error(await parseBridgeError(response, fallback));
+    }
+
+    return (await response.json()) as RelayQueuedJob;
+  };
+}
+
+function createUpdateRelayDeviceConfig(deps: RelayOwnerDeps) {
+  const queueRelayDeviceAction = createQueueRelayDeviceAction(deps);
+
+  return async (deviceId: string, input: Partial<BridgeConfig>) =>
+    queueRelayDeviceAction({
+      deviceId,
+      kind: "UPDATE_CONFIG",
+      payload: {
+        download_root_dir: input.download_root_dir,
+        sync_enabled: input.sync_enabled,
+        local_gateway_base_url: input.local_gateway_base_url,
+        public_gateway_base_url: input.public_gateway_base_url,
+        relay_enabled: input.relay_enabled,
+        relay_server_url: input.relay_server_url,
+        relay_device_name: input.relay_device_name,
+      },
+      fallback: "Unable to send updated settings to the linked desktop app.",
+    });
+}
+
+function createRepairRelayDevicePins(deps: RelayOwnerDeps) {
+  const queueRelayDeviceAction = createQueueRelayDeviceAction(deps);
+
+  return async (deviceId: string) =>
+    queueRelayDeviceAction({
+      deviceId,
+      kind: "REPAIR_PINS",
+      payload: {},
+      fallback:
+        "Unable to ask the linked desktop app to re-save missing works.",
+    });
+}
+
+function createSyncRelayDevicePins(deps: RelayOwnerDeps) {
+  const queueRelayDeviceAction = createQueueRelayDeviceAction(deps);
+
+  return async (deviceId: string) =>
+    queueRelayDeviceAction({
+      deviceId,
+      kind: "SYNC_PINS",
+      payload: {},
+      fallback:
+        "Unable to ask the linked desktop app to copy saved works into its sync folder.",
+    });
 }
 
 export function createQueueWorkToRelay(
@@ -177,7 +320,26 @@ export function createQueueWorkToRelay(
     }
 
     const payload = (await response.json()) as RelayQueuedJob;
-    void refreshRelayDevices().catch(() => undefined);
+    const outcome = await waitForRelayJobCompletion(
+      refreshRelayDevices,
+      targetDevice.id,
+      payload.jobId,
+    );
+
+    if (outcome.job?.status === "FAILED") {
+      throw new Error(
+        outcome.job.errorMessage ??
+          "The linked desktop app couldn't save this work.",
+      );
+    }
+
+    if (outcome.job?.status !== "COMPLETED") {
+      throw new Error(
+        "The linked desktop app did not confirm the backup in time. Please check the desktop page and try again.",
+      );
+    }
+
+    await refreshRelayDevices().catch(() => undefined);
     requestRelayInventory(targetDevice.id);
     return payload;
   };
@@ -252,11 +414,17 @@ export function createRelayOwnerActions(
     refreshRelayDevices,
   );
   const enrichPins = createEnrichPins(deps);
+  const updateRelayDeviceConfig = createUpdateRelayDeviceConfig(deps);
+  const repairRelayDevicePins = createRepairRelayDevicePins(deps);
+  const syncRelayDevicePins = createSyncRelayDevicePins(deps);
 
   return {
     refreshRelayDevices,
     createRelayPairing,
     disconnectRelayDevice,
+    updateRelayDeviceConfig,
+    repairRelayDevicePins,
+    syncRelayDevicePins,
     enrichPins,
   };
 }

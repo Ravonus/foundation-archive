@@ -20,6 +20,7 @@ type SavedWorksProps = {
   pinVerifications: Record<string, PinVerificationResult>;
   isVerifying: boolean;
   reachable: boolean;
+  canRepair: boolean;
   isRepairing: boolean;
   runRepair: () => void;
   runVerify: () => void;
@@ -50,7 +51,8 @@ function SectionHeader({
         <span title="Works fully saved on this computer.">
           {pinnedCount} saved
         </span>{" "}
-        · <span title="Works the app knows about (saved or pending).">
+        ·{" "}
+        <span title="Works the app knows about (saved or pending).">
           {totalCount} tracked
         </span>
         {unreachableCount > 0
@@ -63,6 +65,7 @@ function SectionHeader({
 
 function ActionBar({
   reachable,
+  canRepair,
   isVerifying,
   isRepairing,
   runVerify,
@@ -71,6 +74,7 @@ function ActionBar({
   unreachableCount,
 }: {
   reachable: boolean;
+  canRepair: boolean;
   isVerifying: boolean;
   isRepairing: boolean;
   runVerify: () => void;
@@ -99,7 +103,7 @@ function ActionBar({
         <button
           type="button"
           onClick={runRepair}
-          disabled={!reachable || isRepairing}
+          disabled={!canRepair || isRepairing}
           className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-1.5 text-xs text-[var(--color-bg)] disabled:opacity-55"
           title="Try saving any works that didn't finish."
         >
@@ -124,10 +128,7 @@ function ActionBar({
 }
 
 export function SavedWorksSection(props: SavedWorksProps) {
-  const needsRepair =
-    !props.selectedDevice && props.visibleItems.length - props.pinnedCount > 0
-      ? props.visibleItems.length - props.pinnedCount
-      : 0;
+  const needsRepair = props.visibleItems.filter((item) => !item.pinned).length;
 
   const unreachableCount = props.visibleItems.reduce((count, item) => {
     const verification = pinVerificationForItem(item, props.pinVerifications);
@@ -148,6 +149,7 @@ export function SavedWorksSection(props: SavedWorksProps) {
 
       <ActionBar
         reachable={props.reachable}
+        canRepair={props.canRepair}
         isVerifying={props.isVerifying}
         isRepairing={props.isRepairing}
         runVerify={props.runVerify}

@@ -37,6 +37,7 @@ import type {
   BridgeStatus,
   DesktopShareableWork,
   PinVerificationResult,
+  RelayDeviceStateSnapshot,
   RelayInventorySnapshot,
   RelayOwnerDevice,
   RelayPairing,
@@ -57,6 +58,9 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
   const [relayDevices, setRelayDevices] = useState<RelayOwnerDevice[]>([]);
   const [relayInventories, setRelayInventories] = useState<
     Record<string, RelayInventorySnapshot>
+  >({});
+  const [relayDeviceStates, setRelayDeviceStates] = useState<
+    Record<string, RelayDeviceStateSnapshot>
   >({});
   const [relaySocketConnected, setRelaySocketConnected] = useState(false);
   const [pinEnrichment, setPinEnrichment] = useState<
@@ -86,6 +90,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     setRelaySocketConnected,
     setRelayDevices,
     setRelayInventories,
+    setRelayDeviceStates,
     setError,
   });
 
@@ -113,6 +118,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     pinEnrichment,
     setRelayDevices,
     setRelayInventories,
+    setRelayDeviceStates,
     setPinEnrichment,
   };
   const requestRelayInventory = (deviceId: string) => {
@@ -205,6 +211,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     ownerToken,
     relayDevices,
     relayInventories,
+    relayDeviceStates,
     relaySocketConnected,
     localBridgeProbeEnabled,
     pinEnrichment,
@@ -222,12 +229,16 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     refreshRelayDevices: relayOwnerActions.refreshRelayDevices,
     requestRelayInventory: relayOwnerActions.requestRelayInventory,
     disconnectRelayDevice: relayOwnerActions.disconnectRelayDevice,
+    updateRelayDeviceConfig: relayOwnerActions.updateRelayDeviceConfig,
+    repairRelayDevicePins: relayOwnerActions.repairRelayDevicePins,
+    syncRelayDevicePins: relayOwnerActions.syncRelayDevicePins,
     createRelayPairing: relayOwnerActions.createRelayPairing,
     linkLocalBridgeToRelay: localBridgeActions.linkLocalBridgeToRelay,
     buildRelayPairingUrl,
     enrichPins: relayOwnerActions.enrichPins,
     queueWorkToRelay: relayOwnerActions.queueWorkToRelay,
     shareWork: localBridgeActions.shareWork,
+    uploadFiles: localBridgeActions.uploadFiles,
     buildWorkShareUrl,
     buildSessionViewUrl: () => buildSessionViewUrlPure(bridgeUrl, session),
     clearError: () => setError(null),

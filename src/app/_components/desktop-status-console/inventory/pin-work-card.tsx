@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import type { BridgePinInventoryItem } from "~/app/_components/desktop-bridge-provider";
+import { ChainBadge } from "~/app/_components/chain-badge";
 import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { buildPublicUtilityGatewayUrl } from "~/lib/desktop-relay";
 import { cn, formatDate, shortAddress } from "~/lib/utils";
@@ -277,9 +278,15 @@ function CardPoster({
   }
 
   if (active.kind === "MODEL") {
+    const modelCandidateUrls = candidates
+      .filter(
+        (candidate) => candidate.kind === "MODEL" && candidate.url !== active.url,
+      )
+      .map((candidate) => candidate.url);
     return (
       <ModelMediaPreview
         src={active.url}
+        candidates={modelCandidateUrls}
         poster={modelPosterUrl}
         alt={title}
         className="h-full w-full"
@@ -432,8 +439,11 @@ function CardMetaRow({
 
   return (
     <div className="mt-3 space-y-1 text-xs text-[var(--color-muted)]">
-      <p className="font-mono text-[0.7rem] break-all">
-        {item.cid.slice(0, 14)}…{item.cid.slice(-6)}
+      <p className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[0.7rem] break-all">
+          {item.cid.slice(0, 14)}…{item.cid.slice(-6)}
+        </span>
+        {primaryMatch ? <ChainBadge chainId={primaryMatch.chainId} /> : null}
       </p>
       {metaLines.map((line) => (
         <p key={line}>{line}</p>

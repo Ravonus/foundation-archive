@@ -9,6 +9,7 @@ import {
 import { useDesktopConsoleRawState } from "./use-desktop-console-raw-state";
 import {
   useDesktopConsolePinEnrichment,
+  useDesktopConsoleRemoteConfigSync,
   useDesktopConsoleRelayInventoryRequests,
   useDesktopConsoleSelectedDeviceSync,
 } from "./use-desktop-console-sync";
@@ -43,6 +44,12 @@ export function useDesktopConsoleState() {
     relayDevices: bridge.relayDevices,
     selectedDeviceId: raw.selectedDeviceId,
     setSelectedDeviceId: raw.setSelectedDeviceId,
+  });
+  useDesktopConsoleRemoteConfigSync({
+    relayDevices: bridge.relayDevices,
+    relayDeviceStates: bridge.relayDeviceStates,
+    selectedDeviceId: raw.selectedDeviceId,
+    setConfigDraft: raw.setConfigDraft,
   });
 
   return { bridge, raw, transitions };

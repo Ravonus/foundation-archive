@@ -6,17 +6,26 @@ import type { ConfigDraft } from "../types";
 
 type AdvancedProps = {
   reachable: boolean;
+  canControl: boolean;
+  controlLabel: string;
   configDraft: ConfigDraft;
   setConfigDraft: (updater: (current: ConfigDraft) => ConfigDraft) => void;
   isSavingConfig: boolean;
   isRepairing: boolean;
   isSyncing: boolean;
+  isConnectedRemotely: boolean;
   saveConfig: () => void;
   runRepair: () => void;
   runSync: () => void;
 };
 
-function AdvancedSummary({ reachable }: { reachable: boolean }) {
+function AdvancedSummary({
+  canControl,
+  controlLabel,
+}: {
+  canControl: boolean;
+  controlLabel: string;
+}) {
   return (
     <summary className="cursor-pointer list-none">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -33,7 +42,7 @@ function AdvancedSummary({ reachable }: { reachable: boolean }) {
           </p>
         </div>
         <span className="rounded-full border border-[var(--color-line)] px-3 py-1 text-xs tracking-[0.22em] text-[var(--color-muted)] uppercase">
-          {reachable ? "app connected here" : "not needed for normal use"}
+          {canControl ? controlLabel : "not ready yet"}
         </span>
       </div>
     </summary>
@@ -155,6 +164,7 @@ function AdvancedButtons(
   props: Pick<
     AdvancedProps,
     | "reachable"
+    | "canControl"
     | "isSavingConfig"
     | "isRepairing"
     | "isSyncing"
@@ -169,7 +179,7 @@ function AdvancedButtons(
         <button
           type="button"
           onClick={props.saveConfig}
-          disabled={props.isSavingConfig}
+          disabled={!props.canControl || props.isSavingConfig}
           className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] disabled:opacity-55"
           title="Apply any settings changes above."
         >
@@ -184,7 +194,7 @@ function AdvancedButtons(
         <button
           type="button"
           onClick={props.runRepair}
-          disabled={!props.reachable || props.isRepairing}
+          disabled={!props.canControl || props.isRepairing}
           className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] px-4 py-2 text-sm text-[var(--color-body)] disabled:opacity-55"
           title="Re-save any works that look incomplete or missing."
         >
@@ -199,7 +209,7 @@ function AdvancedButtons(
         <button
           type="button"
           onClick={props.runSync}
-          disabled={!props.reachable || props.isSyncing}
+          disabled={!props.canControl || props.isSyncing}
           className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] px-4 py-2 text-sm text-[var(--color-body)] disabled:opacity-55"
           title="Copy saved files into the folder above so you can browse them normally."
         >
@@ -213,8 +223,8 @@ function AdvancedButtons(
       </div>
       <ul className="space-y-1 text-xs text-[var(--color-muted)]">
         <li>
-          <span className="text-[var(--color-ink)]">Save settings:</span>{" "}
-          apply any changes you made above.
+          <span className="text-[var(--color-ink)]">Save settings:</span> apply
+          any changes you made above.
         </li>
         <li>
           <span className="text-[var(--color-ink)]">Fix missing files:</span>{" "}
@@ -233,12 +243,18 @@ function AdvancedButtons(
 export function AdvancedSettingsSection(props: AdvancedProps) {
   return (
     <details className="rounded-[2rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-6">
-      <AdvancedSummary reachable={props.reachable} />
+      <AdvancedSummary
+        canControl={props.canControl}
+        controlLabel={props.controlLabel}
+      />
 
       <div className="mt-5 space-y-5">
         <p className="text-sm text-[var(--color-body)]">
-          These controls only work when the desktop app is running on this
-          computer.
+          {props.canControl
+            ? props.isConnectedRemotely
+              ? "These settings are being applied through the archive relay to your linked desktop app."
+              : "These settings are being applied to the desktop app running on this computer."
+            : "Connect a desktop app first, then you can manage its settings here without opening the localhost helper page."}
         </p>
 
         <SettingsInputs
@@ -253,6 +269,7 @@ export function AdvancedSettingsSection(props: AdvancedProps) {
 
         <AdvancedButtons
           reachable={props.reachable}
+          canControl={props.canControl}
           isSavingConfig={props.isSavingConfig}
           isRepairing={props.isRepairing}
           isSyncing={props.isSyncing}

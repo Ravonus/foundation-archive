@@ -71,6 +71,9 @@ enum WorkerStatus {
 
 enum RelayJobKind {
   SHARE_WORK
+  UPDATE_CONFIG
+  REPAIR_PINS
+  SYNC_PINS
 }
 
 enum ContractKind {
@@ -104,35 +107,35 @@ model ContractRegistry {
 }
 
 model IpfsRoot {
-  id              String         @id @default(cuid())
-  cid             String         @unique
-  cidVersion      Int
-  protocol        SourceProtocol @default(IPFS)
-  kind            RootKind       @default(UNKNOWN)
-  originalUrl     String?
-  gatewayUrl      String?
-  relativePath    String?
-  fileName        String?
-  mimeType        String?
-  byteSize        Int?
-  estimatedByteSize Int?
-  localDirectory  String?
-  backupStatus    BackupStatus   @default(PENDING)
-  pinStatus       BackupStatus   @default(PENDING)
-  pinProvider     PinProvider    @default(NONE)
-  pinReference    String?
-  lastDownloadedAt DateTime?
-  lastPinnedAt    DateTime?
-  lastVerifiedAt  DateTime?
-  lastDeferredAt  DateTime?
+  id                    String         @id @default(cuid())
+  cid                   String         @unique
+  cidVersion            Int
+  protocol              SourceProtocol @default(IPFS)
+  kind                  RootKind       @default(UNKNOWN)
+  originalUrl           String?
+  gatewayUrl            String?
+  relativePath          String?
+  fileName              String?
+  mimeType              String?
+  byteSize              Int?
+  estimatedByteSize     Int?
+  localDirectory        String?
+  backupStatus          BackupStatus   @default(PENDING)
+  pinStatus             BackupStatus   @default(PENDING)
+  pinProvider           PinProvider    @default(NONE)
+  pinReference          String?
+  lastDownloadedAt      DateTime?
+  lastPinnedAt          DateTime?
+  lastVerifiedAt        DateTime?
+  lastDeferredAt        DateTime?
   deferredUntilByteSize Int?
-  deferCount      Int            @default(0)
-  lastError       String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  deferCount            Int            @default(0)
+  lastError             String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
-  metadataFor Artwork[]    @relation("ArtworkMetadataRoot")
-  mediaFor    Artwork[]    @relation("ArtworkMediaRoot")
+  metadataFor Artwork[]   @relation("ArtworkMetadataRoot")
+  mediaFor    Artwork[]   @relation("ArtworkMediaRoot")
   backups     BackupRun[]
 
   @@index([kind])
@@ -213,82 +216,82 @@ model BackupRun {
 }
 
 model QueueJob {
-  id         String         @id @default(cuid())
-  kind       QueueJobKind
-  status     QueueJobStatus @default(PENDING)
-  priority   Int            @default(0)
-  payload    String
-  dedupeKey  String?
-  attempts   Int            @default(0)
-  maxAttempts Int           @default(3)
-  availableAt DateTime      @default(now())
-  startedAt  DateTime?
-  finishedAt DateTime?
-  lastError  String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id          String         @id @default(cuid())
+  kind        QueueJobKind
+  status      QueueJobStatus @default(PENDING)
+  priority    Int            @default(0)
+  payload     String
+  dedupeKey   String?
+  attempts    Int            @default(0)
+  maxAttempts Int            @default(3)
+  availableAt DateTime       @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  @@index([kind, status, availableAt])
   @@unique([kind, dedupeKey])
+  @@index([kind, status, availableAt])
 }
 
 model WorkerHeartbeat {
-  id               String       @id @default(cuid())
-  workerKey        String       @unique
-  label            String
-  status           WorkerStatus @default(STARTING)
-  mode             String       @default("daemon")
-  lastSeenAt       DateTime     @default(now())
-  lastRunStartedAt DateTime?
-  lastRunFinishedAt DateTime?
-  lastProcessedCount Int        @default(0)
-  lastError        String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                 String       @id @default(cuid())
+  workerKey          String       @unique
+  label              String
+  status             WorkerStatus @default(STARTING)
+  mode               String       @default("daemon")
+  lastSeenAt         DateTime     @default(now())
+  lastRunStartedAt   DateTime?
+  lastRunFinishedAt  DateTime?
+  lastProcessedCount Int          @default(0)
+  lastError          String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 }
 
 model ArchivePolicyState {
-  id                    String   @id
-  autoCrawlerEnabled    Boolean  @default(true)
-  smartPinStartBytes    Int      @default(5242880)
-  smartPinMaxBytes      Int      @default(5242880)
-  smartPinCeilingBytes  Int      @default(268435456)
-  smartPinGrowthFactor  Float    @default(2)
-  smartPinDeferMs       Int      @default(60000)
-  blockWindowSize       Int      @default(50000)
-  contractsPerTick      Int      @default(1)
-  discoverySource       String   @default("editions")
-  discoveryPage         Int      @default(0)
-  discoveryQueryIndex   Int      @default(0)
-  discoveryPerPage      Int      @default(24)
-  totalDiscoveredContracts Int   @default(0)
-  lastCrawlerTickAt     DateTime?
-  lastDiscoveryTickAt   DateTime?
-  lastDiscoverySummary  String?
-  lastBudgetRaisedAt    DateTime?
-  lastBudgetReason      String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                       String    @id
+  autoCrawlerEnabled       Boolean   @default(true)
+  smartPinStartBytes       Int       @default(5242880)
+  smartPinMaxBytes         Int       @default(5242880)
+  smartPinCeilingBytes     Int       @default(268435456)
+  smartPinGrowthFactor     Float     @default(2)
+  smartPinDeferMs          Int       @default(60000)
+  blockWindowSize          Int       @default(50000)
+  contractsPerTick         Int       @default(1)
+  discoverySource          String    @default("editions")
+  discoveryPage            Int       @default(0)
+  discoveryQueryIndex      Int       @default(0)
+  discoveryPerPage         Int       @default(24)
+  totalDiscoveredContracts Int       @default(0)
+  lastCrawlerTickAt        DateTime?
+  lastDiscoveryTickAt      DateTime?
+  lastDiscoverySummary     String?
+  lastBudgetRaisedAt       DateTime?
+  lastBudgetReason         String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 }
 
 model ContractCrawlerState {
-  id                  String   @id @default(cuid())
-  contractId          String   @unique
-  autoEnabled         Boolean  @default(true)
-  scanMode            String   @default("blocks")
-  scanFromBlock       Int      @default(0)
-  scanToBlock         Int?
-  nextFromBlock       Int      @default(0)
-  lastScannedBlock    Int?
-  blockWindowSize     Int      @default(50000)
-  completed           Boolean  @default(false)
-  totalDiscoveredCount Int     @default(0)
-  lastDiscoveredCount Int      @default(0)
-  lastRunStartedAt    DateTime?
-  lastRunFinishedAt   DateTime?
-  lastError           String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  contractId           String    @unique
+  autoEnabled          Boolean   @default(true)
+  scanMode             String    @default("blocks")
+  scanFromBlock        Int       @default(0)
+  scanToBlock          Int?
+  nextFromBlock        Int       @default(0)
+  lastScannedBlock     Int?
+  blockWindowSize      Int       @default(50000)
+  completed            Boolean   @default(false)
+  totalDiscoveredCount Int       @default(0)
+  lastDiscoveredCount  Int       @default(0)
+  lastRunStartedAt     DateTime?
+  lastRunFinishedAt    DateTime?
+  lastError            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   contract ContractRegistry @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
@@ -307,15 +310,15 @@ model ArchiveEvent {
 }
 
 model RelayPairing {
-  id              String   @id @default(cuid())
-  ownerToken      String
-  pairingCode     String   @unique
-  label           String?
-  expiresAt       DateTime
-  claimedAt       DateTime?
+  id                String    @id @default(cuid())
+  ownerToken        String
+  pairingCode       String    @unique
+  label             String?
+  expiresAt         DateTime
+  claimedAt         DateTime?
   claimedByDeviceId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   claimedByDevice RelayDevice? @relation(fields: [claimedByDeviceId], references: [id], onDelete: SetNull)
 
@@ -323,16 +326,16 @@ model RelayPairing {
 }
 
 model RelayDevice {
-  id                String   @id @default(cuid())
-  ownerToken        String
-  deviceLabel       String
-  deviceSecret      String   @unique
-  relayEnabled      Boolean  @default(true)
-  lastSeenAt        DateTime?
-  lastError         String?
+  id                 String    @id @default(cuid())
+  ownerToken         String
+  deviceLabel        String
+  deviceSecret       String    @unique
+  relayEnabled       Boolean   @default(true)
+  lastSeenAt         DateTime?
+  lastError          String?
   lastCompletedJobAt DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   claimedPairings RelayPairing[]
   jobs            RelayJob[]

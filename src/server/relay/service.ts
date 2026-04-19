@@ -20,9 +20,22 @@ export type RelayShareWorkPayload = {
   mediaCid: string | null;
 };
 
+export type RelayUpdateConfigPayload = {
+  download_root_dir?: string | null;
+  sync_enabled?: boolean | null;
+  local_gateway_base_url?: string | null;
+  public_gateway_base_url?: string | null;
+  relay_enabled?: boolean | null;
+  relay_server_url?: string | null;
+  relay_device_name?: string | null;
+};
+
 function createPairingCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from({ length: 8 }, () => alphabet[randomInt(0, alphabet.length)]).join("");
+  return Array.from(
+    { length: 8 },
+    () => alphabet[randomInt(0, alphabet.length)],
+  ).join("");
 }
 
 async function generateUniquePairingCode(db: DbClient) {
@@ -88,13 +101,14 @@ export async function listRelayDevices(db: DbClient, ownerToken: string) {
       device.relayEnabled &&
       Boolean(
         device.lastSeenAt &&
-          now - new Date(device.lastSeenAt).getTime() < LIVE_DEVICE_WINDOW_MS,
+        now - new Date(device.lastSeenAt).getTime() < LIVE_DEVICE_WINDOW_MS,
       ),
     lastSeenAt: device.lastSeenAt,
     lastError: device.lastError,
     lastCompletedJobAt: device.lastCompletedJobAt,
     createdAt: device.createdAt,
-    pendingJobCount: device.jobs.filter((job) => job.status === "PENDING").length,
+    pendingJobCount: device.jobs.filter((job) => job.status === "PENDING")
+      .length,
     recentJobs: device.jobs.map((job) => ({
       id: job.id,
       kind: job.kind,
@@ -114,7 +128,10 @@ export async function getRelayDeviceByToken(db: DbClient, deviceToken: string) {
   });
 }
 
-export async function requireRelayDeviceByToken(db: DbClient, deviceToken: string) {
+export async function requireRelayDeviceByToken(
+  db: DbClient,
+  deviceToken: string,
+) {
   const device = await getRelayDeviceByToken(db, deviceToken);
 
   if (!device) {
@@ -128,7 +145,10 @@ export async function requireRelayDeviceByToken(db: DbClient, deviceToken: strin
   return device;
 }
 
-export async function touchRelayDevice(db: DbClient, input: { deviceId: string; error?: string | null }) {
+export async function touchRelayDevice(
+  db: DbClient,
+  input: { deviceId: string; error?: string | null },
+) {
   const now = new Date();
   return db.relayDevice.update({
     where: {
@@ -237,13 +257,41 @@ export async function enqueueRelayShareWork(
     throw new Error("Linked desktop device was not found.");
   }
 
+  return enqueueRelayJob(db, {
+    ownerToken: input.ownerToken,
+    deviceId: input.deviceId,
+    kind: RelayJobKind.SHARE_WORK,
+    payload: input.work,
+  });
+}
+
+export async function enqueueRelayJob(
+  db: DbClient,
+  input: {
+    ownerToken: string;
+    deviceId: string;
+    kind: RelayJobKind;
+    payload: unknown;
+  },
+) {
+  const device = await db.relayDevice.findFirst({
+    where: {
+      id: input.deviceId,
+      ownerToken: input.ownerToken,
+    },
+  });
+
+  if (!device) {
+    throw new Error("Linked desktop device was not found.");
+  }
+
   return db.relayJob.create({
     data: {
       ownerToken: input.ownerToken,
       deviceId: input.deviceId,
-      kind: RelayJobKind.SHARE_WORK,
+      kind: input.kind,
       status: QueueJobStatus.PENDING,
-      payload: JSON.stringify(input.work),
+      payload: JSON.stringify(input.payload ?? {}),
     },
   });
 }
@@ -404,8 +452,12 @@ export async function reportRelayJobResult(
       },
       data: {
         lastSeenAt: now,
-        lastCompletedJobAt: input.status === "COMPLETED" ? now : device.lastCompletedJobAt,
-        lastError: input.status === "FAILED" ? input.errorMessage ?? "Relay job failed." : null,
+        lastCompletedJobAt:
+          input.status === "COMPLETED" ? now : device.lastCompletedJobAt,
+        lastError:
+          input.status === "FAILED"
+            ? (input.errorMessage ?? "Relay job failed.")
+            : null,
       },
     });
   });

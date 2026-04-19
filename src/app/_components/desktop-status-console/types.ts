@@ -13,6 +13,7 @@ export type PinMatch = {
   artistName: string | null;
   artistUsername: string | null;
   foundationUrl: string | null;
+  chainId: number;
   contractAddress: string;
   tokenId: string;
   posterUrl: string | null;

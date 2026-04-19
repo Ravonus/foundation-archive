@@ -9,6 +9,7 @@ import type {
   DesktopBridgeContextValue,
   DesktopShareableWork,
   PinVerificationResult,
+  RelayDeviceStateSnapshot,
   RelayInventorySnapshot,
   RelayOwnerDevice,
   RelayPairing,
@@ -30,6 +31,7 @@ export type ContextValueInputs = {
   ownerToken: string | null;
   relayDevices: RelayOwnerDevice[];
   relayInventories: Record<string, RelayInventorySnapshot>;
+  relayDeviceStates: Record<string, RelayDeviceStateSnapshot>;
   relaySocketConnected: boolean;
   localBridgeProbeEnabled: boolean;
   pinEnrichment: Record<string, RelayPinEnrichmentMatch[]>;
@@ -66,6 +68,7 @@ export function buildDesktopBridgeContextValue(
     ownerToken: inputs.ownerToken,
     relayDevices: inputs.relayDevices,
     relayInventories: inputs.relayInventories,
+    relayDeviceStates: inputs.relayDeviceStates,
     relaySocketConnected: inputs.relaySocketConnected,
     localBridgeProbeEnabled: inputs.localBridgeProbeEnabled,
     pinEnrichment: inputs.pinEnrichment,
@@ -83,12 +86,16 @@ export function buildDesktopBridgeContextValue(
     refreshRelayDevices: relayOwnerActions.refreshRelayDevices,
     requestRelayInventory: relayOwnerActions.requestRelayInventory,
     disconnectRelayDevice: relayOwnerActions.disconnectRelayDevice,
+    updateRelayDeviceConfig: relayOwnerActions.updateRelayDeviceConfig,
+    repairRelayDevicePins: relayOwnerActions.repairRelayDevicePins,
+    syncRelayDevicePins: relayOwnerActions.syncRelayDevicePins,
     createRelayPairing: relayOwnerActions.createRelayPairing,
     linkLocalBridgeToRelay: localBridgeActions.linkLocalBridgeToRelay,
     buildRelayPairingUrl: inputs.buildRelayPairingUrl,
     enrichPins: relayOwnerActions.enrichPins,
     queueWorkToRelay: relayOwnerActions.queueWorkToRelay,
     shareWork: localBridgeActions.shareWork,
+    uploadFiles: localBridgeActions.uploadFiles,
     buildWorkShareUrl: inputs.buildWorkShareUrl,
     buildSessionViewUrl: inputs.buildSessionViewUrl,
     clearError: inputs.clearError,

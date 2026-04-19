@@ -142,10 +142,43 @@ export type DesktopShareableWork = {
   mediaCid?: string | null;
 };
 
+export type UploadFileEntry = {
+  name: string;
+  cid: string;
+  size: number;
+};
+
+export type UploadFilesResult = {
+  root_cid: string;
+  label: string | null;
+  pinned: boolean;
+  provider: string;
+  pin_reference: string;
+  requested_at: string;
+  file_count: number;
+  total_bytes: number;
+  wrapped: boolean;
+  entries: UploadFileEntry[];
+};
+
+export type UploadFilesInput = {
+  files: File[];
+  label?: string | null;
+  onProgress?: (loaded: number, total: number) => void;
+  signal?: AbortSignal;
+};
+
 export type RelayInventorySnapshot = {
   deviceId: string;
   generatedAt: string;
   items: BridgePinInventoryItem[];
+};
+
+export type RelayDeviceStateSnapshot = {
+  deviceId: string;
+  generatedAt: string;
+  health: BridgeHealth;
+  config: BridgeConfig;
 };
 
 export type BridgeStatus = "checking" | "disconnected" | "connected";
@@ -184,6 +217,7 @@ export type DesktopBridgeContextValue = {
   ownerToken: string | null;
   relayDevices: RelayOwnerDevice[];
   relayInventories: Record<string, RelayInventorySnapshot>;
+  relayDeviceStates: Record<string, RelayDeviceStateSnapshot>;
   relaySocketConnected: boolean;
   localBridgeProbeEnabled: boolean;
   pinEnrichment: Record<string, RelayPinEnrichmentMatch[]>;
@@ -201,6 +235,12 @@ export type DesktopBridgeContextValue = {
   refreshRelayDevices: () => Promise<RelayOwnerDevice[]>;
   requestRelayInventory: (deviceId: string) => void;
   disconnectRelayDevice: (deviceId: string) => Promise<void>;
+  updateRelayDeviceConfig: (
+    deviceId: string,
+    input: Partial<BridgeConfig>,
+  ) => Promise<RelayQueuedJob>;
+  repairRelayDevicePins: (deviceId: string) => Promise<RelayQueuedJob>;
+  syncRelayDevicePins: (deviceId: string) => Promise<RelayQueuedJob>;
   createRelayPairing: (label?: string | null) => Promise<RelayPairing>;
   linkLocalBridgeToRelay: (
     label?: string | null,
@@ -219,6 +259,7 @@ export type DesktopBridgeContextValue = {
     deviceId?: string | null,
   ) => Promise<RelayQueuedJob>;
   shareWork: (work: DesktopShareableWork) => Promise<ShareWorkResult>;
+  uploadFiles: (input: UploadFilesInput) => Promise<UploadFilesResult>;
   buildWorkShareUrl: (work: DesktopShareableWork) => Promise<string>;
   buildSessionViewUrl: () => string | null;
   clearError: () => void;

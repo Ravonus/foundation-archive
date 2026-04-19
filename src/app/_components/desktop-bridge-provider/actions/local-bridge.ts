@@ -17,6 +17,8 @@ import type {
   RepairPinsResult,
   ShareWorkResult,
   SyncPinsResult,
+  UploadFilesInput,
+  UploadFilesResult,
   VerifyPinsResult,
 } from "../types";
 
@@ -52,6 +54,7 @@ export type LocalBridgeActions = {
     relayServerUrl?: string | null,
   ) => Promise<RelayOwnerDevice[]>;
   shareWork: (work: DesktopShareableWork) => Promise<ShareWorkResult>;
+  uploadFiles: (input: UploadFilesInput) => Promise<UploadFilesResult>;
   ensureConnected: () => Promise<BridgeSession>;
 };
 
@@ -324,6 +327,119 @@ function createShareWork(
   };
 }
 
+function resolveUploadFileName(file: File) {
+  const relativePath = (file as File & { webkitRelativePath?: string })
+    .webkitRelativePath;
+  if (relativePath && relativePath.length > 0) {
+    return relativePath;
+  }
+  return file.name;
+}
+
+function parseUploadError(raw: string, fallback: string) {
+  if (!raw) return fallback;
+  try {
+    const payload = JSON.parse(raw) as { error?: string; message?: string };
+    return payload.error ?? payload.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function createUploadFiles(
+  deps: LocalBridgeDeps,
+  ensureConnected: () => Promise<BridgeSession>,
+) {
+  return async ({ files, label, onProgress, signal }: UploadFilesInput) => {
+    if (files.length === 0) {
+      throw new Error("Select at least one file to upload.");
+    }
+
+    try {
+      const activeSession = await ensureConnected();
+
+      const formData = new FormData();
+      formData.append("session_secret", activeSession.session_secret);
+      if (label && label.trim().length > 0) {
+        formData.append("label", label.trim());
+      }
+      for (const file of files) {
+        formData.append("file", file, resolveUploadFileName(file));
+      }
+
+      const url = `${trimTrailingSlash(deps.bridgeUrl)}/ipfs/add`;
+
+      const payload = await new Promise<UploadFilesResult>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+
+        if (onProgress) {
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              onProgress(event.loaded, event.total);
+            }
+          };
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText) as UploadFilesResult);
+            } catch (parseError) {
+              reject(
+                parseError instanceof Error
+                  ? parseError
+                  : new Error("Desktop app returned invalid JSON."),
+              );
+            }
+            return;
+          }
+          reject(
+            new Error(
+              parseUploadError(
+                xhr.responseText,
+                `Desktop app upload failed (HTTP ${xhr.status}).`,
+              ),
+            ),
+          );
+        };
+
+        xhr.onerror = () => {
+          reject(
+            new Error(
+              `Unable to reach the desktop app at ${deps.bridgeUrl} for upload.`,
+            ),
+          );
+        };
+
+        xhr.onabort = () => {
+          reject(new Error("Upload canceled."));
+        };
+
+        if (signal) {
+          if (signal.aborted) {
+            xhr.abort();
+            return;
+          }
+          signal.addEventListener("abort", () => xhr.abort(), { once: true });
+        }
+
+        xhr.send(formData);
+      });
+
+      deps.setError(null);
+      return payload;
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to upload files to the desktop app.";
+      deps.setError(message);
+      throw new Error(message);
+    }
+  };
+}
+
 export function createLocalBridgeActions(
   deps: LocalBridgeDeps,
 ): LocalBridgeActions {
@@ -348,6 +464,7 @@ export function createLocalBridgeActions(
   );
   const ensureConnected = createEnsureConnected(deps, connect);
   const shareWork = createShareWork(deps, ensureConnected);
+  const uploadFiles = createUploadFiles(deps, ensureConnected);
 
   return {
     refreshHealth,
@@ -362,6 +479,7 @@ export function createLocalBridgeActions(
     verifyPins,
     linkLocalBridgeToRelay,
     shareWork,
+    uploadFiles,
     ensureConnected,
   };
 }

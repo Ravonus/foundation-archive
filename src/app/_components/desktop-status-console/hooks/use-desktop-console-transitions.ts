@@ -11,6 +11,7 @@ export function useDesktopConsoleTransitions() {
   const [isConnectingLocal, startConnectLocal] = useTransition();
   const [isDisconnecting, startDisconnect] = useTransition();
   const [isVerifying, startVerify] = useTransition();
+  const [isUploading, startUpload] = useTransition();
 
   return {
     isRefreshing,
@@ -29,5 +30,7 @@ export function useDesktopConsoleTransitions() {
     startDisconnect,
     isVerifying,
     startVerify,
+    isUploading,
+    startUpload,
   };
 }

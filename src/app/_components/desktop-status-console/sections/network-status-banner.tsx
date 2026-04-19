@@ -96,9 +96,9 @@ function RelayConnectedBanner({
             Desktop app connected over the archive relay
           </p>
           <p className="mt-0.5 text-[0.78rem] text-[var(--color-muted)]">
-            This page can still send works to your linked desktop app. Open the
-            app on this same computer only if you want local-only settings or a
-            direct localhost view.
+            This page can send works, show saved inventory, and manage settings
+            for your linked desktop app. Open the app itself only if you want
+            the local helper view too.
           </p>
         </div>
       </div>

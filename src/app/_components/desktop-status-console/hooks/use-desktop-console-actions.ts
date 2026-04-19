@@ -1,3 +1,5 @@
+/* eslint-disable max-lines */
+
 "use client";
 
 import type {
@@ -29,6 +31,8 @@ type PreparePairingOptions = {
 const PAIRING_POLL_INTERVAL_MS = 1_000;
 const PAIRING_WAIT_TIMEOUT_MS = 15_000;
 const PAIRING_REFRESH_BUFFER_MS = 30_000;
+const RELAY_JOB_POLL_INTERVAL_MS = 1_000;
+const RELAY_JOB_TIMEOUT_MS = 20_000;
 
 type LocalReloadResult =
   | {
@@ -235,6 +239,35 @@ function resolveReloadFeedback(input: {
   return "Got the latest from your desktop app.";
 }
 
+function pickRelayActionDevice(selectedDevice: RelayOwnerDevice | null) {
+  return selectedDevice?.connected ? selectedDevice : null;
+}
+
+async function waitForRelayJob(
+  refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
+  deviceId: string,
+  jobId: string,
+) {
+  const deadline = Date.now() + RELAY_JOB_TIMEOUT_MS;
+  let latestDevices: RelayOwnerDevice[] = [];
+
+  while (Date.now() <= deadline) {
+    latestDevices = await refreshRelayDevices();
+    const device = latestDevices.find((entry) => entry.id === deviceId) ?? null;
+    const job = device?.recentJobs.find((entry) => entry.id === jobId) ?? null;
+
+    if (job?.status === "COMPLETED" || job?.status === "FAILED") {
+      return { device, job };
+    }
+
+    await sleep(RELAY_JOB_POLL_INTERVAL_MS);
+  }
+
+  const device = latestDevices.find((entry) => entry.id === deviceId) ?? null;
+  const job = device?.recentJobs.find((entry) => entry.id === jobId) ?? null;
+  return { device, job };
+}
+
 function useReload({ state, selectedDevice }: ActionArgs) {
   const { bridge, raw, transitions } = state;
 
@@ -296,13 +329,48 @@ function useReload({ state, selectedDevice }: ActionArgs) {
   };
 }
 
-function useRunRepair({ state }: ActionArgs) {
+function useRunRepair({ state, selectedDevice }: ActionArgs) {
   const { bridge, raw, transitions } = state;
 
   return () => {
     transitions.startRepair(() => {
       raw.setFeedback(null);
       bridge.clearError();
+
+      const relayDevice = pickRelayActionDevice(selectedDevice);
+
+      if (relayDevice) {
+        void bridge
+          .repairRelayDevicePins(relayDevice.id)
+          .then(async (queuedJob) => {
+            const outcome = await waitForRelayJob(
+              bridge.refreshRelayDevices,
+              relayDevice.id,
+              queuedJob.jobId,
+            );
+
+            if (outcome.job?.status === "FAILED") {
+              throw new Error(
+                outcome.job.errorMessage ??
+                  "The linked desktop app couldn't re-save missing works.",
+              );
+            }
+
+            bridge.requestRelayInventory(relayDevice.id);
+            raw.setFeedback(
+              `Asked ${relayDevice.deviceLabel} to re-save missing works. The saved list above will refresh here.`,
+            );
+          })
+          .catch((caughtError: unknown) => {
+            raw.setFeedback(
+              errorMessage(
+                caughtError,
+                "Couldn't finish the re-save. Please try again.",
+              ),
+            );
+          });
+        return;
+      }
 
       void bridge
         .repairPins()
@@ -365,7 +433,7 @@ function useRunVerify({ state }: ActionArgs) {
   };
 }
 
-function useSaveConfig({ state, relayServerUrl }: ActionArgs) {
+function useSaveConfig({ state, relayServerUrl, selectedDevice }: ActionArgs) {
   const { bridge, raw, transitions } = state;
 
   return () => {
@@ -373,16 +441,49 @@ function useSaveConfig({ state, relayServerUrl }: ActionArgs) {
       raw.setFeedback(null);
       bridge.clearError();
 
+      const relayDevice = pickRelayActionDevice(selectedDevice);
+      const configInput = {
+        download_root_dir: raw.configDraft.downloadRootDir,
+        sync_enabled: raw.configDraft.syncEnabled,
+        local_gateway_base_url: raw.configDraft.localGatewayBaseUrl,
+        public_gateway_base_url: raw.configDraft.publicGatewayBaseUrl,
+        relay_enabled: raw.configDraft.relayEnabled,
+        relay_server_url: relayServerUrl,
+        relay_device_name: raw.configDraft.relayDeviceName,
+      };
+
+      if (relayDevice) {
+        void bridge
+          .updateRelayDeviceConfig(relayDevice.id, configInput)
+          .then(async (queuedJob) => {
+            const outcome = await waitForRelayJob(
+              bridge.refreshRelayDevices,
+              relayDevice.id,
+              queuedJob.jobId,
+            );
+
+            if (outcome.job?.status === "FAILED") {
+              throw new Error(
+                outcome.job.errorMessage ??
+                  "The linked desktop app couldn't save those settings.",
+              );
+            }
+
+            raw.setFeedback(`Settings saved to ${relayDevice.deviceLabel}.`);
+          })
+          .catch((caughtError: unknown) => {
+            raw.setFeedback(
+              errorMessage(
+                caughtError,
+                "Couldn't save settings. Please try again.",
+              ),
+            );
+          });
+        return;
+      }
+
       void bridge
-        .updateConfig({
-          download_root_dir: raw.configDraft.downloadRootDir,
-          sync_enabled: raw.configDraft.syncEnabled,
-          local_gateway_base_url: raw.configDraft.localGatewayBaseUrl,
-          public_gateway_base_url: raw.configDraft.publicGatewayBaseUrl,
-          relay_enabled: raw.configDraft.relayEnabled,
-          relay_server_url: relayServerUrl,
-          relay_device_name: raw.configDraft.relayDeviceName,
-        })
+        .updateConfig(configInput)
         .then(() => {
           raw.setFeedback("Settings saved.");
         })
@@ -398,13 +499,48 @@ function useSaveConfig({ state, relayServerUrl }: ActionArgs) {
   };
 }
 
-function useRunSync({ state }: ActionArgs) {
+function useRunSync({ state, selectedDevice }: ActionArgs) {
   const { bridge, raw, transitions } = state;
 
   return () => {
     transitions.startSync(() => {
       raw.setFeedback(null);
       bridge.clearError();
+
+      const relayDevice = pickRelayActionDevice(selectedDevice);
+
+      if (relayDevice) {
+        void bridge
+          .syncRelayDevicePins(relayDevice.id)
+          .then(async (queuedJob) => {
+            const outcome = await waitForRelayJob(
+              bridge.refreshRelayDevices,
+              relayDevice.id,
+              queuedJob.jobId,
+            );
+
+            if (outcome.job?.status === "FAILED") {
+              throw new Error(
+                outcome.job.errorMessage ??
+                  "The linked desktop app couldn't copy saved works into its folder.",
+              );
+            }
+
+            bridge.requestRelayInventory(relayDevice.id);
+            raw.setFeedback(
+              `Folder sync ran on ${relayDevice.deviceLabel}. The saved list above will refresh here.`,
+            );
+          })
+          .catch((caughtError: unknown) => {
+            raw.setFeedback(
+              errorMessage(
+                caughtError,
+                "Couldn't copy to your folder. Please try again.",
+              ),
+            );
+          });
+        return;
+      }
 
       void bridge
         .syncPins()

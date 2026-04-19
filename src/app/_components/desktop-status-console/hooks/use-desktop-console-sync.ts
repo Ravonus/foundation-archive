@@ -3,11 +3,13 @@
 import { useEffect, useEffectEvent } from "react";
 
 import type {
+  BridgeConfig,
   BridgePinsResponse,
   RelayOwnerDevice,
 } from "~/app/_components/desktop-bridge-provider";
 
-import { pickPreferredDevice } from "./desktop-console-shared";
+import { draftFromConfig, pickPreferredDevice } from "./desktop-console-shared";
+import type { ConfigDraft } from "../types";
 
 type InventoryCidCarrier = {
   cid: string;
@@ -104,4 +106,40 @@ export function useDesktopConsoleSelectedDeviceSync({
     const preferred = pickPreferredDevice(relayDevices);
     setSelectedDeviceId(preferred?.id ?? null);
   }, [relayDevices, selectedDeviceId, setSelectedDeviceId]);
+}
+
+type RemoteConfigSyncArgs = {
+  relayDevices: RelayOwnerDevice[];
+  relayDeviceStates: Record<
+    string,
+    {
+      config: BridgeConfig;
+    }
+  >;
+  selectedDeviceId: string | null;
+  setConfigDraft: (draft: ConfigDraft) => void;
+};
+
+export function useDesktopConsoleRemoteConfigSync({
+  relayDevices,
+  relayDeviceStates,
+  selectedDeviceId,
+  setConfigDraft,
+}: RemoteConfigSyncArgs) {
+  useEffect(() => {
+    const selectedDevice =
+      relayDevices.find((device) => device.id === selectedDeviceId) ??
+      pickPreferredDevice(relayDevices);
+
+    if (!selectedDevice?.connected) {
+      return;
+    }
+
+    const stateSnapshot = relayDeviceStates[selectedDevice.id];
+    if (!stateSnapshot) {
+      return;
+    }
+
+    setConfigDraft(draftFromConfig(stateSnapshot.config));
+  }, [relayDeviceStates, relayDevices, selectedDeviceId, setConfigDraft]);
 }

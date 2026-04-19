@@ -41,6 +41,7 @@ export type RelayPinEnrichmentMatch = {
   artistName: string | null;
   artistUsername: string | null;
   foundationUrl: string | null;
+  chainId: number;
   contractAddress: string;
   tokenId: string;
   posterUrl: string | null;
@@ -56,6 +57,13 @@ export type RelayOwnerWireMessage =
       deviceId: string;
       generatedAt: string;
       items: RelayPinInventoryItem[];
+    }
+  | {
+      type: "owner.deviceState";
+      deviceId: string;
+      generatedAt: string;
+      health: unknown;
+      config: unknown;
     }
   | {
       type: "owner.jobUpdate";

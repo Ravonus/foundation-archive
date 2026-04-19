@@ -8,7 +8,11 @@ import type {
 } from "~/lib/desktop-relay";
 import { resolveArchiveRelayWebSocketUrl } from "~/lib/desktop-relay";
 
-import type { RelayInventorySnapshot, RelayOwnerDevice } from "../types";
+import type {
+  RelayDeviceStateSnapshot,
+  RelayInventorySnapshot,
+  RelayOwnerDevice,
+} from "../types";
 
 type SocketSetters = {
   setRelaySocketConnected: (connected: boolean) => void;
@@ -17,6 +21,11 @@ type SocketSetters = {
     updater: (
       current: Record<string, RelayInventorySnapshot>,
     ) => Record<string, RelayInventorySnapshot>,
+  ) => void;
+  setRelayDeviceStates: (
+    updater: (
+      current: Record<string, RelayDeviceStateSnapshot>,
+    ) => Record<string, RelayDeviceStateSnapshot>,
   ) => void;
   setError: (message: string) => void;
 };
@@ -27,6 +36,19 @@ function handleRelayMessage(
 ) {
   if (payload.type === "owner.snapshot") {
     setters.setRelayDevices(payload.devices as RelayOwnerDevice[]);
+    const deviceIds = new Set(
+      (payload.devices as RelayOwnerDevice[]).map((device) => device.id),
+    );
+    setters.setRelayInventories((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([deviceId]) => deviceIds.has(deviceId)),
+      ),
+    );
+    setters.setRelayDeviceStates((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([deviceId]) => deviceIds.has(deviceId)),
+      ),
+    );
     return;
   }
 
@@ -37,6 +59,19 @@ function handleRelayMessage(
         deviceId: payload.deviceId,
         generatedAt: payload.generatedAt,
         items: payload.items,
+      },
+    }));
+    return;
+  }
+
+  if (payload.type === "owner.deviceState") {
+    setters.setRelayDeviceStates((current) => ({
+      ...current,
+      [payload.deviceId]: {
+        deviceId: payload.deviceId,
+        generatedAt: payload.generatedAt,
+        health: payload.health as RelayDeviceStateSnapshot["health"],
+        config: payload.config as RelayDeviceStateSnapshot["config"],
       },
     }));
     return;
@@ -56,6 +91,7 @@ export function useRelaySocket(
     setRelaySocketConnected,
     setRelayDevices,
     setRelayInventories,
+    setRelayDeviceStates,
     setError,
   } = setters;
 
@@ -90,6 +126,7 @@ export function useRelaySocket(
           setRelaySocketConnected,
           setRelayDevices,
           setRelayInventories,
+          setRelayDeviceStates,
           setError,
         });
       });
@@ -125,6 +162,7 @@ export function useRelaySocket(
     relaySocketRef,
     setError,
     setRelayDevices,
+    setRelayDeviceStates,
     setRelayInventories,
     setRelaySocketConnected,
   ]);

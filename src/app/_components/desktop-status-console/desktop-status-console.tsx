@@ -14,22 +14,73 @@ import { ConnectSection } from "./sections/connect-section";
 import { PinsSummarySection } from "./sections/pins-summary-section";
 import { SavedWorksSection } from "./sections/saved-works-section";
 
+function resolvePairingUrl(input: {
+  pairing: ReturnType<typeof useDesktopConsoleState>["raw"]["pairing"];
+  relayServerUrl: string;
+  relayDeviceName: string;
+  buildRelayPairingUrl: ReturnType<
+    typeof useDesktopConsoleState
+  >["bridge"]["buildRelayPairingUrl"];
+}) {
+  if (!input.pairing) {
+    return null;
+  }
+
+  return input.buildRelayPairingUrl(
+    input.pairing,
+    input.relayServerUrl.length > 0 ? input.relayServerUrl : null,
+    input.relayDeviceName.length > 0 ? input.relayDeviceName : null,
+  );
+}
+
+function resolveControlLabel(input: {
+  selectedDevice: ReturnType<typeof pickSelectedDevice>;
+  reachable: boolean;
+}) {
+  if (input.selectedDevice?.connected) {
+    return input.selectedDevice.deviceLabel
+      ? `${input.selectedDevice.deviceLabel} linked`
+      : "linked desktop app";
+  }
+
+  if (input.selectedDevice) {
+    return `${input.selectedDevice.deviceLabel} offline`;
+  }
+
+  if (input.reachable) {
+    return "app connected here";
+  }
+
+  return "not ready yet";
+}
+
 export function DesktopStatusConsole() {
   const state = useDesktopConsoleState();
   const { bridge, raw, transitions } = state;
 
   const selectedDevice = pickSelectedDevice(state);
-  const relayConnected = hasConnectedRelayDevice(bridge.relayDevices);
-  const relayServerUrl = resolveRelayServerUrl(raw.configDraft);
-  const pairingUrl = raw.pairing
-    ? bridge.buildRelayPairingUrl(
-        raw.pairing,
-        relayServerUrl || null,
-        raw.configDraft.relayDeviceName || null,
-      )
+  const selectedDeviceState = selectedDevice
+    ? (bridge.relayDeviceStates[selectedDevice.id] ?? null)
     : null;
+  const relayConnected = hasConnectedRelayDevice(bridge.relayDevices);
+  const canControlSelectedDevice = selectedDevice
+    ? selectedDevice.connected
+    : bridge.reachable;
+  const relayServerUrl = resolveRelayServerUrl(raw.configDraft);
+  const pairingUrl = resolvePairingUrl({
+    pairing: raw.pairing,
+    relayServerUrl,
+    relayDeviceName: raw.configDraft.relayDeviceName,
+    buildRelayPairingUrl: bridge.buildRelayPairingUrl,
+  });
   const sessionUrl = bridge.buildSessionViewUrl();
   const inventoryView = buildVisibleInventory(state, selectedDevice);
+  const controlLabel = resolveControlLabel({
+    selectedDevice,
+    reachable: bridge.reachable,
+  });
+  const isConnectedRemotely =
+    selectedDevice?.connected === true || selectedDeviceState !== null;
 
   const actions = useDesktopConsoleActions({
     state,
@@ -93,6 +144,7 @@ export function DesktopStatusConsole() {
         pinVerifications={bridge.pinVerifications}
         isVerifying={transitions.isVerifying}
         reachable={bridge.reachable}
+        canRepair={selectedDevice ? selectedDevice.connected : bridge.reachable}
         isRepairing={transitions.isRepairing}
         runRepair={actions.runRepair}
         runVerify={actions.runVerify}
@@ -100,11 +152,14 @@ export function DesktopStatusConsole() {
 
       <AdvancedSettingsSection
         reachable={bridge.reachable}
+        canControl={canControlSelectedDevice}
+        controlLabel={controlLabel}
         configDraft={raw.configDraft}
         setConfigDraft={raw.setConfigDraft}
         isSavingConfig={transitions.isSavingConfig}
         isRepairing={transitions.isRepairing}
         isSyncing={transitions.isSyncing}
+        isConnectedRemotely={isConnectedRemotely}
         saveConfig={actions.saveConfig}
         runRepair={actions.runRepair}
         runSync={actions.runSync}
