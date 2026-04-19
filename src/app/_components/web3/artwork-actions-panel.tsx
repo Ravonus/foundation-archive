@@ -251,7 +251,7 @@ function RescueAuctionAction({
       </div>
       <p className="text-xs leading-relaxed text-[var(--color-ink)]/60">
         Anyone can finalize an ended auction. The artwork transfers to the
-        winning bidder and the seller's address receives the proceeds. You only
+        winning bidder and the seller&apos;s address receives the proceeds. You only
         pay gas.
       </p>
       {error ? (
@@ -303,7 +303,7 @@ function BuyNowAction({
     <div className="flex flex-col gap-2">
       <StateLine
         state={`Listed for ${priceLabel}`}
-        subline="Direct on-chain purchase via Foundation's market contract."
+        subline="Direct on-chain purchase via Foundation&apos;s market contract."
       />
       <motion.button
         type="button"
@@ -347,7 +347,7 @@ function AuctionLiveInfo({
     <div className="flex flex-col gap-2">
       <StateLine state={stateLine} subline={formatRelativeTime(endsAt)} />
       <p className="text-xs leading-relaxed text-[var(--color-ink)]/60">
-        Live bidding still flows through Foundation's market. After the auction
+        Live bidding still flows through Foundation&apos;s market. After the auction
         ends, anyone can settle it from here.
       </p>
     </div>
@@ -373,8 +373,8 @@ function OwnerSurface({ hasActiveListing }: { hasActiveListing: boolean }) {
         List through Agorix · coming soon
       </button>
       <p className="text-xs leading-relaxed text-[var(--color-ink)]/60">
-        We're shipping a wrapped listing flow that pays creators directly while
-        funding the archive. Until then, list on Foundation as usual — we'll
+        We&apos;re shipping a wrapped listing flow that pays creators directly while
+        funding the archive. Until then, list on Foundation as usual — we&apos;ll
         index it here.
       </p>
     </div>

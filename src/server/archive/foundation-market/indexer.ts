@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { getAddress } from "viem";
 
 import {
@@ -59,6 +60,26 @@ const FOUNDATION_MARKET_TARGETS: MarketTarget[] = [
 
 function lower(address: string) {
   return address.toLowerCase();
+}
+
+function stringifyEventPayloadValue(value: unknown): unknown {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
+function stringifyMarketArg(
+  args: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = args[key];
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "bigint" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  return null;
 }
 
 export async function ensureFoundationMarketIndexerStates(
@@ -205,6 +226,7 @@ async function runMarketIndexerForState(
   }
 }
 
+// eslint-disable-next-line max-params
 async function recordIndexerFailure(
   client: DatabaseClient,
   state: IndexerState,
@@ -240,6 +262,7 @@ type MarketLog = {
   transactionHash: string | null;
 };
 
+// eslint-disable-next-line complexity
 async function dispatchMarketLog(
   client: DatabaseClient,
   state: IndexerState,
@@ -307,8 +330,9 @@ async function persistMarketEventLog(
         auctionId: enriched.auctionId,
         actorAddress: enriched.actorAddress,
         amount: enriched.amount,
-        payload: JSON.stringify(args, (_key, value) =>
-          typeof value === "bigint" ? value.toString() : value,
+        payload: JSON.stringify(
+          args,
+          (_key, value: unknown): unknown => stringifyEventPayloadValue(value),
         ),
       },
     });
@@ -362,10 +386,7 @@ function projectMarketEvent(
   eventName: string,
   args: Record<string, unknown>,
 ): EventProjection {
-  const optional = (key: string) =>
-    args[key] === undefined || args[key] === null
-      ? null
-      : String(args[key]);
+  const optional = (key: string) => stringifyMarketArg(args, key);
   const optionalLower = (key: string) => {
     const value = optional(key);
     return value ? value.toLowerCase() : null;

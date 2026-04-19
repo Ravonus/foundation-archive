@@ -13,6 +13,7 @@ type ProfileHeaderProps = {
   marketSummary?: { listedCount: number; rescuableCount: number };
 };
 
+// eslint-disable-next-line complexity
 export function ProfileHeader({
   resolved,
   counts,

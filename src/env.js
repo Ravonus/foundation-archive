@@ -44,6 +44,7 @@ export const env = createEnv({
       .string()
       .url()
       .default("http://127.0.0.1:43129"),
+    UMAMI_SERVER_URL: z.string().url().optional(),
   },
 
   client: {
@@ -55,6 +56,8 @@ export const env = createEnv({
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: z.string().url().optional(),
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: z.string().uuid().optional(),
     NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: z.string().min(1).optional(),
+    NEXT_PUBLIC_ETHEREUM_RPC_URL: z.string().url().optional(),
+    NEXT_PUBLIC_BASE_RPC_URL: z.string().url().optional(),
   },
 
   runtimeEnv: {
@@ -81,12 +84,15 @@ export const env = createEnv({
     ARCHIVE_DIRECTORY_MAX_BYTES: process.env.ARCHIVE_DIRECTORY_MAX_BYTES,
     ARCHIVE_SOCKET_PORT: process.env.ARCHIVE_SOCKET_PORT,
     ARCHIVE_SOCKET_INTERNAL_URL: process.env.ARCHIVE_SOCKET_INTERNAL_URL,
+    UMAMI_SERVER_URL: process.env.UMAMI_SERVER_URL,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_ARCHIVE_SOCKET_URL: process.env.NEXT_PUBLIC_ARCHIVE_SOCKET_URL,
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
     NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:
       process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+    NEXT_PUBLIC_ETHEREUM_RPC_URL: process.env.NEXT_PUBLIC_ETHEREUM_RPC_URL,
+    NEXT_PUBLIC_BASE_RPC_URL: process.env.NEXT_PUBLIC_BASE_RPC_URL,
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: true,

@@ -80,6 +80,9 @@ services:
       - .env.production
     environment:
       KUBO_API_URL: ${KUBO_API_URL:-http://kubo:5001}
+    networks:
+      - default
+      - umami_default
     depends_on:
       postgres:
         condition: service_healthy
@@ -189,3 +192,7 @@ volumes:
     name: foundation-archive-kubo-staging
   kubo-data:
     name: foundation-archive-kubo-data
+
+networks:
+  umami_default:
+    external: true

@@ -31,6 +31,8 @@ function resolveArchivedPosterUrl(
   artwork: ArchivedArtworkRow,
   archiveMediaUrl: string | null,
 ) {
+  const base = artwork.staticPreviewUrl ?? artwork.previewUrl;
+  if (base) return base;
   if (artwork.mediaKind !== "IMAGE") return null;
   return archiveMediaUrl ?? artwork.sourceUrl;
 }

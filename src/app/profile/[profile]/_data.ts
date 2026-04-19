@@ -151,6 +151,7 @@ async function resolveProfileFromAddressKey(
   };
 }
 
+// eslint-disable-next-line complexity
 async function resolveProfileFromUsernameKey(
   key: string,
 ): Promise<ResolvedProfile> {

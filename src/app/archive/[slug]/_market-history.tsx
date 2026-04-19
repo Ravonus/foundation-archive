@@ -29,6 +29,7 @@ function formatEth(wei: string | null) {
   }
 }
 
+// eslint-disable-next-line complexity
 function eventLabel(event: MarketEventRow): {
   title: string;
   detail: string | null;

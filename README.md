@@ -76,7 +76,8 @@ Useful variables:
 - `INTERNAL_CRON_SECRET="change-me"`
 - `NEXT_PUBLIC_ARCHIVE_SOCKET_URL="https://foundation.agorix.io"` for the public site, or override it to `http://127.0.0.1:43129` when you want the local dev socket daemon directly
 - `NEXT_PUBLIC_SITE_URL="https://foundation.agorix.io"` so the desktop helper menu knows which `/desktop` board to open by default
-- `NEXT_PUBLIC_UMAMI_SCRIPT_URL="https://analytics.example.com/script.js"` to enable optional Umami tracking
+- `UMAMI_SERVER_URL="http://umami-umami-1:3000"` to proxy Umami through the app on the same origin when the web container shares a Docker network with Umami
+- `NEXT_PUBLIC_UMAMI_SCRIPT_URL="https://analytics.example.com/script.js"` to use a separate public Umami script host instead
 - `NEXT_PUBLIC_UMAMI_WEBSITE_ID="00000000-0000-0000-0000-000000000000"` for the Umami site entry
 - `ARCHIVE_SOCKET_PORT="43129"`
 - `AUTO_CRAWLER_ENABLED="true"`
@@ -194,7 +195,7 @@ That gives you a local hosting layer for backed-up metadata and media.
 - The Rust sidecar listens on `127.0.0.1:43131` by default. Override it with `ARCHIVE_ARCHIVER_BIND`. You can also tune `ARCHIVE_ARCHIVER_MEMORY_CACHE_ITEMS` and `ARCHIVE_ARCHIVER_INLINE_MEMORY_MAX_BYTES`.
 - The standalone `foundation-share-bridge` helper exposes a basic native toolbar/taskbar icon on macOS, Windows, and Linux with a small menu for opening `/desktop`, opening local health, and quitting cleanly.
 - The public archive and admin screens use sockets for live updates. The default live socket port is `43129`.
-- Umami analytics is optional. When configured, the app records pageviews/referrers/location through Umami and emits custom events for share clicks, profile archive requests, desktop-save clicks, footer links, and mission-page actions.
+- Umami analytics is optional. When `NEXT_PUBLIC_UMAMI_WEBSITE_ID` is set, the app can proxy the tracker through the same origin with `UMAMI_SERVER_URL`, which avoids mixed-content issues on HTTPS deploys. It also emits custom events for share clicks, profile archive requests, desktop-save clicks, footer links, and mission-page actions.
 - `/desktop` is the live verification board for the local Rust bridge. It is meant to confirm that artists' own helper nodes are reachable and self-repairing, not to replace a durable personal IPFS pinning setup.
 
 ## Contributing

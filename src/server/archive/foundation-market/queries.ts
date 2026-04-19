@@ -87,12 +87,9 @@ export async function getTokenMarketState(
   ]);
 
   const now = Date.now();
-  const isRescuable = Boolean(
-    liveAuction &&
-      liveAuction.status === "bidding" &&
-      liveAuction.endTime &&
-      liveAuction.endTime.getTime() <= now,
-  );
+  const isRescuable =
+    liveAuction?.status === "bidding" &&
+    (liveAuction.endTime?.getTime() ?? Number.POSITIVE_INFINITY) <= now;
 
   return { activeBuyPrice, liveAuction, isRescuable };
 }

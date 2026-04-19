@@ -152,6 +152,7 @@ async function withArchiveIngressLock<T>(
   }
 }
 
+// eslint-disable-next-line complexity
 async function runIngressCycle(
   client: DatabaseClient,
   allowIngress: boolean,

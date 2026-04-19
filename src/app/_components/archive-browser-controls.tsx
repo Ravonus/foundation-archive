@@ -128,13 +128,13 @@ function formatVisibleSummary(
 
 function useSecondsUntil(untilMs: number | null): number {
   const [remaining, setRemaining] = useState(() =>
-    untilMs ? Math.max(0, Math.ceil((untilMs - Date.now()) / 1000)) : 0,
+    untilMs === null ? 0 : Math.max(0, Math.ceil((untilMs - Date.now()) / 1000)),
   );
 
   useEffect(() => {
-    if (!untilMs) {
-      setRemaining(0);
-      return;
+    if (untilMs === null) {
+      const resetId = window.setTimeout(() => setRemaining(0), 0);
+      return () => window.clearTimeout(resetId);
     }
     const tick = () => {
       const secs = Math.max(0, Math.ceil((untilMs - Date.now()) / 1000));
@@ -148,6 +148,7 @@ function useSecondsUntil(untilMs: number | null): number {
   return remaining;
 }
 
+// eslint-disable-next-line complexity
 export function ControlShell({
   isNavigating,
   renderedCount,

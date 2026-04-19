@@ -127,6 +127,7 @@ function parseRetryAfterHeader(header: string | null): number | null {
   return Math.max(0, dateMs - Date.now());
 }
 
+// eslint-disable-next-line max-lines-per-function
 function useArchiveInfinitePages(
   items: ArtworkGridItem[],
   nextCursor: string | null,
@@ -197,6 +198,7 @@ function useArchiveInfinitePages(
     }, delay);
   }, []);
 
+  // eslint-disable-next-line complexity
   const loadMore = useCallback(async () => {
     const currentCursor = activeNextCursorRef.current;
     if (!currentCursor || isLoadingMoreRef.current) return;
