@@ -18,12 +18,6 @@ const siteUrl =
   configuredSiteUrl && configuredSiteUrl.length > 0
     ? configuredSiteUrl
     : "https://foundation.agorix.io";
-const ogImage = {
-  url: "/decenterlizePage.png",
-  width: 1731,
-  height: 909,
-  alt: "Agorix: a public Foundation archive and preservation network",
-};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -54,7 +48,6 @@ export const metadata: Metadata = {
     title: "Agorix: a public Foundation archive and preservation network",
     description:
       "Agorix is building this public Foundation archive because of the recent news, while the wider network grows underneath it.",
-    images: [ogImage],
     locale: "en_US",
   },
   twitter: {
@@ -63,7 +56,6 @@ export const metadata: Metadata = {
     description:
       "Agorix is building this public Foundation archive because of the recent news, while the wider network grows underneath it.",
     creator: "@r4vonus",
-    images: [ogImage.url],
   },
   icons: {
     icon: [
