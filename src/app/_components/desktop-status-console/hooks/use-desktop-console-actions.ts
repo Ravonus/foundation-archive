@@ -450,6 +450,7 @@ function useSaveConfig({ state, relayServerUrl, selectedDevice }: ActionArgs) {
         relay_enabled: raw.configDraft.relayEnabled,
         relay_server_url: relayServerUrl,
         relay_device_name: raw.configDraft.relayDeviceName,
+        tunnel_enabled: raw.configDraft.tunnelEnabled,
       };
 
       if (relayDevice) {

@@ -54,6 +54,9 @@ export type BridgeConfig = {
   relay_device_label: string | null;
   relay_last_connected_at: string | null;
   relay_last_error: string | null;
+  tunnel_enabled: boolean;
+  tunnel_hostname: string | null;
+  tunnel_last_error: string | null;
   config_file: string;
 };
 

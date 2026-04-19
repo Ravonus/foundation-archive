@@ -45,6 +45,10 @@ export const env = createEnv({
       .url()
       .default("http://127.0.0.1:43129"),
     UMAMI_SERVER_URL: z.string().url().optional(),
+    CLOUDFLARE_API_TOKEN: z.string().min(1).optional(),
+    CLOUDFLARE_ACCOUNT_ID: z.string().min(1).optional(),
+    CLOUDFLARE_ZONE_ID: z.string().min(1).optional(),
+    CLOUDFLARE_TUNNEL_DOMAIN: z.string().min(1).optional(),
   },
 
   client: {
@@ -85,6 +89,10 @@ export const env = createEnv({
     ARCHIVE_SOCKET_PORT: process.env.ARCHIVE_SOCKET_PORT,
     ARCHIVE_SOCKET_INTERNAL_URL: process.env.ARCHIVE_SOCKET_INTERNAL_URL,
     UMAMI_SERVER_URL: process.env.UMAMI_SERVER_URL,
+    CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+    CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_ZONE_ID: process.env.CLOUDFLARE_ZONE_ID,
+    CLOUDFLARE_TUNNEL_DOMAIN: process.env.CLOUDFLARE_TUNNEL_DOMAIN,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_ARCHIVE_SOCKET_URL: process.env.NEXT_PUBLIC_ARCHIVE_SOCKET_URL,
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,

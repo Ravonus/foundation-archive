@@ -27,6 +27,9 @@ export type ConfigDraft = {
   relayEnabled: boolean;
   relayServerUrl: string;
   relayDeviceName: string;
+  tunnelEnabled: boolean;
+  tunnelHostname: string | null;
+  tunnelLastError: string | null;
 };
 
 export type PinVerificationSummary = PinVerificationResult & {

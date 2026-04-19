@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderSync, HardDrive, LoaderCircle, Wrench } from "lucide-react";
+import { FolderSync, Globe, HardDrive, LoaderCircle, Wrench } from "lucide-react";
 
 import type { ConfigDraft } from "../types";
 
@@ -160,6 +160,66 @@ function SyncToggle({
   );
 }
 
+function TunnelToggle({
+  configDraft,
+  setConfigDraft,
+}: Pick<AdvancedProps, "configDraft" | "setConfigDraft">) {
+  const hostname = configDraft.tunnelHostname?.trim() ?? "";
+  const hasHostname = hostname.length > 0;
+  const publicUrl = hasHostname ? `https://${hostname}` : null;
+
+  return (
+    <label className="flex items-start gap-3 rounded-[1.4rem] border border-[var(--color-line)] bg-[var(--color-surface-alt)] px-4 py-4">
+      <input
+        type="checkbox"
+        checked={configDraft.tunnelEnabled}
+        onChange={(event) =>
+          setConfigDraft((current) => ({
+            ...current,
+            tunnelEnabled: event.target.checked,
+          }))
+        }
+        className="mt-1 h-4 w-4"
+      />
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <Globe aria-hidden className="h-4 w-4 text-[var(--color-muted)]" />
+          <p className="text-sm font-medium text-[var(--color-ink)]">
+            Public gateway (Cloudflare tunnel)
+          </p>
+        </div>
+        <p className="mt-1 text-sm text-[var(--color-body)]">
+          Off by default. Turn on to get a public HTTPS address that points to
+          this desktop app — no port forwarding, no firewall changes. Turning
+          off tears the tunnel down.
+        </p>
+        {configDraft.tunnelEnabled && !hasHostname ? (
+          <p className="mt-2 text-xs text-[var(--color-muted)]">
+            Provisioning… the desktop app will publish a hostname shortly.
+          </p>
+        ) : null}
+        {hasHostname && publicUrl ? (
+          <p className="mt-2 font-mono text-xs break-all text-[var(--color-ink)]">
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline decoration-dotted underline-offset-4"
+            >
+              {publicUrl}
+            </a>
+          </p>
+        ) : null}
+        {configDraft.tunnelLastError ? (
+          <p className="mt-2 text-xs text-[color:var(--color-accent-danger,#b91c1c)]">
+            {configDraft.tunnelLastError}
+          </p>
+        ) : null}
+      </div>
+    </label>
+  );
+}
+
 function AdvancedButtons(
   props: Pick<
     AdvancedProps,
@@ -263,6 +323,11 @@ export function AdvancedSettingsSection(props: AdvancedProps) {
         />
 
         <SyncToggle
+          configDraft={props.configDraft}
+          setConfigDraft={props.setConfigDraft}
+        />
+
+        <TunnelToggle
           configDraft={props.configDraft}
           setConfigDraft={props.setConfigDraft}
         />

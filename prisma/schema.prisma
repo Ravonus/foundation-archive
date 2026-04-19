@@ -430,12 +430,21 @@ model RelayDevice {
   lastSeenAt         DateTime?
   lastError          String?
   lastCompletedJobAt DateTime?
+  tunnelEnabled      Boolean   @default(false)
+  tunnelId           String?
+  tunnelHostname     String?
+  tunnelSubdomain    String?
+  tunnelDnsRecordId  String?
+  tunnelToken        String?
+  tunnelProvisionedAt DateTime?
+  tunnelLastError    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   claimedPairings RelayPairing[]
   jobs            RelayJob[]
 
+  @@unique([tunnelSubdomain])
   @@index([ownerToken, lastSeenAt])
 }
 

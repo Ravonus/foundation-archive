@@ -13,6 +13,9 @@ export function bridgeConfigFromHealth(payload: BridgeHealth): BridgeConfig {
     relay_device_label: payload.relay_device_label,
     relay_last_connected_at: payload.relay_last_connected_at,
     relay_last_error: payload.relay_last_error,
+    tunnel_enabled: false,
+    tunnel_hostname: null,
+    tunnel_last_error: null,
     config_file: payload.config_file,
   };
 }

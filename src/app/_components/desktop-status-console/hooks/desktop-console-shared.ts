@@ -15,6 +15,9 @@ export const EMPTY_DRAFT: ConfigDraft = {
   relayEnabled: false,
   relayServerUrl: "",
   relayDeviceName: "",
+  tunnelEnabled: false,
+  tunnelHostname: null,
+  tunnelLastError: null,
 };
 
 export function draftFromConfig(config: BridgeConfig): ConfigDraft {
@@ -26,6 +29,9 @@ export function draftFromConfig(config: BridgeConfig): ConfigDraft {
     relayEnabled: config.relay_enabled,
     relayServerUrl: config.relay_server_url,
     relayDeviceName: config.relay_device_name,
+    tunnelEnabled: config.tunnel_enabled,
+    tunnelHostname: config.tunnel_hostname,
+    tunnelLastError: config.tunnel_last_error,
   };
 }
 
