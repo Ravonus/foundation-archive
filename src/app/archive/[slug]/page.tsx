@@ -9,7 +9,7 @@ import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { DesktopSharePanel as ArtworkDesktopSharePanel } from "~/app/_components/desktop-share-panel";
 import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
-import { ArtworkActionsPanel } from "~/app/_components/web3/artwork-actions-panel";
+import { ArtworkActionsPanelShell } from "~/app/_components/web3/artwork-actions-panel-shell";
 import {
   chainExplorerAddressUrl,
   chainLabel,
@@ -462,7 +462,7 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
           <MetadataPanel artwork={artwork} />
           <FadeUp delay={0.7} duration={0.6} className="block">
             <div className="mt-8">
-              <ArtworkActionsPanel {...actionsProps} />
+              <ArtworkActionsPanelShell {...actionsProps} />
             </div>
           </FadeUp>
           <ActionRow artwork={artwork} view={view} />
