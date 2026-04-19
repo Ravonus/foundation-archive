@@ -83,7 +83,7 @@ export const archiveRouter = createTRPCRouter({
   setArchivePace: lanAdminProcedure
     .input(
       z.object({
-        pace: z.enum(["slow", "steady", "fast"]),
+        pace: z.enum(["slow", "steady", "fast", "turbo"]),
       }),
     )
     .mutation(async ({ ctx, input }) => {

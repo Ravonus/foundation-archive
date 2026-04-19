@@ -1,4 +1,4 @@
-export type ArchivePace = "slow" | "steady" | "fast";
+export type ArchivePace = "slow" | "steady" | "fast" | "turbo";
 
 export const ARCHIVE_PACE_CONFIG = {
   slow: {
@@ -28,11 +28,24 @@ export const ARCHIVE_PACE_CONFIG = {
     idleDelayMs: 15_000,
     maxPendingJobs: 576,
   },
+  turbo: {
+    key: "turbo",
+    label: "Turbo",
+    contractsPerTick: 8,
+    queueLimit: 16,
+    busyDelayMs: 2_500,
+    idleDelayMs: 10_000,
+    maxPendingJobs: 1_200,
+  },
 } as const;
 
 export function archivePaceFromContractsPerTick(
   contractsPerTick: number | null | undefined,
 ): ArchivePace {
+  if ((contractsPerTick ?? 0) >= ARCHIVE_PACE_CONFIG.turbo.contractsPerTick) {
+    return "turbo";
+  }
+
   if ((contractsPerTick ?? 0) >= ARCHIVE_PACE_CONFIG.fast.contractsPerTick) {
     return "fast";
   }
