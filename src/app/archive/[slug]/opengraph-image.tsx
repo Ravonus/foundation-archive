@@ -358,7 +358,13 @@ export default async function ArchiveOgImage({
           Agorix
         </div>
       ),
-      { ...size },
+      {
+        ...size,
+        headers: {
+          "cache-control":
+            "public, max-age=300, s-maxage=300, stale-while-revalidate=600",
+        },
+      },
     );
   }
 
@@ -402,6 +408,12 @@ export default async function ArchiveOgImage({
         description={description}
       />
     ),
-    { ...size },
+    {
+      ...size,
+      headers: {
+        "cache-control":
+          "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+      },
+    },
   );
 }

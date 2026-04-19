@@ -291,6 +291,12 @@ export default async function ProfileOgImage({
         bio={bio}
       />
     ),
-    { ...size },
+    {
+      ...size,
+      headers: {
+        "cache-control":
+          "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+      },
+    },
   );
 }
