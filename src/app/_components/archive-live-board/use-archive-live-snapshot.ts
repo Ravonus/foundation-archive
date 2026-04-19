@@ -14,7 +14,11 @@ import type {
 } from "~/lib/archive-live";
 import { ARCHIVE_WORKER_FRESH_MS as WORKER_FRESH_MS } from "~/lib/archive-live";
 
-import { resolveSocketHealthUrl, resolveSocketUrl } from "./socket-urls";
+import {
+  resolveSocketHealthUrl,
+  resolveSocketIoTransportOptions,
+  resolveSocketUrl,
+} from "./socket-urls";
 
 const FALLBACK_RECOVERY_POLL_MS = 15_000;
 const LIVE_EVENT_SURFACE_MS = 6_500;
@@ -159,7 +163,9 @@ function useStagedArchiveEvents(initialSnapshot: ArchiveLiveSnapshot) {
   const [latestEvent, setLatestEvent] = useState<ArchiveLiveEvent | null>(
     initialSnapshot.recentEvents[0] ?? null,
   );
-  const [visibleEvents, setVisibleEvents] = useState(initialSnapshot.recentEvents);
+  const [visibleEvents, setVisibleEvents] = useState(
+    initialSnapshot.recentEvents,
+  );
   const [stagedEvents, setStagedEvents] = useState<Array<ArchiveLiveEvent>>([]);
   const latestEventIdRef = useRef<string | null>(
     initialSnapshot.recentEvents[0]?.id ?? null,
@@ -229,23 +235,20 @@ function useStagedArchiveEvents(initialSnapshot: ArchiveLiveSnapshot) {
   };
 }
 
-export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
-  const [snapshot, setSnapshot] = useState(initialSnapshot);
-  const [isConnected, setIsConnected] = useState(false);
-  const [daemonReachable, setDaemonReachable] = useState<boolean | null>(null);
-  const pendingJobs = snapshot.stats.pendingJobs;
-  const runningJobs = snapshot.stats.runningJobs;
-  const workerLastSeenAt = snapshot.worker?.lastSeenAt ?? null;
-  const workerStatus = snapshot.worker?.status ?? null;
+function useArchiveLiveSocketConnection(input: {
+  setIsConnected: (value: boolean) => void;
+  setDaemonReachable: (value: boolean | null) => void;
+  setSnapshot: (snapshot: ArchiveLiveSnapshot) => void;
+  syncVisibleEvents: (events: Array<ArchiveLiveEvent>) => void;
+  stageEvent: (event: ArchiveLiveEvent | null) => void;
+}) {
   const {
-    pulseId,
-    latestEvent,
-    setLatestEvent,
-    visibleEvents,
-    queuedUpdateCount,
-    stageEvent,
+    setIsConnected,
+    setDaemonReachable,
+    setSnapshot,
     syncVisibleEvents,
-  } = useStagedArchiveEvents(initialSnapshot);
+    stageEvent,
+  } = input;
   const handleArchiveSnapshot = useEffectEvent(
     (nextSnapshot: ArchiveLiveSnapshot) => {
       setSnapshot(nextSnapshot);
@@ -261,6 +264,7 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
 
   useEffect(() => {
     const socketUrl = resolveSocketUrl();
+    const socketTransportOptions = resolveSocketIoTransportOptions(socketUrl);
     const healthUrl = resolveSocketHealthUrl();
     let active = true;
     let lastHealthyAt = 0;
@@ -275,7 +279,8 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       }
 
       const withinGraceWindow =
-        lastHealthyAt > 0 && Date.now() - lastHealthyAt < HEALTH_OFFLINE_GRACE_MS;
+        lastHealthyAt > 0 &&
+        Date.now() - lastHealthyAt < HEALTH_OFFLINE_GRACE_MS;
       setDaemonReachable(withinGraceWindow ? true : false);
     };
 
@@ -300,8 +305,7 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       reconnectionDelay: SOCKET_RECONNECT_DELAY_MS,
       reconnectionDelayMax: SOCKET_RECONNECT_DELAY_MAX_MS,
       timeout: SOCKET_CONNECT_TIMEOUT_MS,
-      rememberUpgrade: true,
-      transports: ["websocket"],
+      ...socketTransportOptions,
     });
 
     socket.on("connect", () => {
@@ -323,7 +327,40 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       window.clearInterval(healthInterval);
       socket.disconnect();
     };
-  }, []);
+  }, [
+    stageEvent,
+    setDaemonReachable,
+    setIsConnected,
+    setSnapshot,
+    syncVisibleEvents,
+  ]);
+}
+
+export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
+  const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [isConnected, setIsConnected] = useState(false);
+  const [daemonReachable, setDaemonReachable] = useState<boolean | null>(null);
+  const pendingJobs = snapshot.stats.pendingJobs;
+  const runningJobs = snapshot.stats.runningJobs;
+  const workerLastSeenAt = snapshot.worker?.lastSeenAt ?? null;
+  const workerStatus = snapshot.worker?.status ?? null;
+  const {
+    pulseId,
+    latestEvent,
+    setLatestEvent,
+    visibleEvents,
+    queuedUpdateCount,
+    stageEvent,
+    syncVisibleEvents,
+  } = useStagedArchiveEvents(initialSnapshot);
+
+  useArchiveLiveSocketConnection({
+    setIsConnected,
+    setDaemonReachable,
+    setSnapshot,
+    syncVisibleEvents,
+    stageEvent,
+  });
 
   useRecoveryFallback({
     daemonReachable,

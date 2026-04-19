@@ -56,6 +56,28 @@ export function resolveSocketUrl() {
   return window.location.origin;
 }
 
+export function resolveSocketIoTransportOptions(socketUrl: string) {
+  try {
+    const url = new URL(socketUrl);
+
+    if (url.hostname === FOUNDATION_SOCKET_HOSTNAME) {
+      return {
+        transports: ["polling"],
+        upgrade: false,
+        rememberUpgrade: false,
+      };
+    }
+  } catch {
+    // Fall back to the websocket-first defaults below.
+  }
+
+  return {
+    transports: ["websocket"],
+    upgrade: false,
+    rememberUpgrade: true,
+  };
+}
+
 export function resolveSocketHealthUrl() {
   try {
     const url = new URL(resolveSocketUrl());

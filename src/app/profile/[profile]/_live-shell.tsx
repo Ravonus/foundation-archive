@@ -11,7 +11,10 @@ import {
   type ReactNode,
 } from "react";
 
-import { resolveSocketUrl } from "~/app/_components/archive-live-board/socket-urls";
+import {
+  resolveSocketIoTransportOptions,
+  resolveSocketUrl,
+} from "~/app/_components/archive-live-board/socket-urls";
 import { type ArchiveSocketEnvelope } from "~/lib/archive-live";
 import { cn } from "~/lib/utils";
 
@@ -67,19 +70,21 @@ export function ProfileLiveShell({
       });
     }, 900);
   });
-  const handleArchiveUpdate = useEffectEvent((envelope: ArchiveSocketEnvelope) => {
-    if (!matchesProfileUpdate(envelope, { accountAddress, username })) return;
-    scheduleRefresh();
-  });
+  const handleArchiveUpdate = useEffectEvent(
+    (envelope: ArchiveSocketEnvelope) => {
+      if (!matchesProfileUpdate(envelope, { accountAddress, username })) return;
+      scheduleRefresh();
+    },
+  );
 
   useEffect(() => {
-    const socket: Socket = io(resolveSocketUrl(), {
+    const socketUrl = resolveSocketUrl();
+    const socket: Socket = io(socketUrl, {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10000,
       timeout: 20000,
-      rememberUpgrade: true,
-      transports: ["websocket"],
+      ...resolveSocketIoTransportOptions(socketUrl),
     });
 
     socket.on("connect", () => {
@@ -107,7 +112,7 @@ export function ProfileLiveShell({
       <div className="flex justify-end">
         <span
           className={cn(
-            "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.7rem] uppercase tracking-[0.16em]",
+            "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.7rem] tracking-[0.16em] uppercase",
             isConnected
               ? "border-[var(--color-ok)]/30 bg-[var(--tint-ok)] text-[var(--color-ok)]"
               : "border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-muted)]",
