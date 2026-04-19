@@ -116,6 +116,41 @@ function mediaUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {
   return archiveMediaUrl ?? imageFallback;
 }
 
+/// Pick N recent artworks with visual variety — dedupes by
+/// (contract, artist) in order, filling from the remaining pool
+/// afterward if the deduped set is too small. Fixes the "same image
+/// repeats 12 times" issue when Foundation re-indexes a whole series
+/// in one burst (all 80 most-recent may share a contract).
+function pickDiverseRecent<T extends {
+  contractAddress: string | null;
+  artistUsername: string | null;
+  artistWallet: string | null;
+}>(items: T[], max: number): T[] {
+  const chosen: T[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const item of items) {
+    if (chosen.length >= max) break;
+    const key = `${item.contractAddress ?? ""}:${item.artistUsername ?? item.artistWallet ?? ""}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    chosen.push(item);
+  }
+
+  if (chosen.length < max) {
+    const chosenIds = new Set(chosen.map((item) => (item as { id: string }).id));
+    for (const item of items) {
+      if (chosen.length >= max) break;
+      const id = (item as { id: string }).id;
+      if (chosenIds.has(id)) continue;
+      chosen.push(item);
+      chosenIds.add(id);
+    }
+  }
+
+  return chosen;
+}
+
 function toGridItem(artwork: HomeArtwork) {
   const archiveMediaUrl = archiveMediaUrlOf(artwork);
   return {
@@ -426,11 +461,16 @@ async function loadHomeData() {
         },
       }),
       db.queueJob.count({ where: { status: "PENDING" } }),
+      // Pull 80 most recent artworks then dedupe by (contract, artist) in
+      // JS so the grid shows VISUAL variety. Foundation re-indexes whole
+      // series in bursts — without dedupe, the top 12 are often a single
+      // edition repeated (12× "Replica, 2023" token #1343..#1332). Over-
+      // fetching 80 keeps the diversity pool wide enough.
       db.artwork.findMany({
         where: {
           OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
         },
-        take: 12,
+        take: 80,
         orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
         include: { metadataRoot: true, mediaRoot: true },
       }),
@@ -516,7 +556,7 @@ export default async function HomePage() {
       </section>
 
       <RecentSection
-        items={recentArtworks.map((artwork) => toGridItem(artwork))}
+        items={pickDiverseRecent(recentArtworks, 12).map(toGridItem)}
       />
     </main>
   );
