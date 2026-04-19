@@ -1,9 +1,12 @@
-/* eslint-disable complexity */
-
 import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
 
 import { parseBridgeError, withJsonHeaders } from "../lib/bridge-api";
 import { pickRelayDevice } from "../lib/builders";
+import {
+  isTerminalJobStatus,
+  subscribeToJobUpdates,
+  type JobUpdateEvent,
+} from "../lib/job-subscriptions";
 import type {
   BridgeConfig,
   DesktopShareableWork,
@@ -59,8 +62,7 @@ export type RelayOwnerBaseActions = Omit<
   "requestRelayInventory" | "queueWorkToRelay"
 >;
 
-const RELAY_JOB_POLL_INTERVAL_MS = 1_000;
-const RELAY_JOB_TIMEOUT_MS = 20_000;
+const RELAY_JOB_TIMEOUT_MS = 120_000;
 
 function requireOwnerToken(token: string | null): string {
   if (!token) {
@@ -69,35 +71,28 @@ function requireOwnerToken(token: string | null): string {
   return token;
 }
 
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-async function waitForRelayJobCompletion(
-  refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
-  deviceId: string,
+function waitForRelayJobOutcome(
   jobId: string,
-) {
-  const deadline = Date.now() + RELAY_JOB_TIMEOUT_MS;
-  let latestDevices: RelayOwnerDevice[] = [];
+  timeoutMs: number,
+): Promise<JobUpdateEvent> {
+  return new Promise((resolve, reject) => {
+    let unsubscribe = () => undefined as void;
+    const timer = window.setTimeout(() => {
+      unsubscribe();
+      reject(
+        new Error(
+          "The linked desktop app did not confirm the backup in time. Please check the desktop page and try again.",
+        ),
+      );
+    }, timeoutMs);
 
-  while (Date.now() <= deadline) {
-    latestDevices = await refreshRelayDevices();
-    const device = latestDevices.find((entry) => entry.id === deviceId) ?? null;
-    const job = device?.recentJobs.find((entry) => entry.id === jobId) ?? null;
-
-    if (job?.status === "COMPLETED" || job?.status === "FAILED") {
-      return { device, job };
-    }
-
-    await sleep(RELAY_JOB_POLL_INTERVAL_MS);
-  }
-
-  const device = latestDevices.find((entry) => entry.id === deviceId) ?? null;
-  const job = device?.recentJobs.find((entry) => entry.id === jobId) ?? null;
-  return { device, job };
+    unsubscribe = subscribeToJobUpdates(jobId, (event) => {
+      if (!isTerminalJobStatus(event.status)) return;
+      window.clearTimeout(timer);
+      unsubscribe();
+      resolve(event);
+    });
+  });
 }
 
 function createRefreshRelayDevices(deps: RelayOwnerDeps) {
@@ -320,22 +315,15 @@ export function createQueueWorkToRelay(
     }
 
     const payload = (await response.json()) as RelayQueuedJob;
-    const outcome = await waitForRelayJobCompletion(
-      refreshRelayDevices,
-      targetDevice.id,
+    const outcome = await waitForRelayJobOutcome(
       payload.jobId,
+      RELAY_JOB_TIMEOUT_MS,
     );
 
-    if (outcome.job?.status === "FAILED") {
+    if (outcome.status === "FAILED") {
       throw new Error(
-        outcome.job.errorMessage ??
+        outcome.errorMessage ??
           "The linked desktop app couldn't save this work.",
-      );
-    }
-
-    if (outcome.job?.status !== "COMPLETED") {
-      throw new Error(
-        "The linked desktop app did not confirm the backup in time. Please check the desktop page and try again.",
       );
     }
 

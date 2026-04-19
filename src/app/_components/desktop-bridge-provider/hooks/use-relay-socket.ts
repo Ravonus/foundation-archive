@@ -8,6 +8,10 @@ import type {
 } from "~/lib/desktop-relay";
 import { resolveArchiveRelayWebSocketUrl } from "~/lib/desktop-relay";
 
+import {
+  isTerminalJobStatus,
+  publishJobUpdate,
+} from "../lib/job-subscriptions";
 import type {
   RelayDeviceStateSnapshot,
   RelayInventorySnapshot,
@@ -35,10 +39,9 @@ function handleRelayMessage(
   setters: SocketSetters,
 ) {
   if (payload.type === "owner.snapshot") {
-    setters.setRelayDevices(payload.devices as RelayOwnerDevice[]);
-    const deviceIds = new Set(
-      (payload.devices as RelayOwnerDevice[]).map((device) => device.id),
-    );
+    const devices = payload.devices as RelayOwnerDevice[];
+    setters.setRelayDevices(devices);
+    const deviceIds = new Set(devices.map((device) => device.id));
     setters.setRelayInventories((current) =>
       Object.fromEntries(
         Object.entries(current).filter(([deviceId]) => deviceIds.has(deviceId)),
@@ -49,6 +52,28 @@ function handleRelayMessage(
         Object.entries(current).filter(([deviceId]) => deviceIds.has(deviceId)),
       ),
     );
+    for (const device of devices) {
+      for (const job of device.recentJobs) {
+        if (isTerminalJobStatus(job.status)) {
+          publishJobUpdate({
+            jobId: job.id,
+            status: job.status,
+            errorMessage: job.errorMessage,
+            finishedAt: job.finishedAt,
+          });
+        }
+      }
+    }
+    return;
+  }
+
+  if (payload.type === "owner.jobUpdate") {
+    publishJobUpdate({
+      jobId: payload.jobId,
+      status: payload.status,
+      errorMessage: payload.errorMessage ?? null,
+      finishedAt: payload.finishedAt ?? null,
+    });
     return;
   }
 
@@ -77,9 +102,7 @@ function handleRelayMessage(
     return;
   }
 
-  if (payload.type === "owner.error") {
-    setters.setError(payload.message);
-  }
+  setters.setError(payload.message);
 }
 
 export function useRelaySocket(
