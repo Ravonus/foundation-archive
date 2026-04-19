@@ -5,6 +5,8 @@ const explicitScriptUrl =
   process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL?.trim() || undefined;
 const fallbackScriptUrl = "/api/umami/script";
 const umamiSrc = explicitScriptUrl ?? fallbackScriptUrl;
+const umamiHostUrl =
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || undefined;
 
 export function UmamiScript() {
   if (!umamiWebsiteId) return null;
@@ -15,6 +17,7 @@ export function UmamiScript() {
       src={umamiSrc}
       strategy="afterInteractive"
       data-website-id={umamiWebsiteId}
+      data-host-url={umamiHostUrl}
     />
   );
 }
