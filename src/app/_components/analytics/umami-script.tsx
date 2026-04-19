@@ -1,8 +1,10 @@
 import Script from "next/script";
 
-const umamiScriptUrl = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL?.trim();
 const umamiWebsiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID?.trim();
+const explicitScriptUrl =
+  process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL?.trim() || undefined;
 const fallbackScriptUrl = "/api/umami/script";
+const umamiSrc = explicitScriptUrl ?? fallbackScriptUrl;
 
 export function UmamiScript() {
   if (!umamiWebsiteId) return null;
@@ -10,7 +12,7 @@ export function UmamiScript() {
   return (
     <Script
       id="umami-script"
-      src={umamiScriptUrl ?? fallbackScriptUrl}
+      src={umamiSrc}
       strategy="afterInteractive"
       data-website-id={umamiWebsiteId}
     />

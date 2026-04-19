@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 import {
   DesktopBridgeProvider,
   useDesktopBridge,
@@ -13,38 +15,49 @@ type DesktopSharePanelProps = {
   work: DesktopShareableWork;
 };
 
+const AUTO_POLL_MS = 15_000;
+
 function DesktopSharePanelBody({
   hasShareableRoots,
   work,
 }: DesktopSharePanelProps) {
-  const { reachable, relayDevices, relaySocketConnected } = useDesktopBridge();
+  const { reachable, relayDevices, relaySocketConnected, refreshRelayDevices } =
+    useDesktopBridge();
 
   const hasConnectedRelayHelper =
     relaySocketConnected && relayDevices.some((device) => device.connected);
-  const hasKnownRelayDevice = relayDevices.length > 0;
-  const showDesktopShareUi =
-    reachable || hasConnectedRelayHelper || hasKnownRelayDevice;
+  const canSave = reachable || hasConnectedRelayHelper;
 
-  if (!showDesktopShareUi) return null;
+  // Auto-poll the bridge status so the panel appears/disappears as the user
+  // opens or closes the desktop app — no manual "Check desktop connection"
+  // needed. Only polls while a previous pairing exists so we don't spam the
+  // backend for every visitor.
+  const hasPairingHistory = relayDevices.length > 0;
+  useEffect(() => {
+    if (!hasPairingHistory) return;
+    if (canSave) return;
+    const id = window.setInterval(() => {
+      void refreshRelayDevices().catch(() => undefined);
+    }, AUTO_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [hasPairingHistory, canSave, refreshRelayDevices]);
+
+  if (!hasShareableRoots) return null;
+  if (!canSave) return null;
 
   return (
     <FadeUp delay={0.85} duration={0.6} className="block">
       <div className="mt-8 rounded-sm border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
         <p className="font-medium text-[var(--color-ink)]">
-          {hasShareableRoots
-            ? "Optional: keep a copy on your own computer"
-            : "Not ready for your own copy yet"}
+          Optional: keep a copy on your own computer
         </p>
         <p className="mt-2 text-sm text-[var(--color-body)]">
-          {hasShareableRoots
-            ? "This work is already saved in the archive. If you'd like to keep an extra copy on your own computer, you can use the desktop app."
-            : "We haven't captured the files for this work yet, so there's nothing to send to the desktop app at the moment."}
+          This work is already saved in the archive. Pin it to your desktop app
+          to keep an extra copy on your own computer.
         </p>
-        {hasShareableRoots ? (
-          <div className="mt-4">
-            <DesktopShareButton work={work} />
-          </div>
-        ) : null}
+        <div className="mt-4">
+          <DesktopShareButton work={work} />
+        </div>
       </div>
     </FadeUp>
   );

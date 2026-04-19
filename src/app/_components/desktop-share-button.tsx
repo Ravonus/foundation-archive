@@ -1,14 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   AlertCircle,
-  ArrowUpRight,
   CheckCircle2,
   HardDriveDownload,
   LoaderCircle,
-  RefreshCw,
 } from "lucide-react";
 
 import {
@@ -148,31 +145,6 @@ function runSaveClick(params: RunSaveParams) {
     .finally(() => params.setIsWorking(false));
 }
 
-function RefreshConnectionChip({
-  isRefreshing,
-  onClick,
-}: {
-  isRefreshing: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={isRefreshing}
-      onClick={onClick}
-      data-umami-event="desktop-refresh-click"
-      className={chipClass}
-      title="Re-check the connection to your desktop app."
-    >
-      <RefreshCw
-        aria-hidden
-        className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
-      />
-      {isRefreshing ? "Checking…" : "Check desktop connection"}
-    </button>
-  );
-}
-
 function ShareFeedback({ feedback }: { feedback: FeedbackState | null }) {
   if (!feedback) return null;
 
@@ -199,68 +171,30 @@ function ShareFeedback({ feedback }: { feedback: FeedbackState | null }) {
 
 type ShareButtonViewProps = {
   work: DesktopShareableWork;
-  canSave: boolean;
-  canPinDirectly: boolean;
   hasConnectedRelayHelper: boolean;
-  hasKnownRelayDevice: boolean;
   isWorking: boolean;
-  isRefreshing: boolean;
   feedback: FeedbackState | null;
   onSave: () => void;
-  onRefresh: () => void;
 };
 
-const SAVE_TITLE_READY = "Save this work to your desktop app.";
-const SAVE_TITLE_OFFLINE = "Open your desktop app to enable saving.";
-const HINT_READY =
-  "Optional. This work is already saved on the archive. This just keeps an extra copy on your own computer.";
-const HINT_OFFLINE =
-  "Your desktop app isn't online right now. Open it, then click \u201CCheck desktop connection\u201D.";
-
 function ShareButtonView(props: ShareButtonViewProps) {
-  const saveTitle = props.canSave ? SAVE_TITLE_READY : SAVE_TITLE_OFFLINE;
-  const linkLabel = props.hasKnownRelayDevice
-    ? "Open desktop page"
-    : "Set up desktop app";
-  const hint = props.canSave ? HINT_READY : HINT_OFFLINE;
   const mode = props.hasConnectedRelayHelper ? "relay-helper" : "local-bridge";
-  const showRefresh = !props.canSave && props.hasKnownRelayDevice;
 
   return (
     <div className="inline-flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={props.isWorking || !props.canSave}
-          data-umami-event="desktop-save-click"
-          data-umami-event-mode={mode}
-          data-umami-event-token-id={props.work.tokenId}
-          onClick={props.onSave}
-          className={chipClass}
-          title={saveTitle}
-        >
-          <SaveButtonIcon isWorking={props.isWorking} />
-          Save to my computer
-        </button>
-
-        {showRefresh ? (
-          <RefreshConnectionChip
-            isRefreshing={props.isRefreshing}
-            onClick={props.onRefresh}
-          />
-        ) : null}
-
-        <Link
-          href="/desktop"
-          data-umami-event="desktop-setup-click"
-          className={chipClass}
-        >
-          {linkLabel}
-          <ArrowUpRight aria-hidden className="h-3 w-3" />
-        </Link>
-      </div>
-
-      <p className="text-xs text-[var(--color-muted)]">{hint}</p>
+      <button
+        type="button"
+        disabled={props.isWorking}
+        data-umami-event="desktop-save-click"
+        data-umami-event-mode={mode}
+        data-umami-event-token-id={props.work.tokenId}
+        onClick={props.onSave}
+        className={chipClass}
+        title="Save this work to your desktop app."
+      >
+        <SaveButtonIcon isWorking={props.isWorking} />
+        Save to my computer
+      </button>
 
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {props.feedback?.message ?? ""}
@@ -271,30 +205,6 @@ function ShareButtonView(props: ShareButtonViewProps) {
   );
 }
 
-async function runRefreshCheck(
-  refreshRelayDevices: () => Promise<{ connected: boolean }[]>,
-  setFeedback: (value: FeedbackState) => void,
-) {
-  try {
-    const devices = await refreshRelayDevices();
-    const anyConnected = devices.some((device) => device.connected);
-    setFeedback({
-      tone: anyConnected ? "success" : "error",
-      message: anyConnected
-        ? "Desktop app is connected."
-        : "Desktop app is still offline. Open the desktop app and try again.",
-    });
-  } catch (caughtError) {
-    setFeedback({
-      tone: "error",
-      message:
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Couldn't reach the desktop app right now.",
-    });
-  }
-}
-
 export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
   const {
     shareWork,
@@ -302,10 +212,8 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
     relayDevices,
     relaySocketConnected,
     queueWorkToRelay,
-    refreshRelayDevices,
   } = useDesktopBridge();
   const [isWorking, setIsWorking] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   useEffect(() => {
@@ -318,11 +226,10 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
   const canPinDirectly = reachable;
   const hasConnectedRelayHelper =
     relaySocketConnected && relayDevices.some((device) => device.connected);
-  const hasKnownRelayDevice = relayDevices.length > 0;
   const canSave = canPinDirectly || hasConnectedRelayHelper;
 
   if (!shareable) return null;
-  if (!canSave && !hasKnownRelayDevice) return null;
+  if (!canSave) return null;
 
   const handleSave = () =>
     runSaveClick({
@@ -335,26 +242,13 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
       setFeedback,
     });
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setFeedback(null);
-    void runRefreshCheck(refreshRelayDevices, setFeedback).finally(() =>
-      setIsRefreshing(false),
-    );
-  };
-
   return (
     <ShareButtonView
       work={work}
-      canSave={canSave}
-      canPinDirectly={canPinDirectly}
       hasConnectedRelayHelper={hasConnectedRelayHelper}
-      hasKnownRelayDevice={hasKnownRelayDevice}
       isWorking={isWorking}
-      isRefreshing={isRefreshing}
       feedback={feedback}
       onSave={handleSave}
-      onRefresh={handleRefresh}
     />
   );
 }
