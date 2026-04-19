@@ -5,6 +5,7 @@ import type {
   RelayOwnerDevice,
   RelayPairing,
 } from "~/app/_components/desktop-bridge-provider";
+import { buildRelayPairingLocalUiUrl } from "~/app/_components/desktop-bridge-provider/lib/builders";
 
 import type { ConfigDraft } from "../types";
 import {
@@ -59,6 +60,70 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function escapeInlineHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+}
+
+function openDesktopHelperWindow(localUiUrl: string) {
+  if (typeof window === "undefined") return;
+
+  const popup = window.open(
+    "",
+    "foundation-share-bridge-connect",
+    "popup=yes,width=540,height=720",
+  );
+
+  if (!popup) return;
+
+  const manualLink = escapeInlineHtml(localUiUrl);
+
+  try {
+    popup.document.open();
+    popup.document.write(`<!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Opening desktop app</title>
+        </head>
+        <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#11100d;color:#f4efe3;font-family:ui-sans-serif,system-ui,sans-serif;padding:24px;">
+          <section style="width:min(100%,420px);border:1px solid rgba(244,239,227,0.14);border-radius:28px;padding:28px;background:rgba(255,255,255,0.04);box-shadow:0 24px 80px rgba(0,0,0,0.28);">
+            <p style="margin:0;font-size:11px;letter-spacing:0.32em;text-transform:uppercase;color:#a9a18d;">Foundation desktop helper</p>
+            <h1 style="margin:16px 0 0;font-size:32px;line-height:1.08;font-family:Georgia,serif;">Opening your local helper…</h1>
+            <p style="margin:14px 0 0;font-size:15px;line-height:1.6;color:#d3ccbc;">This window will switch to the helper on <code style="font-size:13px;">127.0.0.1</code> so you can actually see the connection finish.</p>
+            <a href="${manualLink}" style="display:inline-flex;margin-top:18px;padding:12px 16px;border-radius:999px;background:#f4efe3;color:#11100d;text-decoration:none;font-size:14px;">Open local helper now</a>
+          </section>
+        </body>
+      </html>`);
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(() => {
+      try {
+        popup.location.replace(localUiUrl);
+      } catch {
+        popup.location.href = localUiUrl;
+      }
+    }, 1500);
+  } catch {
+    popup.location.href = localUiUrl;
+  }
 }
 
 function isPairingReady(pairing: RelayPairing | null) {
@@ -414,14 +479,27 @@ function useOpenPreparedPairing({ state }: ActionArgs) {
   const { bridge, raw } = state;
 
   return () => {
-    if (!isPairingReady(raw.pairing)) {
+    const pairing = raw.pairing;
+
+    if (!isPairingReady(pairing) || !pairing) {
       raw.setDeepLinkStatus("error");
       raw.setFeedback("The app link expired. Please create a fresh one.");
       return;
     }
 
+    openDesktopHelperWindow(
+      buildRelayPairingLocalUiUrl({
+        pairing,
+        relayServerUrl: raw.configDraft.relayServerUrl || null,
+        deviceName: raw.configDraft.relayDeviceName || null,
+        config: bridge.config,
+      }),
+    );
+
     raw.setDeepLinkStatus("opening");
-    raw.setFeedback("Opening the desktop app and waiting for it to confirm.");
+    raw.setFeedback(
+      "Opening the desktop app. A local helper window should appear too.",
+    );
 
     void (async () => {
       await sleep(250);

@@ -341,14 +341,14 @@ function statusCopy({
   if (deepLinkStatus === "opening") {
     return {
       title: "Opening the desktop app",
-      body: "Your browser should hand off to the installed desktop app now.",
+      body: "Your browser should hand off to the installed desktop app now, and a local helper window should open so you can watch it finish.",
     };
   }
 
   if (deepLinkStatus === "waiting") {
     return {
       title: "Waiting for the app to confirm",
-      body: "The app should pop open and tell the site it's ready. Keep this tab open for a moment.",
+      body: "The helper window should confirm the link and then this page will flip to connected. Keep this tab open for a moment.",
     };
   }
 

@@ -1,5 +1,6 @@
 import { buildFoundationShareBridgeDeepLink } from "~/lib/desktop-relay";
 
+import { DEFAULT_BRIDGE_URL } from "../constants";
 import { trimTrailingSlash } from "./bridge-api";
 import type {
   BridgeConfig,
@@ -43,6 +44,28 @@ export function buildRelayPairingUrl({
     pairingCode: pairing.pairingCode,
     deviceName: resolveDeviceName(deviceName, config),
   });
+}
+
+export function buildRelayPairingLocalUiUrl({
+  pairing,
+  relayServerUrl,
+  deviceName,
+  config,
+}: {
+  pairing: RelayPairing;
+  relayServerUrl: string | null | undefined;
+  deviceName: string | null | undefined;
+  config: BridgeConfig | null;
+}) {
+  const url = new URL("/", trimTrailingSlash(DEFAULT_BRIDGE_URL));
+  url.searchParams.set(
+    "relay_server_url",
+    resolveRelayServerUrl(relayServerUrl, config),
+  );
+  url.searchParams.set("pairing_code", pairing.pairingCode);
+  url.searchParams.set("device_name", resolveDeviceName(deviceName, config));
+  url.searchParams.set("autolink", "1");
+  return url.toString();
 }
 
 export function resolveLinkRelayServerUrl(
