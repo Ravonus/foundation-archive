@@ -51,6 +51,17 @@ function archivedPosterUrl(artwork: ArtworkCardRow) {
   );
 }
 
+function resolvePosterUrl(artwork: ArtworkCardRow) {
+  const archivedUrl = archivedPosterUrl(artwork);
+  if (archivedUrl) return archivedUrl;
+
+  const previewUrl = artwork.staticPreviewUrl ?? artwork.previewUrl;
+  if (previewUrl) return previewUrl;
+
+  if (artwork.mediaKind !== "IMAGE") return null;
+  return artwork.sourceUrl;
+}
+
 export function toLiveArtworkCard(
   artwork: ArtworkCardRow | null | undefined,
 ): ArchiveLiveArtworkCard | null {
@@ -63,9 +74,7 @@ export function toLiveArtworkCard(
     artistName: artwork.artistName,
     artistUsername: artwork.artistUsername,
     artistWallet: artwork.artistWallet,
-    posterUrl:
-      archivedPosterUrl(artwork) ??
-      (artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null),
+    posterUrl: resolvePosterUrl(artwork),
     contractAddress: artwork.contractAddress,
     tokenId: artwork.tokenId,
     foundationUrl: artwork.foundationUrl,

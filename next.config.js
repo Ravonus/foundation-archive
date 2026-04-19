@@ -49,12 +49,38 @@ function resolveDistDir() {
   return port ? `.next-dev-${port}` : ".next-dev";
 }
 
+/** @param {string | undefined} value */
+function trimTrailingSlash(value) {
+  return value ? value.replace(/\/+$/, "") : "";
+}
+
+/** @returns {string} */
+function resolveArchiveSocketInternalUrl() {
+  return trimTrailingSlash(
+    process.env.ARCHIVE_SOCKET_INTERNAL_URL ?? "http://127.0.0.1:43129",
+  );
+}
+
 /** @type {import("next").NextConfig} */
 const config = {
   // Keep production builds separate, and give each dev server its own cache
   // so multiple local app instances can run without clobbering one another.
   distDir: resolveDistDir(),
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg"],
+  async rewrites() {
+    const archiveSocketInternalUrl = resolveArchiveSocketInternalUrl();
+
+    return [
+      {
+        source: "/socket.io",
+        destination: `${archiveSocketInternalUrl}/socket.io/`,
+      },
+      {
+        source: "/socket.io/:path*",
+        destination: `${archiveSocketInternalUrl}/socket.io/:path*`,
+      },
+    ];
+  },
 };
 
 export default config;
