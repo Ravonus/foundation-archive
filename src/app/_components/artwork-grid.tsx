@@ -23,6 +23,7 @@ export interface ArtworkGridItem {
   title: string;
   artistName: string | null;
   artistUsername: string | null;
+  artistWallet: string | null;
   collectionName: string | null;
   tokenId: string;
   contractAddress: string;
@@ -142,6 +143,16 @@ function artistDisplay(item: ArtworkGridItem) {
   if (item.artistName) return item.artistName;
   if (item.artistUsername) return `@${item.artistUsername}`;
   return "Unknown artist";
+}
+
+function artistProfileHref(item: ArtworkGridItem) {
+  if (item.artistUsername) {
+    return `/profile/${encodeURIComponent(item.artistUsername)}`;
+  }
+  if (item.artistWallet) {
+    return `/profile/${encodeURIComponent(item.artistWallet)}`;
+  }
+  return null;
 }
 
 function cardVariants(largeGrid: boolean, offset: number) {
@@ -513,7 +524,22 @@ function ItemCard({
             <span className="font-mono text-[0.65rem] text-[var(--color-subtle)] tabular-nums">
               {String(index + 1).padStart(3, "0")}
             </span>
-            <span className="truncate">{artistDisplay(item)}</span>
+            {(() => {
+              const label = artistDisplay(item);
+              const profileHref = artistProfileHref(item);
+              if (!profileHref) {
+                return <span className="truncate">{label}</span>;
+              }
+              return (
+                <Link
+                  href={profileHref}
+                  className="link-editorial truncate hover:text-[var(--color-ink)]"
+                  aria-label={`View profile for ${label}`}
+                >
+                  {label}
+                </Link>
+              );
+            })()}
             <ChainBadge chainId={item.chainId} />
           </p>
         </div>

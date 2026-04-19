@@ -162,6 +162,7 @@ function toGridItem(artwork: HomeArtwork) {
     title: artwork.title,
     artistName: artwork.artistName,
     artistUsername: artwork.artistUsername,
+    artistWallet: artwork.artistWallet,
     collectionName: artwork.collectionName,
     tokenId: artwork.tokenId,
     contractAddress: artwork.contractAddress,
