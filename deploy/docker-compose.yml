@@ -2,6 +2,19 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    shm_size: 1gb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - max_parallel_workers_per_gather=2
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-foundation_archive}
       POSTGRES_USER: ${POSTGRES_USER:-foundation_archive}
