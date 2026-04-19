@@ -1,16 +1,13 @@
-"use client";
-
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowUpRight } from "lucide-react";
 
 import { CopyButton } from "~/app/_components/copy-button";
 import { formatDate } from "~/lib/utils";
 import { parseIpfsReference } from "~/server/archive/ipfs";
 import type { Prisma } from "~/server/prisma-client";
 
-const EASE = [0.22, 1, 0.36, 1] as const;
+import { DisclosureSection } from "./_disclosure-section";
 
 type ArtworkWithRelations = Prisma.ArtworkGetPayload<{
   include: {
@@ -302,62 +299,31 @@ export function TechnicalDetails({
   historySlot?: ReactNode;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="mt-16 border-t border-[var(--color-line)] pt-8">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
-        className="group inline-flex items-center gap-2 text-sm text-[var(--color-muted)] transition hover:text-[var(--color-ink)]"
-      >
-        <span>{open ? "Hide details" : "More details"}</span>
-        <motion.span
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={{ duration: 0.4, ease: EASE }}
-          className="inline-flex"
-          aria-hidden
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-        </motion.span>
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="technical-details"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{
-              opacity: { duration: 0.35, ease: EASE },
-              height: { duration: 0.5, ease: EASE },
-            }}
-            className="overflow-hidden"
-          >
-            <div className="pt-6">
-              {historySlot}
-              <div className="mt-6 grid gap-6 md:grid-cols-2">
-                {rootItems.map((item) => (
-                  <RootCard key={item.label} item={item} />
-                ))}
-              </div>
-              {dependencyFlows.length > 0 ? (
-                <div className="mt-6 grid gap-6 md:grid-cols-2">
-                  {dependencyFlows.map((flow) => (
-                    <DependencyFlowPanel key={flow.label} flow={flow} />
-                  ))}
-                </div>
-              ) : null}
-              <BackupHistory backups={backups} />
-              <p className="mt-8 text-xs text-[var(--color-muted)]">
-                These links are just for previewing the file. What&apos;s
-                actually saved is the original file, which lives on IPFS and can
-                always be fetched using its content ID (CID).
-              </p>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </section>
+    <DisclosureSection
+      closedLabel="More details"
+      openLabel="Hide details"
+      defaultOpen={defaultOpen}
+    >
+      {historySlot}
+      <div className="mt-6 grid gap-6 md:grid-cols-2">
+        {rootItems.map((item) => (
+          <RootCard key={item.label} item={item} />
+        ))}
+      </div>
+      {dependencyFlows.length > 0 ? (
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          {dependencyFlows.map((flow) => (
+            <DependencyFlowPanel key={flow.label} flow={flow} />
+          ))}
+        </div>
+      ) : null}
+      <BackupHistory backups={backups} />
+      <p className="mt-8 text-xs text-[var(--color-muted)]">
+        These links are just for previewing the file. What&apos;s actually saved
+        is the original file, which lives on IPFS and can always be fetched
+        using its content ID (CID).
+      </p>
+    </DisclosureSection>
   );
 }
