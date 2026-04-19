@@ -196,17 +196,10 @@ async function evaluateSmartBudget(args: {
     },
   });
 
-  await emitArchiveEvent(client, {
-    type: "root.deferred-for-size",
-    summary: `Deferred ${root.cid} for a later smart-pin tier after ${formatBytes(estimatedByteSize)} exceeded the current ${formatBytes(policy.smartPinMaxBytes)} limit.`,
-    artwork: await loadArtworkLiveCard(client, input.artworkId),
-    cid: root.cid,
-    sizeBytes: estimatedByteSize,
-    data: {
-      smartBudgetBytes: policy.smartPinMaxBytes,
-      deferForMs: policy.smartPinDeferMs,
-    },
-  });
+  // Intentionally don't emit a live event here. Deferrals are a routine
+  // outcome while the current smart-pin tier is exhausted — surfacing one
+  // per root floods the live feed with noise users don't need. The tier
+  // advance event still surfaces when the budget moves up.
 
   return {
     status: "deferred",
