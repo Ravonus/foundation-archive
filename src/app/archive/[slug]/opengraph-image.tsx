@@ -11,6 +11,31 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const revalidate = 3600;
 
+const IMAGE_FETCH_TIMEOUT_MS = 2_500;
+
+async function inlineImage(url: string | null | undefined) {
+  if (!url) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      IMAGE_FETCH_TIMEOUT_MS,
+    );
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "user-agent": "Agorix OG Bot/1.0" },
+    });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type") ?? "image/png";
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength === 0) return null;
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 const SITE_URL = (() => {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (raw && /^https?:/.test(raw)) return raw.replace(/\/$/, "");
@@ -240,6 +265,26 @@ function ArchiveOgFrame({
           </div>
         ) : null}
 
+        {/* CTA */}
+        <div
+          style={{
+            marginTop: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            backgroundColor: "#c6a258",
+            color: "#0b0b0b",
+            padding: "12px 22px",
+            borderRadius: 999,
+            fontSize: 20,
+            fontWeight: 600,
+            alignSelf: "flex-start",
+          }}
+        >
+          View the archive
+          <span style={{ display: "flex", marginLeft: 4 }}>→</span>
+        </div>
+
         {/* Spacer */}
         <div style={{ flex: 1, display: "flex" }} />
 
@@ -370,6 +415,11 @@ export default async function ArchiveOgImage({
 
   const { artwork, previewCandidate, artistProfile } = data;
 
+  const [previewDataUrl, avatarDataUrl] = await Promise.all([
+    inlineImage(absoluteUrl(previewCandidate)),
+    inlineImage(artistProfile?.profileImageUrl),
+  ]);
+
   const title = firstLine(artwork.title, 90) ?? "Untitled";
   const description = firstLine(artwork.description, 160);
   const collectionName = firstLine(artwork.collectionName, 40);
@@ -398,11 +448,11 @@ export default async function ArchiveOgImage({
   return new ImageResponse(
     (
       <ArchiveOgFrame
-        previewUrl={absoluteUrl(previewCandidate)}
+        previewUrl={previewDataUrl}
         title={title}
         artistLabel={artistLabel}
         artistHandle={artistHandle}
-        artistAvatarUrl={artistProfile?.profileImageUrl ?? null}
+        artistAvatarUrl={avatarDataUrl}
         artistInitials={artistInitials}
         collectionName={collectionName}
         description={description}

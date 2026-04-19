@@ -1,9 +1,6 @@
 import { ImageResponse } from "next/og";
 
-import {
-  hydrateProfileFromFoundation,
-  resolveProfileFromKey,
-} from "./_data";
+import { resolveProfileFromKey } from "./_data";
 
 export const runtime = "nodejs";
 export const alt = "Agorix artist profile";
@@ -14,11 +11,43 @@ export const contentType = "image/png";
 // through without a redeploy.
 export const revalidate = 3600;
 
+const IMAGE_FETCH_TIMEOUT_MS = 2_500;
+
+/// Inline a remote image as a data: URI so Satori doesn't have to dial
+/// the origin mid-render. Bounded timeout keeps the OG response fast
+/// even when Foundation's CDN is slow — on timeout/failure we fall back
+/// to the initials + gradient frame.
+async function inlineImage(url: string | null | undefined) {
+  if (!url) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      IMAGE_FETCH_TIMEOUT_MS,
+    );
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "user-agent": "Agorix OG Bot/1.0" },
+    });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type") ?? "image/png";
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength === 0) return null;
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveOgProfile(profile: string) {
   try {
     const key = decodeURIComponent(profile).trim();
-    const base = await resolveProfileFromKey(key);
-    return await hydrateProfileFromFoundation(base);
+    // NB: deliberately skip hydrateProfileFromFoundation — that call does
+    // an extra Foundation roundtrip and was the main cause of the route
+    // stalling past the Caddy 5s timeout. resolveProfileFromKey already
+    // hits Foundation (for username keys) and returns avatar + banner.
+    return await resolveProfileFromKey(key);
   } catch {
     return null;
   }
@@ -242,6 +271,44 @@ function OgFrame({
               {bio}
             </div>
           ) : null}
+
+          {/* CTA row */}
+          <div
+            style={{
+              marginTop: 28,
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                backgroundColor: "#c6a258",
+                color: "#0b0b0b",
+                padding: "14px 22px",
+                borderRadius: 999,
+                fontSize: 22,
+                fontWeight: 600,
+              }}
+            >
+              Explore the archive
+              <span style={{ display: "flex", marginLeft: 4 }}>→</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                fontSize: 18,
+                color: "rgba(245,242,234,0.6)",
+                letterSpacing: "0.04em",
+              }}
+            >
+              foundation.agorix.io
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -255,6 +322,11 @@ export default async function ProfileOgImage({
 }) {
   const { profile } = await params;
   const resolved = await resolveOgProfile(profile);
+
+  const [bannerDataUrl, avatarDataUrl] = await Promise.all([
+    inlineImage(resolved?.coverImageUrl),
+    inlineImage(resolved?.profileImageUrl),
+  ]);
 
   const displayName =
     resolved?.name ??
@@ -282,8 +354,8 @@ export default async function ProfileOgImage({
   return new ImageResponse(
     (
       <OgFrame
-        bannerUrl={resolved?.coverImageUrl ?? null}
-        avatarUrl={resolved?.profileImageUrl ?? null}
+        bannerUrl={bannerDataUrl}
+        avatarUrl={avatarDataUrl}
         avatarInitials={avatarInitials}
         displayName={displayName}
         handle={handle}

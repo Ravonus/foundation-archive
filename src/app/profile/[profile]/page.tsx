@@ -38,12 +38,18 @@ export async function generateMetadata({
     const displayName =
       resolved.name ??
       (resolved.username ? `@${resolved.username}` : resolved.accountAddress);
-    const title = `${displayName} · Agorix`;
-    const description = `Works by ${displayName} saved in Agorix's Foundation archive.`;
+    const handle = resolved.username ? `@${resolved.username}` : null;
+    const title = `${displayName}${handle ? ` (${handle})` : ""} on Agorix · Foundation archive`;
+    const bioPart = resolved.bio?.trim();
+    const description = [
+      `Explore works by ${displayName}${handle ? ` (${handle})` : ""} preserved in Agorix — a public, IPFS-backed archive of Foundation art that keeps every root pinned and verifiable.`,
+      bioPart ? ` ${bioPart}` : "",
+    ]
+      .join("")
+      .slice(0, 300);
+
     // og:image / twitter:image come from `opengraph-image.tsx` — a
-    // dynamically generated PNG that composes the banner + avatar + bio,
-    // cached server-side (see that file for the revalidate window). Leaving
-    // `images` off here lets Next.js wire the file-based image in.
+    // dynamically generated PNG composed server-side + cached.
     return {
       title,
       description,

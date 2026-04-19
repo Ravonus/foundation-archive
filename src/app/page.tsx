@@ -121,11 +121,14 @@ function mediaUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {
 /// afterward if the deduped set is too small. Fixes the "same image
 /// repeats 12 times" issue when Foundation re-indexes a whole series
 /// in one burst (all 80 most-recent may share a contract).
-function pickDiverseRecent<T extends {
-  contractAddress: string | null;
-  artistUsername: string | null;
-  artistWallet: string | null;
-}>(items: T[], max: number): T[] {
+function pickDiverseRecent<
+  T extends {
+    id: string;
+    contractAddress: string | null;
+    artistUsername: string | null;
+    artistWallet: string | null;
+  },
+>(items: T[], max: number): T[] {
   const chosen: T[] = [];
   const seenKeys = new Set<string>();
 
@@ -138,13 +141,12 @@ function pickDiverseRecent<T extends {
   }
 
   if (chosen.length < max) {
-    const chosenIds = new Set(chosen.map((item) => (item as { id: string }).id));
+    const chosenIds = new Set(chosen.map((item) => item.id));
     for (const item of items) {
       if (chosen.length >= max) break;
-      const id = (item as { id: string }).id;
-      if (chosenIds.has(id)) continue;
+      if (chosenIds.has(item.id)) continue;
       chosen.push(item);
-      chosenIds.add(id);
+      chosenIds.add(item.id);
     }
   }
 

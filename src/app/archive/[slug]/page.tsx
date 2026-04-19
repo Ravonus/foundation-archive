@@ -121,24 +121,30 @@ export async function generateMetadata(
     return { title: "Not found · Agorix" };
   }
 
-  const title = `${artwork.title} by ${metadataArtistLabel(artwork)}`;
-  const description = metadataDescription(artwork);
+  const artistLabel = metadataArtistLabel(artwork);
+  const collection = artwork.collectionName ? ` from ${artwork.collectionName}` : "";
+  const ogTitle = `${artwork.title} by ${artistLabel}${collection} — preserved on Agorix`;
+  const rawDescription = metadataDescription(artwork);
+  const description = [
+    rawDescription,
+    ` · Preserved by Agorix, a public Foundation archive with IPFS-pinned, verifiable roots for every work.`,
+  ]
+    .join("")
+    .slice(0, 300);
 
   // og:image / twitter:image come from `opengraph-image.tsx` — a
-  // dynamically generated PNG that composes the work preview + artist
-  // avatar + title + description, cached server-side (see that file for
-  // the revalidate window).
+  // dynamically generated PNG composed server-side + cached.
   return {
-    title: `${title} · Agorix`,
+    title: `${ogTitle} · Agorix`,
     description,
     openGraph: {
-      title,
+      title: ogTitle,
       description,
       type: "article",
     },
     twitter: {
       card: "summary_large_image",
-      title,
+      title: ogTitle,
       description,
     },
   };
