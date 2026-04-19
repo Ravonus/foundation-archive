@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowRight, Check, LoaderCircle, Plus, X } from "lucide-react";
 
 import { BlurImage } from "~/app/_components/motion";
+import { VirtualizedArtworkGrid } from "~/app/_components/artwork-grid-virtualized";
 import { archiveItemStatus } from "~/lib/archive-browse";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -104,6 +105,7 @@ function healthClass(h: Health) {
 }
 
 const EASE = [0.22, 1, 0.36, 1] as const;
+const VIRTUALIZE_AFTER_ITEMS = 18;
 
 function resolveHref(item: ArtworkGridItem) {
   if (item.slug) return `/archive/${item.slug}`;
@@ -151,17 +153,20 @@ export function ArtworkGrid({
   items,
   emptyTitle,
   emptyBody,
+  virtualize = false,
 }: {
   items: ArtworkGridItem[];
   emptyTitle: string;
   emptyBody: string;
+  virtualize?: boolean;
 }) {
   const router = useRouter();
   const reduce = useReducedMotion();
   const [isRefreshing, startRefresh] = useTransition();
-  const [feedback, setFeedback] = useState<
-    { tone: "success" | "error"; message: string } | null
-  >(null);
+  const [feedback, setFeedback] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -211,6 +216,7 @@ export function ArtworkGrid({
   const offset = reduce ? 0 : 14;
   const largeGrid = items.length > 18;
   const staggerChildren = reduce || largeGrid ? 0 : 0.06;
+  const shouldVirtualize = virtualize && items.length > VIRTUALIZE_AFTER_ITEMS;
 
   const handleRequest = (item: ArtworkGridItem) => {
     setActiveItemId(item.id);
@@ -223,8 +229,7 @@ export function ArtworkGrid({
   };
 
   const isItemSubmitting = (itemId: string) =>
-    activeItemId === itemId &&
-    (archiveMutation.isPending || isRefreshing);
+    activeItemId === itemId && (archiveMutation.isPending || isRefreshing);
 
   return (
     <div className="space-y-6">
@@ -233,33 +238,50 @@ export function ArtworkGrid({
       </div>
       <FeedbackToast feedback={feedback} onDismiss={() => setFeedback(null)} />
 
-      <motion.div
-        className="grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3"
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: "-40px" }}
-        variants={{
-          hidden: {},
-          visible: {
-            transition: {
-              staggerChildren,
-              delayChildren: 0.05,
+      {shouldVirtualize ? (
+        <VirtualizedArtworkGrid
+          items={items}
+          renderItem={(item, index) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              index={index}
+              largeGrid
+              offset={0}
+              isSubmitting={isItemSubmitting(item.id)}
+              onRequest={handleRequest}
+            />
+          )}
+        />
+      ) : (
+        <motion.div
+          className="grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-40px" }}
+          variants={{
+            hidden: {},
+            visible: {
+              transition: {
+                staggerChildren,
+                delayChildren: 0.05,
+              },
             },
-          },
-        }}
-      >
-        {items.map((item, index) => (
-          <ItemCard
-            key={item.id}
-            item={item}
-            index={index}
-            largeGrid={largeGrid}
-            offset={offset}
-            isSubmitting={isItemSubmitting(item.id)}
-            onRequest={handleRequest}
-          />
-        ))}
-      </motion.div>
+          }}
+        >
+          {items.map((item, index) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              index={index}
+              largeGrid={largeGrid}
+              offset={offset}
+              isSubmitting={isItemSubmitting(item.id)}
+              onRequest={handleRequest}
+            />
+          ))}
+        </motion.div>
+      )}
     </div>
   );
 }
@@ -287,7 +309,7 @@ function HealthBadge({ health }: { health: Health }) {
   return (
     <span
       className={cn(
-        "absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-medium",
+        "absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-medium",
         healthClass(health),
       )}
       title={explanation}
@@ -388,7 +410,7 @@ function ItemCard({
         <HealthBadge health={health} />
       </Link>
 
-      <div className="mt-4 flex items-start justify-between gap-4 caption-rule">
+      <div className="caption-rule mt-4 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="truncate font-serif text-lg leading-tight text-[var(--color-ink)]">
             <Link
@@ -400,7 +422,7 @@ function ItemCard({
             </Link>
           </h3>
           <p className="mt-1 flex items-center gap-2 truncate text-sm text-[var(--color-muted)]">
-            <span className="font-mono text-[0.65rem] tabular-nums text-[var(--color-subtle)]">
+            <span className="font-mono text-[0.65rem] text-[var(--color-subtle)] tabular-nums">
               {String(index + 1).padStart(3, "0")}
             </span>
             <span className="truncate">{artistDisplay(item)}</span>

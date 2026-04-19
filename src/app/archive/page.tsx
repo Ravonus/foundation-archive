@@ -16,18 +16,13 @@ import {
 import { db } from "~/server/db";
 import {
   archiveItemMatchesFilters,
-  normalizeArchiveMedia,
-  normalizeArchiveSort,
-  normalizeArchiveStatus,
   type ArchiveMediaFilter,
-  type ArchiveSort,
   type ArchiveStatusFilter,
 } from "~/lib/archive-browse";
 
 import {
   buildArchivedWhere,
-  cursorPayloadFromArtwork,
-  encodeArchiveCursor,
+  computeNextCursor,
   loadArchivedMatchesForWorks,
   loadArchivedWorks,
 } from "./_data";
@@ -36,16 +31,17 @@ import {
   toArchivedGridItem,
   toDiscoveredGridItem,
 } from "./_grid-item";
-import {
-  ArchiveInfoDetails,
-  ArchiveStickyHeader,
-} from "./_presentational";
+import { ArchiveInfoDetails, ArchiveStickyHeader } from "./_presentational";
 import {
   ARCHIVE_PAGE_SIZE,
   artworkKey,
   type ArchivePageProps,
   type ArchivedArtworkRow,
 } from "./_types";
+import {
+  parseArchiveSearchParams,
+  type ParsedArchiveSearchParams,
+} from "./_search-params";
 
 export const dynamic = "force-dynamic";
 
@@ -132,17 +128,6 @@ function computeItemSummary(
   };
 }
 
-function computeNextCursor(
-  archivedRows: ArchivedArtworkRow[],
-  archivedWorks: ArchivedArtworkRow[],
-  sort: ArchiveSort,
-) {
-  const last = archivedWorks[archivedWorks.length - 1];
-  const hasMore = archivedRows.length > ARCHIVE_PAGE_SIZE;
-  if (!hasMore || !last) return null;
-  return encodeArchiveCursor(cursorPayloadFromArtwork(last, sort));
-}
-
 type ArchiveFilterInput = {
   query: string;
   status: ArchiveStatusFilter;
@@ -155,29 +140,14 @@ function hasExplicitFilterInput(input: ArchiveFilterInput) {
   );
 }
 
-type ParsedSearchParams = {
-  query: string;
-  cursor: string | null;
-  sort: ArchiveSort;
-  status: ArchiveStatusFilter;
-  media: ArchiveMediaFilter;
-};
-
 async function parseSearchParams(
   props: ArchivePageProps,
-): Promise<ParsedSearchParams> {
-  const searchParams = await props.searchParams;
-  return {
-    query: searchParams.q?.trim() ?? "",
-    cursor: searchParams.cursor?.trim() ?? null,
-    sort: normalizeArchiveSort(searchParams.sort),
-    status: normalizeArchiveStatus(searchParams.status),
-    media: normalizeArchiveMedia(searchParams.media),
-  };
+): Promise<ParsedArchiveSearchParams> {
+  return parseArchiveSearchParams(await props.searchParams);
 }
 
 type CountsInput = {
-  params: ParsedSearchParams;
+  params: ParsedArchiveSearchParams;
   hasFilter: boolean;
 };
 
@@ -246,7 +216,7 @@ export default async function ArchivePage(props: ArchivePageProps) {
   ] = await loadArchiveCounts({ params, hasFilter });
 
   const archivedWorks = archivedRows.slice(0, ARCHIVE_PAGE_SIZE);
-  const nextCursor = computeNextCursor(archivedRows, archivedWorks, params.sort);
+  const nextCursor = computeNextCursor(archivedRows, params.sort);
   const matchingArchivedWorks = hasFilter
     ? archivedMatchCount
     : totalIndexedWorks;
@@ -322,7 +292,6 @@ export default async function ArchivePage(props: ArchivePageProps) {
           nextCursor={nextCursor}
           hasCursor={Boolean(params.cursor)}
           matchingArchivedWorks={matchingArchivedWorks}
-          renderedCount={filteredItems.length}
           unfilteredRenderedCount={items.length}
           pageSize={ARCHIVE_PAGE_SIZE}
           hasLiveMatches={liveOnlyShown > 0}

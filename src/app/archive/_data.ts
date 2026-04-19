@@ -254,18 +254,12 @@ export function buildCursorWhere(
   switch (sort) {
     case "oldest":
       return buildUpdatedCursorWhere(
-        cursor as Extract<
-          ArchiveCursorPayload,
-          { sort: "oldest" | "newest" }
-        >,
+        cursor as Extract<ArchiveCursorPayload, { sort: "oldest" | "newest" }>,
         "oldest",
       );
     case "newest":
       return buildUpdatedCursorWhere(
-        cursor as Extract<
-          ArchiveCursorPayload,
-          { sort: "oldest" | "newest" }
-        >,
+        cursor as Extract<ArchiveCursorPayload, { sort: "oldest" | "newest" }>,
         "newest",
       );
     case "title": {
@@ -277,10 +271,7 @@ export function buildCursorWhere(
         OR: [
           { title: { gt: titleCursor.title } },
           {
-            AND: [
-              { title: titleCursor.title },
-              { id: { gt: titleCursor.id } },
-            ],
+            AND: [{ title: titleCursor.title }, { id: { gt: titleCursor.id } }],
           },
         ],
       };
@@ -303,6 +294,17 @@ export function cursorPayloadFromArtwork(
         updatedAt: artwork.updatedAt.toISOString(),
       };
   }
+}
+
+export function computeNextCursor(
+  archivedRows: ArchivedArtworkRow[],
+  sort: ArchiveSort,
+) {
+  const archivedWorks = archivedRows.slice(0, ARCHIVE_PAGE_SIZE);
+  const last = archivedWorks[archivedWorks.length - 1];
+  const hasMore = archivedRows.length > ARCHIVE_PAGE_SIZE;
+  if (!hasMore || !last) return null;
+  return encodeArchiveCursor(cursorPayloadFromArtwork(last, sort));
 }
 
 export async function loadArchivedWorks({
