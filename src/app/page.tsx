@@ -515,8 +515,6 @@ export default async function HomePage() {
         />
       </section>
 
-      <FeatureGridSection />
-
       <RecentSection
         items={recentArtworks.map((artwork) => toGridItem(artwork))}
       />
