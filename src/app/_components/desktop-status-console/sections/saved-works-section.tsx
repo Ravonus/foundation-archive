@@ -5,7 +5,6 @@ import { LoaderCircle, Radio, Wrench } from "lucide-react";
 import type {
   BridgePinInventoryItem,
   PinVerificationResult,
-  RelayOwnerDevice,
 } from "~/app/_components/desktop-bridge-provider";
 
 import { SavedWorksBrowser } from "../inventory/saved-works-browser";
@@ -14,8 +13,6 @@ import { pinVerificationForItem, type PinMatch } from "../types";
 type SavedWorksProps = {
   visibleItems: BridgePinInventoryItem[];
   pinnedCount: number;
-  selectedDevice: RelayOwnerDevice | null;
-  visibleInventoryLabel: string;
   pinEnrichment: Record<string, PinMatch[]>;
   pinVerifications: Record<string, PinVerificationResult>;
   isVerifying: boolean;
@@ -27,27 +24,20 @@ type SavedWorksProps = {
 };
 
 function SectionHeader({
-  visibleInventoryLabel,
   pinnedCount,
   totalCount,
   unreachableCount,
 }: {
-  visibleInventoryLabel: string;
   pinnedCount: number;
   totalCount: number;
   unreachableCount: number;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="font-mono text-[0.68rem] tracking-[0.3em] text-[var(--color-muted)] uppercase">
-          Step 3 · {visibleInventoryLabel}
-        </p>
-        <h3 className="mt-2 font-serif text-3xl text-[var(--color-ink)]">
-          Works saved on this computer
-        </h3>
-      </div>
-      <p className="max-w-xl text-sm text-[var(--color-body)]">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="font-mono text-[0.68rem] tracking-[0.3em] text-[var(--color-muted)] uppercase">
+        Saved works
+      </p>
+      <p className="text-xs text-[var(--color-muted)]">
         <span title="Works fully saved on this computer.">
           {pinnedCount} saved
         </span>{" "}
@@ -56,7 +46,7 @@ function SectionHeader({
           {totalCount} tracked
         </span>
         {unreachableCount > 0
-          ? ` · ${unreachableCount} not visible on the network yet`
+          ? ` · ${unreachableCount} not yet visible on network`
           : ""}
       </p>
     </div>
@@ -141,7 +131,6 @@ export function SavedWorksSection(props: SavedWorksProps) {
   return (
     <section className="rounded-[2rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-6">
       <SectionHeader
-        visibleInventoryLabel={props.visibleInventoryLabel}
         pinnedCount={props.pinnedCount}
         totalCount={props.visibleItems.length}
         unreachableCount={unreachableCount}
@@ -158,7 +147,7 @@ export function SavedWorksSection(props: SavedWorksProps) {
         unreachableCount={unreachableCount}
       />
 
-      <div className="mt-6">
+      <div className="mt-4">
         <SavedWorksBrowser
           items={props.visibleItems}
           pinEnrichment={props.pinEnrichment}

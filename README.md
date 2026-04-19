@@ -11,7 +11,7 @@ T3 app for preserving Foundation works for the decentralized marketplace.
 
 Foundation Archive is an open-source preservation project released under the Apache License, Version 2.0. The goal is to make it practical for artists, collectors, and archivists to keep durable local copies of Foundation works alongside pinned CIDs on their own infrastructure.
 
-Maintainer: Ravonus <chadkoslovsky@gmail.com>.
+Maintainer: Ravonus <ravonus@agorix.io>.
 
 It pairs with the companion Rust desktop helper [`foundation-share-bridge`](https://github.com/ravonus/foundation-share-bridge), which is what the `/desktop` board verifies. The standalone desktop bridge now lives in that repo, while the `rust-archiver/` crate in this repo remains the server-side archive sidecar used by the web app and Docker deploy.
 
@@ -76,6 +76,8 @@ Useful variables:
 - `INTERNAL_CRON_SECRET="change-me"`
 - `NEXT_PUBLIC_ARCHIVE_SOCKET_URL="https://foundation.agorix.io"` for the public site, or override it to `http://127.0.0.1:43129` when you want the local dev socket daemon directly
 - `NEXT_PUBLIC_SITE_URL="https://foundation.agorix.io"` so the desktop helper menu knows which `/desktop` board to open by default
+- `NEXT_PUBLIC_UMAMI_SCRIPT_URL="https://analytics.example.com/script.js"` to enable optional Umami tracking
+- `NEXT_PUBLIC_UMAMI_WEBSITE_ID="00000000-0000-0000-0000-000000000000"` for the Umami site entry
 - `ARCHIVE_SOCKET_PORT="43129"`
 - `AUTO_CRAWLER_ENABLED="true"`
 - `AUTO_SCAN_BLOCK_WINDOW="50000"`
@@ -192,6 +194,7 @@ That gives you a local hosting layer for backed-up metadata and media.
 - The Rust sidecar listens on `127.0.0.1:43131` by default. Override it with `ARCHIVE_ARCHIVER_BIND`. You can also tune `ARCHIVE_ARCHIVER_MEMORY_CACHE_ITEMS` and `ARCHIVE_ARCHIVER_INLINE_MEMORY_MAX_BYTES`.
 - The standalone `foundation-share-bridge` helper exposes a basic native toolbar/taskbar icon on macOS, Windows, and Linux with a small menu for opening `/desktop`, opening local health, and quitting cleanly.
 - The public archive and admin screens use sockets for live updates. The default live socket port is `43129`.
+- Umami analytics is optional. When configured, the app records pageviews/referrers/location through Umami and emits custom events for share clicks, profile archive requests, desktop-save clicks, footer links, and mission-page actions.
 - `/desktop` is the live verification board for the local Rust bridge. It is meant to confirm that artists' own helper nodes are reachable and self-repairing, not to replace a durable personal IPFS pinning setup.
 
 ## Contributing

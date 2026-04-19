@@ -5,6 +5,8 @@ import type {
   ArchivePolicyCard,
   ArchiveWorkerStatusCard,
 } from "~/lib/archive-live";
+import { buildArchivePublicPath } from "~/server/archive/ipfs";
+import { archivePinningEnabled } from "~/server/archive/jobs/shared";
 import { readRecentArchiveEvents } from "~/server/archive/live-events";
 import { BackupStatus } from "~/server/prisma-client";
 import type { PrismaClient } from "~/server/prisma-client";
@@ -31,6 +33,7 @@ type ArtworkCardRow = {
   } | null;
   mediaRoot: {
     cid: string;
+    relativePath: string | null;
     gatewayUrl: string | null;
   } | null;
 };
@@ -42,7 +45,10 @@ function archivedPosterUrl(artwork: ArtworkCardRow) {
     return null;
   }
 
-  return artwork.mediaRoot.gatewayUrl;
+  return buildArchivePublicPath(
+    artwork.mediaRoot.cid,
+    artwork.mediaRoot.relativePath,
+  );
 }
 
 export function toLiveArtworkCard(
@@ -59,8 +65,6 @@ export function toLiveArtworkCard(
     artistWallet: artwork.artistWallet,
     posterUrl:
       archivedPosterUrl(artwork) ??
-      artwork.staticPreviewUrl ??
-      artwork.previewUrl ??
       (artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null),
     contractAddress: artwork.contractAddress,
     tokenId: artwork.tokenId,
@@ -157,12 +161,14 @@ function toCrawlerCard(crawler: {
   lastRunFinishedAt: Date | null;
   lastError: string | null;
   contract: {
+    chainId: number;
     address: string;
     label: string;
     contractKind: string;
   };
 }): ArchiveCrawlerCard {
   return {
+    chainId: crawler.contract.chainId,
     contractAddress: crawler.contract.address,
     label: crawler.contract.label,
     contractKind: crawler.contract.contractKind,
@@ -180,28 +186,33 @@ function toCrawlerCard(crawler: {
   };
 }
 
-const SATISFIED_ARTWORK_STATUSES: BackupStatus[] = [
-  BackupStatus.DOWNLOADED,
-  BackupStatus.PINNED,
-  BackupStatus.SKIPPED,
-];
+function satisfiedArtworkStatuses() {
+  return archivePinningEnabled()
+    ? [BackupStatus.PINNED, BackupStatus.SKIPPED]
+    : [
+        BackupStatus.DOWNLOADED,
+        BackupStatus.PINNED,
+        BackupStatus.SKIPPED,
+      ];
+}
 
 const ARTWORK_WITH_ROOT_WHERE = {
   OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
 };
 
 function anyPreservedArtworkWhere() {
+  const statuses = satisfiedArtworkStatuses();
   return {
     ...ARTWORK_WITH_ROOT_WHERE,
     OR: [
       {
         metadataStatus: {
-          in: SATISFIED_ARTWORK_STATUSES,
+          in: statuses,
         },
       },
       {
         mediaStatus: {
-          in: SATISFIED_ARTWORK_STATUSES,
+          in: statuses,
         },
       },
     ],
@@ -209,13 +220,14 @@ function anyPreservedArtworkWhere() {
 }
 
 function fullyPreservedArtworkWhere() {
+  const statuses = satisfiedArtworkStatuses();
   return {
     ...ARTWORK_WITH_ROOT_WHERE,
     metadataStatus: {
-      in: SATISFIED_ARTWORK_STATUSES,
+      in: statuses,
     },
     mediaStatus: {
-      in: SATISFIED_ARTWORK_STATUSES,
+      in: statuses,
     },
   };
 }
@@ -377,7 +389,9 @@ async function fetchLatestArchivedArtworks(client: DatabaseClient) {
       tokenId: true,
       mediaStatus: true,
       metadataRoot: { select: { cid: true } },
-      mediaRoot: { select: { cid: true, gatewayUrl: true } },
+      mediaRoot: {
+        select: { cid: true, relativePath: true, gatewayUrl: true },
+      },
     },
   });
 }

@@ -309,6 +309,102 @@ model ArchiveEvent {
   @@index([type, createdAt])
 }
 
+model FoundationMarketIndexerState {
+  id                String    @id @default(cuid())
+  chainId           Int
+  marketContract    String
+  marketKind        String
+  scanFromBlock     Int
+  nextFromBlock     Int
+  lastScannedBlock  Int?
+  blockWindowSize   Int       @default(5000)
+  lastRunStartedAt  DateTime?
+  lastRunFinishedAt DateTime?
+  lastEventCount    Int       @default(0)
+  lastError         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([chainId, marketContract])
+  @@index([nextFromBlock])
+}
+
+model FoundationReserveAuction {
+  id                  String    @id @default(cuid())
+  chainId             Int
+  marketContract      String
+  auctionId           String
+  nftContract         String
+  tokenId             String
+  seller              String
+  reservePrice        String
+  duration            Int?
+  extensionDuration   Int?
+  highestBidder       String?
+  highestBid          String?
+  endTime             DateTime?
+  status              String
+  createdBlock        Int
+  finalizedBlock      Int?
+  finalizedTxHash     String?
+  finalizedTotalFees  String?
+  finalizedCreatorRev String?
+  finalizedSellerRev  String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([chainId, marketContract, auctionId])
+  @@index([status, endTime])
+  @@index([chainId, nftContract, tokenId])
+}
+
+model FoundationBuyPrice {
+  id             String    @id @default(cuid())
+  chainId        Int
+  marketContract String
+  nftContract    String
+  tokenId        String
+  seller         String
+  price          String
+  status         String
+  buyer          String?
+  acceptedAt     DateTime?
+  acceptedTxHash String?
+  totalFees      String?
+  creatorRev     String?
+  sellerRev      String?
+  setBlock       Int
+  updatedBlock   Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([chainId, marketContract, nftContract, tokenId])
+  @@index([status])
+}
+
+model FoundationMarketEvent {
+  id             String   @id @default(cuid())
+  chainId        Int
+  marketContract String
+  marketKind     String
+  eventName      String
+  blockNumber    Int
+  logIndex       Int
+  txHash         String
+  nftContract    String?
+  tokenId        String?
+  auctionId      String?
+  actorAddress   String?
+  amount         String?
+  payload        String
+  occurredAt     DateTime @default(now())
+
+  @@unique([chainId, marketContract, blockNumber, logIndex])
+  @@index([chainId, nftContract, tokenId, blockNumber])
+  @@index([chainId, marketContract, auctionId, blockNumber])
+  @@index([eventName, blockNumber])
+}
+
 model RelayPairing {
   id                String    @id @default(cuid())
   ownerToken        String

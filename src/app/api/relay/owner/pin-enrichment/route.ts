@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 
 export const runtime = "nodejs";
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
       },
       select: {
         cid: true,
+        relativePath: true,
         metadataFor: {
           take: 4,
           select: {
@@ -33,10 +35,9 @@ export async function POST(request: Request) {
             artistName: true,
             artistUsername: true,
             foundationUrl: true,
+            chainId: true,
             contractAddress: true,
             tokenId: true,
-            staticPreviewUrl: true,
-            previewUrl: true,
           },
         },
         mediaFor: {
@@ -48,10 +49,10 @@ export async function POST(request: Request) {
             artistName: true,
             artistUsername: true,
             foundationUrl: true,
+            chainId: true,
             contractAddress: true,
             tokenId: true,
-            staticPreviewUrl: true,
-            previewUrl: true,
+            mediaKind: true,
           },
         },
       },
@@ -68,9 +69,10 @@ export async function POST(request: Request) {
           artistName: artwork.artistName,
           artistUsername: artwork.artistUsername,
           foundationUrl: artwork.foundationUrl,
+          chainId: artwork.chainId,
           contractAddress: artwork.contractAddress,
           tokenId: artwork.tokenId,
-          posterUrl: artwork.staticPreviewUrl ?? artwork.previewUrl,
+          posterUrl: null,
         })),
         ...root.mediaFor.map((artwork) => ({
           role: "MEDIA" as const,
@@ -80,9 +82,13 @@ export async function POST(request: Request) {
           artistName: artwork.artistName,
           artistUsername: artwork.artistUsername,
           foundationUrl: artwork.foundationUrl,
+          chainId: artwork.chainId,
           contractAddress: artwork.contractAddress,
           tokenId: artwork.tokenId,
-          posterUrl: artwork.staticPreviewUrl ?? artwork.previewUrl,
+          posterUrl:
+            artwork.mediaKind === "IMAGE"
+              ? buildArchivePublicPath(root.cid, root.relativePath)
+              : null,
         })),
       ],
     }));

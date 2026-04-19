@@ -33,9 +33,10 @@ export function MissionPageShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 pt-8 pb-16">
+    <main className="mx-auto w-full max-w-5xl px-6 pt-8 pb-16 xl:max-w-6xl 2xl:max-w-7xl">
       <Link
         href="/"
+        data-umami-event="mission-home-click"
         className="inline-flex items-center gap-1 text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
       >
         <ArrowLeft aria-hidden className="h-3.5 w-3.5" />
@@ -73,6 +74,9 @@ export function MissionPageShell({
                 <Link
                   key={action.href}
                   href={action.href}
+                  data-umami-event="mission-page-action"
+                  data-umami-event-href={action.href}
+                  data-umami-event-label={action.label}
                   className={
                     index === 0
                       ? "inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] hover:opacity-90"
@@ -204,6 +208,8 @@ export function WalletSection({
                     href={wallet.href}
                     target="_blank"
                     rel="noreferrer"
+                    data-umami-event="wallet-view-click"
+                    data-umami-event-network={wallet.network}
                     className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-medium text-[var(--color-muted)] transition hover:text-[var(--color-ink)]"
                   >
                     View

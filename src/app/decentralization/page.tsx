@@ -226,24 +226,6 @@ export default function DecentralizationPage() {
                   very long time.
                 </p>
               </div>
-
-              <Stagger className="mt-6 grid gap-3 sm:grid-cols-3">
-                <StatPanel
-                  value="Distributed"
-                  label="Topology"
-                  note="No single point of failure."
-                />
-                <StatPanel
-                  value="Demand-driven"
-                  label="Economics"
-                  note="Services built for artists and collectors."
-                />
-                <StatPanel
-                  value="Lasting"
-                  label="Access"
-                  note="More copies. Stronger future."
-                />
-              </Stagger>
             </div>
 
             <div className="relative flex items-center justify-center">
@@ -269,6 +251,24 @@ export default function DecentralizationPage() {
               </BracketFrame>
             </div>
           </div>
+
+          <Stagger className="mt-8 grid gap-4 sm:grid-cols-3">
+            <StatPanel
+              value="Distributed"
+              label="Topology"
+              note="No single point of failure."
+            />
+            <StatPanel
+              value="Demand-driven"
+              label="Economics"
+              note="Services built for artists and collectors."
+            />
+            <StatPanel
+              value="Lasting"
+              label="Access"
+              note="More copies. Stronger future."
+            />
+          </Stagger>
         </section>
       </FadeUp>
 

@@ -48,6 +48,30 @@ function parseIpfsPath(input: string) {
   };
 }
 
+function parseCidFromPathSegments(pathname: string) {
+  const segments = pathname
+    .split("/")
+    .map((segment) => safeDecodeURIComponent(segment))
+    .filter(Boolean);
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segment) continue;
+
+    try {
+      CID.parse(segment);
+      return {
+        cid: segment,
+        relativePath: segments.slice(index + 1).join("/"),
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 export function parseIpfsReference(
   originalUrl: string,
   kind: RootKind,
@@ -72,6 +96,8 @@ export function parseIpfsReference(
           cidPath = parseIpfsPath(
             url.pathname.slice(index + PATHWAY_SEGMENT.length),
           );
+        } else {
+          cidPath = parseCidFromPathSegments(url.pathname);
         }
       }
     } catch {

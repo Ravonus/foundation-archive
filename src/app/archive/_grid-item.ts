@@ -5,6 +5,7 @@ import {
   type FoundationLookupWork,
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
+import { buildArchivePublicPath } from "~/server/archive/ipfs";
 
 import {
   artworkKey,
@@ -20,15 +21,16 @@ function isArchivedMediaDownloaded(status: string) {
 function resolveArchiveMediaUrl(artwork: ArchivedArtworkRow) {
   if (!artwork.mediaRoot) return null;
   if (!isArchivedMediaDownloaded(artwork.mediaStatus)) return null;
-  return artwork.mediaRoot.gatewayUrl;
+  return buildArchivePublicPath(
+    artwork.mediaRoot.cid,
+    artwork.mediaRoot.relativePath,
+  );
 }
 
 function resolveArchivedPosterUrl(
   artwork: ArchivedArtworkRow,
   archiveMediaUrl: string | null,
 ) {
-  const base = artwork.staticPreviewUrl ?? artwork.previewUrl;
-  if (base) return base;
   if (artwork.mediaKind !== "IMAGE") return null;
   return archiveMediaUrl ?? artwork.sourceUrl;
 }
@@ -151,7 +153,12 @@ function toPinnedWork(artwork: ArchivedArtworkRow) {
     id: artwork.id,
     title: artwork.title,
     slug: artwork.slug,
-    archiveUrl: artwork.mediaRoot ? artwork.mediaRoot.gatewayUrl : null,
+    archiveUrl: artwork.mediaRoot
+      ? buildArchivePublicPath(
+          artwork.mediaRoot.cid,
+          artwork.mediaRoot.relativePath,
+        )
+      : null,
     publicGatewayUrl: artwork.mediaRoot?.gatewayUrl ?? null,
   };
 }

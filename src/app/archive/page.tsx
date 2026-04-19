@@ -9,6 +9,7 @@ import {
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
+import { attachMarketStateToGridItems } from "~/server/archive/foundation-market";
 import {
   persistDiscoveredFoundationWorks,
   PUBLIC_QUEUE_PRIORITY,
@@ -224,12 +225,13 @@ export default async function ArchivePage(props: ArchivePageProps) {
   const { rows: discoveredArchivedWorks, byKey: archivedByKey } =
     await loadDiscoveredArchivedByKey(params.query, discovery.works);
 
-  const items = mergeGridItems({
+  const rawItems = mergeGridItems({
     archivedWorks,
     discoveredArchivedWorks,
     discoveryWorks: discovery.works,
     archivedByKey,
   });
+  const items = await attachMarketStateToGridItems(db, rawItems);
   const { filteredItems, archivedShown, liveOnlyShown } = computeItemSummary(
     items,
     params.status,

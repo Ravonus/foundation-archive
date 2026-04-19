@@ -34,6 +34,11 @@ export const env = createEnv({
     SMART_PIN_CEILING_BYTES: z.coerce.number().int().positive().default(268435456),
     SMART_PIN_GROWTH_FACTOR: z.coerce.number().positive().default(2),
     SMART_PIN_DEFER_MS: z.coerce.number().int().positive().default(60000),
+    ARCHIVE_DIRECTORY_MAX_BYTES: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(524288000),
     ARCHIVE_SOCKET_PORT: z.coerce.number().int().positive().default(43129),
     ARCHIVE_SOCKET_INTERNAL_URL: z
       .string()
@@ -47,6 +52,9 @@ export const env = createEnv({
       .url()
       .default("https://foundation.agorix.io"),
     NEXT_PUBLIC_ARCHIVE_SOCKET_URL: z.string().url().optional(),
+    NEXT_PUBLIC_UMAMI_SCRIPT_URL: z.string().url().optional(),
+    NEXT_PUBLIC_UMAMI_WEBSITE_ID: z.string().uuid().optional(),
+    NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: z.string().min(1).optional(),
   },
 
   runtimeEnv: {
@@ -70,10 +78,15 @@ export const env = createEnv({
     SMART_PIN_CEILING_BYTES: process.env.SMART_PIN_CEILING_BYTES,
     SMART_PIN_GROWTH_FACTOR: process.env.SMART_PIN_GROWTH_FACTOR,
     SMART_PIN_DEFER_MS: process.env.SMART_PIN_DEFER_MS,
+    ARCHIVE_DIRECTORY_MAX_BYTES: process.env.ARCHIVE_DIRECTORY_MAX_BYTES,
     ARCHIVE_SOCKET_PORT: process.env.ARCHIVE_SOCKET_PORT,
     ARCHIVE_SOCKET_INTERNAL_URL: process.env.ARCHIVE_SOCKET_INTERNAL_URL,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_ARCHIVE_SOCKET_URL: process.env.NEXT_PUBLIC_ARCHIVE_SOCKET_URL,
+    NEXT_PUBLIC_UMAMI_SCRIPT_URL: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
+    NEXT_PUBLIC_UMAMI_WEBSITE_ID: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
+    NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:
+      process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: true,

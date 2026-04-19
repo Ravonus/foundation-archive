@@ -6,11 +6,15 @@ import { useEffect, useState, useTransition } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowRight, Check, LoaderCircle, Plus, X } from "lucide-react";
 
+import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { BlurImage } from "~/app/_components/motion";
 import { VirtualizedArtworkGrid } from "~/app/_components/artwork-grid-virtualized";
+import { ChainBadge } from "~/app/_components/chain-badge";
 import { archiveItemStatus } from "~/lib/archive-browse";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
+
+export type ArtworkMarketState = "listed" | "auction" | "rescuable";
 
 export interface ArtworkGridItem {
   id: string;
@@ -34,6 +38,7 @@ export interface ArtworkGridItem {
   metadataCid: string | null;
   mediaCid: string | null;
   lookupSource: "ARCHIVED" | "FOUNDATION_LIVE";
+  marketState?: ArtworkMarketState | null;
 }
 
 type Health = "preserved" | "partial" | "pending" | "missing" | "failed";
@@ -119,6 +124,10 @@ function isExternalLink(item: ArtworkGridItem) {
 function resolvePosterUrl(item: ArtworkGridItem) {
   if (item.posterUrl) return item.posterUrl;
   return item.mediaKind === "IMAGE" ? item.mediaUrl : null;
+}
+
+function isModelItem(item: ArtworkGridItem) {
+  return item.mediaKind.toUpperCase() === "MODEL";
 }
 
 function requestLabelFor(health: Health) {
@@ -288,6 +297,18 @@ export function ArtworkGrid({
 
 function ItemPoster({ item }: { item: ArtworkGridItem }) {
   const posterUrl = resolvePosterUrl(item);
+  if (isModelItem(item) && item.mediaUrl) {
+    return (
+      <ModelMediaPreview
+        src={item.mediaUrl}
+        poster={posterUrl}
+        alt={item.title}
+        autoRotate
+        allowAnchorFallback={false}
+        className="h-full w-full pointer-events-none transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
+      />
+    );
+  }
   if (posterUrl) {
     return (
       <BlurImage
@@ -322,6 +343,29 @@ function HealthBadge({ health }: { health: Health }) {
         />
       ) : null}
       {healthLabel(health)}
+    </span>
+  );
+}
+
+function MarketBadge({ state }: { state: ArtworkMarketState | null | undefined }) {
+  if (!state) return null;
+  const styles =
+    state === "rescuable"
+      ? "border border-[var(--color-brand-green)] bg-[var(--color-brand-green-soft)] text-[var(--color-brand-green)]"
+      : state === "auction"
+        ? "border border-[var(--color-info)]/40 bg-[var(--color-surface)] text-[var(--color-info)]"
+        : "border border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[var(--color-ink)]";
+  const label =
+    state === "rescuable"
+      ? "Awaiting rescue"
+      : state === "auction"
+        ? "Live auction"
+        : "Listed";
+  return (
+    <span
+      className={`absolute top-3 right-3 z-10 rounded-full px-2.5 py-1 text-[0.7rem] font-medium ${styles}`}
+    >
+      {label}
     </span>
   );
 }
@@ -408,6 +452,7 @@ function ItemCard({
           <ItemPoster item={item} />
         </div>
         <HealthBadge health={health} />
+        <MarketBadge state={item.marketState} />
       </Link>
 
       <div className="caption-rule mt-4 flex items-start justify-between gap-4">
@@ -426,6 +471,7 @@ function ItemCard({
               {String(index + 1).padStart(3, "0")}
             </span>
             <span className="truncate">{artistDisplay(item)}</span>
+            <ChainBadge chainId={item.chainId} />
           </p>
         </div>
 

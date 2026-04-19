@@ -10,12 +10,14 @@ type ProfileHeaderProps = {
   resolved: ResolvedProfile;
   counts: ProfileItemCounts;
   foundationUrl: string;
+  marketSummary?: { listedCount: number; rescuableCount: number };
 };
 
 export function ProfileHeader({
   resolved,
   counts,
   foundationUrl,
+  marketSummary,
 }: ProfileHeaderProps) {
   const {
     accountAddress,
@@ -98,6 +100,38 @@ export function ProfileHeader({
             <ProfileStat label="Syncing" value={counts.syncing} tone="warn" />
             <ProfileStat label="Found now" value={counts.found} tone="info" />
           </div>
+
+          {marketSummary &&
+          (marketSummary.listedCount > 0 ||
+            marketSummary.rescuableCount > 0) ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-[var(--color-line)] bg-[var(--color-surface-quiet)] px-4 py-3 text-xs text-[var(--color-body)]">
+              {marketSummary.listedCount > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-info)]"
+                  />
+                  {marketSummary.listedCount} currently listed
+                </span>
+              ) : null}
+              {marketSummary.rescuableCount > 0 ? (
+                <>
+                  {marketSummary.listedCount > 0 ? (
+                    <span aria-hidden className="text-[var(--color-muted)]">
+                      ·
+                    </span>
+                  ) : null}
+                  <span className="inline-flex items-center gap-1.5 text-[var(--color-brand-green)]">
+                    <span
+                      aria-hidden
+                      className="inline-block h-1.5 w-1.5 rounded-full bg-current"
+                    />
+                    {marketSummary.rescuableCount} awaiting rescue
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : null}
 
           <p className="mt-4 text-sm leading-relaxed text-[var(--color-muted)]">
             Saved works, in-flight archive jobs, and newly found Foundation pieces all stay in one feed here.

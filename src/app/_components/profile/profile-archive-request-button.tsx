@@ -49,6 +49,8 @@ export function ProfileArchiveRequestButton({
     <div className="space-y-3">
       <button
         type="button"
+        data-umami-event="request-profile-archive"
+        data-umami-event-profile={username ?? "wallet"}
         onClick={() => {
           mutation.mutate({
             accountAddress,

@@ -11,8 +11,8 @@ import { useDesktopConsoleState } from "./hooks/use-desktop-console-state";
 import { AdvancedSettingsSection } from "./sections/advanced-settings-section";
 import { BridgeStatusHeader } from "./sections/bridge-status-header";
 import { ConnectSection } from "./sections/connect-section";
-import { PinsSummarySection } from "./sections/pins-summary-section";
 import { SavedWorksSection } from "./sections/saved-works-section";
+import { UploadSection } from "./sections/upload-section";
 
 function resolvePairingUrl(input: {
   pairing: ReturnType<typeof useDesktopConsoleState>["raw"]["pairing"];
@@ -81,6 +81,7 @@ export function DesktopStatusConsole() {
   });
   const isConnectedRemotely =
     selectedDevice?.connected === true || selectedDeviceState !== null;
+  const showConnectSection = !relayConnected;
 
   const actions = useDesktopConsoleActions({
     state,
@@ -101,9 +102,19 @@ export function DesktopStatusConsole() {
         localBridgeProbeEnabled={bridge.localBridgeProbeEnabled}
         reachable={bridge.reachable}
         retryNetwork={bridge.retryNetwork}
+        relayDevices={bridge.relayDevices}
+        setSelectedDeviceId={raw.setSelectedDeviceId}
+        pinnedCount={inventoryView.pinnedCount}
+        visibleInventoryTime={inventoryView.visibleInventoryTime}
+        requestRelayInventory={bridge.requestRelayInventory}
+        sessionUrl={sessionUrl}
+        pairingUrl={pairingUrl}
+        openPreparedPairing={actions.openPreparedPairing}
+        disconnectSelectedDevice={actions.disconnectSelectedDevice}
+        isDisconnecting={transitions.isDisconnecting}
       />
 
-      <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+      {showConnectSection ? (
         <ConnectSection
           reachable={bridge.reachable}
           relayConnected={relayConnected}
@@ -121,25 +132,30 @@ export function DesktopStatusConsole() {
           openPreparedPairing={actions.openPreparedPairing}
           disconnectSelectedDevice={actions.disconnectSelectedDevice}
         />
+      ) : null}
 
-        <PinsSummarySection
-          relayDevices={bridge.relayDevices}
-          selectedDevice={selectedDevice}
-          setSelectedDeviceId={raw.setSelectedDeviceId}
-          visibleInventoryLabel={inventoryView.visibleInventoryLabel}
-          visibleInventoryTime={inventoryView.visibleInventoryTime}
-          pinnedCount={inventoryView.pinnedCount}
-          visibleItemsCount={inventoryView.visibleItems.length}
-          sessionUrl={sessionUrl}
-          requestRelayInventory={bridge.requestRelayInventory}
-        />
-      </section>
+      <UploadSection
+        reachable={bridge.reachable}
+        selectedDevice={selectedDevice}
+        uploadFiles={bridge.uploadFiles}
+        onUploaded={(result) => {
+          bridge
+            .listPins()
+            .then((payload) => {
+              raw.setLocalInventory(payload);
+              raw.setLastLocalRefreshAt(new Date().toISOString());
+            })
+            .catch(() => undefined);
+          raw.setFeedback(
+            `Pinned ${result.file_count} file${result.file_count === 1 ? "" : "s"} to this computer.`,
+          );
+        }}
+        setFeedback={raw.setFeedback}
+      />
 
       <SavedWorksSection
         visibleItems={inventoryView.visibleItems}
         pinnedCount={inventoryView.pinnedCount}
-        selectedDevice={selectedDevice}
-        visibleInventoryLabel={inventoryView.visibleInventoryLabel}
         pinEnrichment={bridge.pinEnrichment}
         pinVerifications={bridge.pinVerifications}
         isVerifying={transitions.isVerifying}

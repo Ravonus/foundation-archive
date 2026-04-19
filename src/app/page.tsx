@@ -21,6 +21,7 @@ import {
 import { CountUp, FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
 import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
+import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { db } from "~/server/db";
 
@@ -98,21 +99,21 @@ function archiveMediaUrlOf(artwork: HomeArtwork) {
   const isCaptured =
     artwork.mediaStatus === "DOWNLOADED" || artwork.mediaStatus === "PINNED";
   if (!artwork.mediaRoot || !isCaptured) return null;
-  return artwork.mediaRoot.gatewayUrl;
+  return buildArchivePublicPath(
+    artwork.mediaRoot.cid,
+    artwork.mediaRoot.relativePath,
+  );
 }
 
 function posterUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {
-  const imageFallback =
-    artwork.mediaKind === "IMAGE"
-      ? (archiveMediaUrl ?? artwork.sourceUrl)
-      : null;
-  return artwork.staticPreviewUrl ?? artwork.previewUrl ?? imageFallback;
+  if (artwork.mediaKind !== "IMAGE") return null;
+  return archiveMediaUrl ?? artwork.sourceUrl;
 }
 
 function mediaUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {
   const imageFallback =
     artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null;
-  return archiveMediaUrl ?? artwork.previewUrl ?? imageFallback;
+  return archiveMediaUrl ?? imageFallback;
 }
 
 function toGridItem(artwork: HomeArtwork) {

@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 
 import { ArtworkGrid } from "~/app/_components/artwork-grid";
 import { fetchAllFoundationWorksByCreator } from "~/server/archive/foundation-api";
+import {
+  attachMarketStateToGridItems,
+  summarizeProfileMarketState,
+} from "~/server/archive/foundation-market";
 import { persistDiscoveredFoundationWorks } from "~/server/archive/jobs";
 import { db } from "~/server/db";
 
@@ -89,7 +93,11 @@ export default async function ProfilePage({
   }
 
   const partitioned = partitionWorksByArchiveState(works, archivedWorks);
-  const items = selectVisibleItems(activeView, partitioned.items);
+  const visibleItems = selectVisibleItems(activeView, partitioned.items);
+  const [items, marketSummary] = await Promise.all([
+    attachMarketStateToGridItems(db, visibleItems),
+    summarizeProfileMarketState(db, partitioned.items),
+  ]);
   const foundationUrl = foundationUrlFor(resolved);
 
   return (
@@ -102,6 +110,7 @@ export default async function ProfilePage({
           resolved={resolved}
           counts={partitioned.counts}
           foundationUrl={foundationUrl}
+          marketSummary={marketSummary}
         />
         <ViewTabs
           profile={profile}

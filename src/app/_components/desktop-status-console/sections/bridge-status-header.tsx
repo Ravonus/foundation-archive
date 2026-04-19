@@ -1,17 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   AlertCircle,
   ArrowUpRight,
   CheckCircle2,
+  ExternalLink,
   HelpCircle,
   LoaderCircle,
   RefreshCcw,
+  Unplug,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
+import { formatDate } from "~/lib/utils";
 import type {
   BridgeNetworkStatus,
   RelayOwnerDevice,
@@ -34,6 +38,16 @@ type HeaderProps = {
   localBridgeProbeEnabled: boolean;
   reachable: boolean;
   retryNetwork: () => void;
+  relayDevices: RelayOwnerDevice[];
+  setSelectedDeviceId: (id: string) => void;
+  pinnedCount: number;
+  visibleInventoryTime: string | null;
+  requestRelayInventory: (id: string) => void;
+  sessionUrl: string | null;
+  pairingUrl: string | null;
+  openPreparedPairing: () => void;
+  disconnectSelectedDevice: () => void;
+  isDisconnecting: boolean;
 };
 
 function HelpModal({
@@ -138,17 +152,158 @@ function HelpModal({
   );
 }
 
+function DeviceTabs({
+  relayDevices,
+  selectedDevice,
+  setSelectedDeviceId,
+}: {
+  relayDevices: RelayOwnerDevice[];
+  selectedDevice: RelayOwnerDevice | null;
+  setSelectedDeviceId: (id: string) => void;
+}) {
+  if (relayDevices.length <= 1) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {relayDevices.map((device) => (
+        <button
+          key={device.id}
+          type="button"
+          onClick={() => setSelectedDeviceId(device.id)}
+          className={
+            device.id === selectedDevice?.id
+              ? "rounded-full bg-[var(--color-ink)] px-3 py-1 text-xs text-[var(--color-bg)]"
+              : "rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+          }
+        >
+          {device.deviceLabel}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ConnectedQuickActions({
+  selectedDevice,
+  pinnedCount,
+  visibleInventoryTime,
+  requestRelayInventory,
+  sessionUrl,
+  pairingUrl,
+  openPreparedPairing,
+  disconnectSelectedDevice,
+  isDisconnecting,
+}: Pick<
+  HeaderProps,
+  | "selectedDevice"
+  | "pinnedCount"
+  | "visibleInventoryTime"
+  | "requestRelayInventory"
+  | "sessionUrl"
+  | "pairingUrl"
+  | "openPreparedPairing"
+  | "disconnectSelectedDevice"
+  | "isDisconnecting"
+>) {
+  return (
+    <>
+      <span
+        className="text-xs text-[var(--color-muted)]"
+        title={
+          visibleInventoryTime
+            ? `Last checked ${formatDate(visibleInventoryTime)}`
+            : undefined
+        }
+      >
+        {pinnedCount} file{pinnedCount === 1 ? "" : "s"} saved
+      </span>
+
+      {selectedDevice?.connected ? (
+        <button
+          type="button"
+          onClick={() => requestRelayInventory(selectedDevice.id)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-body)]"
+          title="Ask the desktop app for its latest list of saved works."
+        >
+          <RefreshCcw aria-hidden className="h-3.5 w-3.5" />
+          Refresh list
+        </button>
+      ) : null}
+
+      {sessionUrl ? (
+        <Link
+          href={sessionUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-body)]"
+          title="Open the app running on this computer in a new tab."
+        >
+          Open local app
+          <ArrowUpRight aria-hidden className="h-3.5 w-3.5" />
+        </Link>
+      ) : null}
+
+      {pairingUrl ? (
+        <a
+          href={pairingUrl}
+          onClick={openPreparedPairing}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-body)]"
+          title="Re-open the desktop app."
+        >
+          <ExternalLink aria-hidden className="h-3.5 w-3.5" />
+          Open app
+        </a>
+      ) : null}
+
+      {selectedDevice ? (
+        <button
+          type="button"
+          onClick={disconnectSelectedDevice}
+          disabled={isDisconnecting}
+          title="Stop this site from sending works to this desktop app."
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-body)] disabled:opacity-55"
+        >
+          {isDisconnecting ? (
+            <LoaderCircle aria-hidden className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Unplug aria-hidden className="h-3.5 w-3.5" />
+          )}
+          Disconnect
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 function HeaderControls({
   selectedDevice,
   isRefreshing,
   reload,
   onOpenHelp,
-}: {
-  selectedDevice: RelayOwnerDevice | null;
-  isRefreshing: boolean;
-  reload: () => void;
-  onOpenHelp: () => void;
-}) {
+  relayConnected,
+  pinnedCount,
+  visibleInventoryTime,
+  requestRelayInventory,
+  sessionUrl,
+  pairingUrl,
+  openPreparedPairing,
+  disconnectSelectedDevice,
+  isDisconnecting,
+}: Pick<
+  HeaderProps,
+  | "selectedDevice"
+  | "isRefreshing"
+  | "reload"
+  | "relayConnected"
+  | "pinnedCount"
+  | "visibleInventoryTime"
+  | "requestRelayInventory"
+  | "sessionUrl"
+  | "pairingUrl"
+  | "openPreparedPairing"
+  | "disconnectSelectedDevice"
+  | "isDisconnecting"
+> & { onOpenHelp: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span
@@ -160,16 +315,31 @@ function HeaderControls({
       >
         {statusLabel(selectedDevice)}
       </span>
+
+      {relayConnected ? (
+        <ConnectedQuickActions
+          selectedDevice={selectedDevice}
+          pinnedCount={pinnedCount}
+          visibleInventoryTime={visibleInventoryTime}
+          requestRelayInventory={requestRelayInventory}
+          sessionUrl={sessionUrl}
+          pairingUrl={pairingUrl}
+          openPreparedPairing={openPreparedPairing}
+          disconnectSelectedDevice={disconnectSelectedDevice}
+          isDisconnecting={isDisconnecting}
+        />
+      ) : null}
+
       <button
         type="button"
         onClick={reload}
         disabled={isRefreshing}
-        className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-body)] disabled:opacity-55"
+        className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-body)] disabled:opacity-55"
       >
         {isRefreshing ? (
-          <LoaderCircle className="h-4 w-4 animate-spin" />
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
         ) : (
-          <RefreshCcw className="h-4 w-4" />
+          <RefreshCcw className="h-3.5 w-3.5" />
         )}
         Refresh
       </button>
@@ -177,9 +347,9 @@ function HeaderControls({
         type="button"
         onClick={onOpenHelp}
         aria-label="What is this?"
-        className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-body)] hover:text-[var(--color-ink)]"
+        className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-body)] hover:text-[var(--color-ink)]"
       >
-        <HelpCircle aria-hidden className="h-4 w-4" />
+        <HelpCircle aria-hidden className="h-3.5 w-3.5" />
         What is this?
       </button>
     </div>
@@ -197,6 +367,16 @@ export function BridgeStatusHeader({
   localBridgeProbeEnabled,
   reachable,
   retryNetwork,
+  relayDevices,
+  setSelectedDeviceId,
+  pinnedCount,
+  visibleInventoryTime,
+  requestRelayInventory,
+  sessionUrl,
+  pairingUrl,
+  openPreparedPairing,
+  disconnectSelectedDevice,
+  isDisconnecting,
 }: HeaderProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const message = feedback ?? error;
@@ -217,8 +397,27 @@ export function BridgeStatusHeader({
           isRefreshing={isRefreshing}
           reload={reload}
           onOpenHelp={() => setHelpOpen(true)}
+          relayConnected={relayConnected}
+          pinnedCount={pinnedCount}
+          visibleInventoryTime={visibleInventoryTime}
+          requestRelayInventory={requestRelayInventory}
+          sessionUrl={sessionUrl}
+          pairingUrl={pairingUrl}
+          openPreparedPairing={openPreparedPairing}
+          disconnectSelectedDevice={disconnectSelectedDevice}
+          isDisconnecting={isDisconnecting}
         />
       </div>
+
+      {relayDevices.length > 1 ? (
+        <div className="mt-3">
+          <DeviceTabs
+            relayDevices={relayDevices}
+            selectedDevice={selectedDevice}
+            setSelectedDeviceId={setSelectedDeviceId}
+          />
+        </div>
+      ) : null}
 
       <div className="mt-4">
         <NetworkStatusBanner

@@ -57,6 +57,9 @@ export function ShareLinkButton({
     <button
       type="button"
       onClick={onClick}
+      data-umami-event="share-link-click"
+      data-umami-event-path={path}
+      data-umami-event-title={title}
       aria-label={state === "copied" ? "Link copied" : "Copy or share link"}
       title={state === "copied" ? "Link copied" : "Copy or share this page"}
       className={cn(

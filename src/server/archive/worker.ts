@@ -5,6 +5,7 @@ import {
   runAutomaticContractDiscoveryTick,
   runAutomaticContractCrawlerTick,
 } from "~/server/archive/automation";
+import { runFoundationMarketIndexerTick } from "~/server/archive/foundation-market";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import {
   processQueuedJobs,
@@ -33,6 +34,10 @@ function cycleHadActivity(input: {
     scannedContracts: number;
     queuedTokens: number;
   };
+  marketIndexer: {
+    scannedRanges: number;
+    processedEvents: number;
+  };
   budget: {
     advanced: boolean;
   };
@@ -48,6 +53,8 @@ function cycleHadActivity(input: {
     input.discovery.newContracts > 0 ||
     input.crawl.scannedContracts > 0 ||
     input.crawl.queuedTokens > 0 ||
+    input.marketIndexer.scannedRanges > 0 ||
+    input.marketIndexer.processedEvents > 0 ||
     input.budget.advanced ||
     input.rebalance.parkedBlockedJobs > 0 ||
     input.rebalance.trimmedAutomaticJobs > 0 ||
@@ -100,6 +107,13 @@ function idleBudgetResult() {
   };
 }
 
+function idleMarketIndexerResult() {
+  return {
+    scannedRanges: 0,
+    processedEvents: 0,
+  };
+}
+
 function idleRebalanceResult() {
   return {
     queueBudget: 0,
@@ -148,12 +162,14 @@ async function runIngressCycle(
     : disabledDiscoveryResult();
   const fallbackCrawl = disabledCrawlerResult();
   const fallbackRebalance = idleRebalanceResult();
+  const fallbackMarketIndexer = idleMarketIndexerResult();
 
   const ingressResults = allowIngress
     ? await withArchiveIngressLock(client, async () => {
         const rebalance = await rebalanceAutomaticBackupQueue(client);
         const discovery = await runAutomaticContractDiscoveryTick(client);
         const crawl = await runAutomaticContractCrawlerTick(client);
+        const marketIndexer = await runFoundationMarketIndexerTick(client);
         const budget = await maybeAdvanceSmartPinBudget(client, {
           completedFoundationPass: discovery.completedFoundationPass,
         });
@@ -162,6 +178,7 @@ async function runIngressCycle(
           budget,
           discovery,
           crawl,
+          marketIndexer,
           rebalance,
         };
       })
@@ -171,6 +188,7 @@ async function runIngressCycle(
     budget: ingressResults?.budget ?? fallbackBudget,
     discovery: ingressResults?.discovery ?? fallbackDiscovery,
     crawl: ingressResults?.crawl ?? fallbackCrawl,
+    marketIndexer: ingressResults?.marketIndexer ?? fallbackMarketIndexer,
     rebalance: ingressResults?.rebalance ?? fallbackRebalance,
   };
 }
@@ -280,10 +298,8 @@ export async function runWorkerCycle(
     keepAliveInterval.unref();
 
     const initialQueueResult = await processQueuedJobs(client, limit);
-    const { budget, discovery, crawl, rebalance } = await runIngressCycle(
-      client,
-      allowIngress,
-    );
+    const { budget, discovery, crawl, marketIndexer, rebalance } =
+      await runIngressCycle(client, allowIngress);
     const remainingQueueCapacity = Math.max(
       limit - initialQueueResult.processed,
       0,
@@ -307,6 +323,7 @@ export async function runWorkerCycle(
       processed: queueResult.processed,
       discovery,
       crawl,
+      marketIndexer,
       budget,
       rebalance,
     });
@@ -326,6 +343,7 @@ export async function runWorkerCycle(
       ...queueResult,
       discovery,
       crawl,
+      marketIndexer,
       budget,
       rebalance,
       hadActivity,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, LoaderCircle, RefreshCcw, WifiOff } from "lucide-react";
+import { LoaderCircle, RefreshCcw, WifiOff } from "lucide-react";
 
 import type { BridgeNetworkStatus } from "~/app/_components/desktop-bridge-provider";
 
@@ -80,42 +80,6 @@ function BannerBody({
   );
 }
 
-function RelayConnectedBanner({
-  localBridgeProbeEnabled,
-  retry,
-}: {
-  localBridgeProbeEnabled: boolean;
-  retry: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--color-ok)]/30 bg-[var(--tint-ok)] px-4 py-3 text-sm text-[var(--color-body)]">
-      <div className="flex min-w-0 items-start gap-3">
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-ok)]" />
-        <div className="min-w-0">
-          <p className="font-medium text-[var(--color-ink)]">
-            Desktop app connected over the archive relay
-          </p>
-          <p className="mt-0.5 text-[0.78rem] text-[var(--color-muted)]">
-            This page can send works, show saved inventory, and manage settings
-            for your linked desktop app. Open the app itself only if you want
-            the local helper view too.
-          </p>
-        </div>
-      </div>
-      {localBridgeProbeEnabled ? (
-        <button
-          type="button"
-          onClick={retry}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-ink)] px-3 py-1.5 text-xs text-[var(--color-bg)]"
-        >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          Check local app
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 export function NetworkStatusBanner({
   status,
   relayConnected,
@@ -123,15 +87,7 @@ export function NetworkStatusBanner({
   reachable,
   retry,
 }: NetworkStatusBannerProps) {
-  if (relayConnected) {
-    return (
-      <RelayConnectedBanner
-        localBridgeProbeEnabled={localBridgeProbeEnabled}
-        retry={retry}
-      />
-    );
-  }
-
+  if (relayConnected) return null;
   if (!localBridgeProbeEnabled) return null;
   if (reachable) return null;
   if (status.attempts === 0 && !status.lastError) return null;

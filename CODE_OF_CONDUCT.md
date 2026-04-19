@@ -6,7 +6,7 @@ In short: participants are expected to be respectful, constructive, and consider
 
 ## Reporting
 
-Violations can be reported by emailing the maintainer: **chadkoslovsky@gmail.com** with subject `[conduct]`. Reports will be handled confidentially. The maintainer will acknowledge receipt within 7 days and follow the enforcement guidelines described in the Contributor Covenant.
+Violations can be reported by emailing the maintainer: **ravonus@agorix.io** with subject `[conduct]`. Reports will be handled confidentially. The maintainer will acknowledge receipt within 7 days and follow the enforcement guidelines described in the Contributor Covenant.
 
 ## Scope
 

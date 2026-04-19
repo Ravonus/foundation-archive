@@ -63,6 +63,7 @@ export interface ArchivePolicyCard {
 }
 
 export interface ArchiveCrawlerCard {
+  chainId: number;
   contractAddress: string;
   label: string;
   contractKind: string;

@@ -1,12 +1,13 @@
 "use client";
 
-import { type RefObject } from "react";
+import { type RefObject, useEffect, useState } from "react";
 import {
   ChevronRight,
   Filter,
   LoaderCircle,
   RotateCcw,
   SlidersHorizontal,
+  Timer,
 } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -125,6 +126,28 @@ function formatVisibleSummary(
   return `${renderedCount} visible · ${matchingArchivedWorks.toLocaleString()} archived match${plural}`;
 }
 
+function useSecondsUntil(untilMs: number | null): number {
+  const [remaining, setRemaining] = useState(() =>
+    untilMs ? Math.max(0, Math.ceil((untilMs - Date.now()) / 1000)) : 0,
+  );
+
+  useEffect(() => {
+    if (!untilMs) {
+      setRemaining(0);
+      return;
+    }
+    const tick = () => {
+      const secs = Math.max(0, Math.ceil((untilMs - Date.now()) / 1000));
+      setRemaining(secs);
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [untilMs]);
+
+  return remaining;
+}
+
 export function ControlShell({
   isNavigating,
   renderedCount,
@@ -136,10 +159,12 @@ export function ControlShell({
   hasMore,
   isLoadingMore,
   loadError,
+  cooldownUntil,
   pageSize,
   hasLiveMatches,
   updateSearch,
   onLoadMore,
+  onRetryNow,
 }: {
   isNavigating: boolean;
   renderedCount: number;
@@ -151,11 +176,15 @@ export function ControlShell({
   hasMore: boolean;
   isLoadingMore: boolean;
   loadError: string | null;
+  cooldownUntil: number | null;
   pageSize: number;
   hasLiveMatches: boolean;
   updateSearch: UpdateArchiveSearch;
   onLoadMore: () => void;
+  onRetryNow: () => void;
 }) {
+  const cooldownSeconds = useSecondsUntil(cooldownUntil);
+  const isCoolingDown = cooldownSeconds > 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -216,19 +245,25 @@ export function ControlShell({
               </button>
             ) : null}
 
-            {hasMore || loadError ? (
+            {hasMore || loadError || isCoolingDown ? (
               <button
                 type="button"
-                onClick={onLoadMore}
+                onClick={isCoolingDown ? onRetryNow : onLoadMore}
                 disabled={isLoadingMore}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-ink)] px-3 py-1.5 text-xs font-medium text-[var(--color-bg)] hover:opacity-90 disabled:opacity-60"
               >
                 {isLoadingMore ? (
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : isCoolingDown ? (
+                  <Timer className="h-3.5 w-3.5" />
                 ) : (
                   <ChevronRight className="h-3.5 w-3.5" />
                 )}
-                {loadError ? "Retry load" : "Load next now"}
+                {isCoolingDown
+                  ? `Easing off · ${cooldownSeconds}s`
+                  : loadError
+                    ? "Retry load"
+                    : "Load next now"}
               </button>
             ) : null}
           </div>
@@ -403,18 +438,31 @@ export function InfiniteLoadStatus({
   hasMore,
   isLoadingMore,
   loadError,
+  cooldownUntil,
   renderedCount,
   sentinelRef,
   onLoadMore,
+  onRetryNow,
 }: {
   hasMore: boolean;
   isLoadingMore: boolean;
   loadError: string | null;
+  cooldownUntil: number | null;
   renderedCount: number;
   sentinelRef: RefObject<HTMLDivElement | null>;
   onLoadMore: () => void;
+  onRetryNow: () => void;
 }) {
-  if (!hasMore && !isLoadingMore && !loadError && renderedCount === 0) {
+  const cooldownSeconds = useSecondsUntil(cooldownUntil);
+  const isCoolingDown = cooldownSeconds > 0;
+
+  if (
+    !hasMore &&
+    !isLoadingMore &&
+    !loadError &&
+    !isCoolingDown &&
+    renderedCount === 0
+  ) {
     return null;
   }
 
@@ -425,7 +473,18 @@ export function InfiniteLoadStatus({
       ) : null}
 
       <div className="flex justify-center">
-        {loadError ? (
+        {isCoolingDown ? (
+          <button
+            type="button"
+            onClick={onRetryNow}
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+            aria-live="polite"
+            title="Server asked us to slow down — click to retry now."
+          >
+            <Timer className="h-4 w-4" />
+            Easing off to avoid overload · resuming in {cooldownSeconds}s
+          </button>
+        ) : loadError ? (
           <button
             type="button"
             onClick={onLoadMore}

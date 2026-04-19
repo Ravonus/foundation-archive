@@ -110,6 +110,23 @@ function shouldShowControlShell(args: {
   );
 }
 
+const MIN_FETCH_INTERVAL_MS = 500;
+const MAX_BACKOFF_MS = 15_000;
+const BASE_BACKOFF_MS = 1_000;
+
+function parseRetryAfterHeader(header: string | null): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (!trimmed) return null;
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+  const dateMs = Date.parse(trimmed);
+  if (Number.isNaN(dateMs)) return null;
+  return Math.max(0, dateMs - Date.now());
+}
+
 function useArchiveInfinitePages(
   items: ArtworkGridItem[],
   nextCursor: string | null,
@@ -120,14 +137,27 @@ function useArchiveInfinitePages(
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [shouldAutoload, setShouldAutoload] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const activeNextCursorRef = useRef(nextCursor);
   const isLoadingMoreRef = useRef(false);
   const isMountedRef = useRef(false);
+  const shouldAutoloadRef = useRef(false);
+  const lastFetchAtRef = useRef(0);
+  const backoffRetriesRef = useRef(0);
+  const cooldownUntilRef = useRef<number | null>(null);
+  const resumeTimerRef = useRef<number | null>(null);
+  const loadMoreRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     isMountedRef.current = true;
-    return () => void (isMountedRef.current = false);
+    return () => {
+      isMountedRef.current = false;
+      if (resumeTimerRef.current !== null) {
+        window.clearTimeout(resumeTimerRef.current);
+        resumeTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(
@@ -135,9 +165,53 @@ function useArchiveInfinitePages(
     [activeNextCursor],
   );
 
+  useEffect(
+    () => void (shouldAutoloadRef.current = shouldAutoload),
+    [shouldAutoload],
+  );
+
+  const clearCooldown = useCallback(() => {
+    cooldownUntilRef.current = null;
+    setCooldownUntil(null);
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleResume = useCallback((untilMs: number) => {
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+    }
+    const delay = Math.max(0, untilMs - Date.now());
+    resumeTimerRef.current = window.setTimeout(() => {
+      resumeTimerRef.current = null;
+      if (!isMountedRef.current) return;
+      if (cooldownUntilRef.current && cooldownUntilRef.current <= Date.now()) {
+        cooldownUntilRef.current = null;
+        setCooldownUntil(null);
+      }
+      if (shouldAutoloadRef.current && activeNextCursorRef.current) {
+        loadMoreRef.current();
+      }
+    }, delay);
+  }, []);
+
   const loadMore = useCallback(async () => {
     const currentCursor = activeNextCursorRef.current;
     if (!currentCursor || isLoadingMoreRef.current) return;
+
+    const now = Date.now();
+    const cooldownRemaining = cooldownUntilRef.current
+      ? cooldownUntilRef.current - now
+      : 0;
+    const intervalRemaining =
+      lastFetchAtRef.current + MIN_FETCH_INTERVAL_MS - now;
+    const waitMs = Math.max(cooldownRemaining, intervalRemaining, 0);
+    if (waitMs > 0) {
+      scheduleResume(now + waitMs);
+      return;
+    }
 
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
@@ -148,6 +222,26 @@ function useArchiveInfinitePages(
         buildBrowseHref(searchParamsString, currentCursor),
         { cache: "no-store" },
       );
+      lastFetchAtRef.current = Date.now();
+
+      if (response.status === 429 || response.status === 503) {
+        const retries = backoffRetriesRef.current;
+        const retryAfterMs = parseRetryAfterHeader(
+          response.headers.get("retry-after"),
+        );
+        const fallback = Math.min(
+          BASE_BACKOFF_MS * 2 ** retries,
+          MAX_BACKOFF_MS,
+        );
+        const delay = Math.min(retryAfterMs ?? fallback, MAX_BACKOFF_MS);
+        backoffRetriesRef.current = retries + 1;
+        const until = Date.now() + delay;
+        cooldownUntilRef.current = until;
+        if (isMountedRef.current) setCooldownUntil(until);
+        scheduleResume(until);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error("Unable to load more archive results right now.");
       }
@@ -155,6 +249,9 @@ function useArchiveInfinitePages(
       const payload = parseBrowsePageResponse(await response.json());
       if (!payload || !isMountedRef.current) return;
       if (activeNextCursorRef.current !== currentCursor) return;
+
+      backoffRetriesRef.current = 0;
+      clearCooldown();
 
       setVisibleItems((current) => mergeUniqueItems(current, payload.items));
       setActiveNextCursor(payload.nextCursor);
@@ -171,7 +268,18 @@ function useArchiveInfinitePages(
         setIsLoadingMore(false);
       }
     }
-  }, [searchParamsString]);
+  }, [clearCooldown, scheduleResume, searchParamsString]);
+
+  useEffect(() => {
+    loadMoreRef.current = () => void loadMore();
+  }, [loadMore]);
+
+  const retryNow = useCallback(() => {
+    backoffRetriesRef.current = 0;
+    clearCooldown();
+    lastFetchAtRef.current = 0;
+    void loadMore();
+  }, [clearCooldown, loadMore]);
 
   useEffect(() => {
     const node = sentinelRef.current;
@@ -179,7 +287,7 @@ function useArchiveInfinitePages(
 
     const observer = new IntersectionObserver(
       ([entry]) => setShouldAutoload(Boolean(entry?.isIntersecting)),
-      { rootMargin: "1200px 0px 1200px 0px", threshold: 0 },
+      { rootMargin: "600px 0px 600px 0px", threshold: 0 },
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -187,14 +295,23 @@ function useArchiveInfinitePages(
 
   useEffect(() => {
     if (!shouldAutoload || !activeNextCursor || isLoadingMore) return;
+    if (cooldownUntil && cooldownUntil > Date.now()) return;
     void loadMore();
-  }, [activeNextCursor, isLoadingMore, loadMore, shouldAutoload]);
+  }, [
+    activeNextCursor,
+    cooldownUntil,
+    isLoadingMore,
+    loadMore,
+    shouldAutoload,
+  ]);
 
   return {
     activeNextCursor,
     isLoadingMore,
     loadError,
     loadMore,
+    retryNow,
+    cooldownUntil,
     sentinelRef,
     visibleItems,
   };
@@ -290,6 +407,8 @@ function ArchiveBrowserSession({
     isLoadingMore,
     loadError,
     loadMore,
+    retryNow,
+    cooldownUntil,
     sentinelRef,
     visibleItems,
   } = useArchiveInfinitePages(items, nextCursor, searchParamsString);
@@ -324,10 +443,12 @@ function ArchiveBrowserSession({
           hasMore={Boolean(activeNextCursor)}
           isLoadingMore={isLoadingMore}
           loadError={loadError}
+          cooldownUntil={cooldownUntil}
           pageSize={pageSize}
           hasLiveMatches={hasLiveMatches}
           updateSearch={updateSearch}
           onLoadMore={() => void loadMore()}
+          onRetryNow={retryNow}
         />
       ) : null}
 
@@ -354,9 +475,11 @@ function ArchiveBrowserSession({
         hasMore={Boolean(activeNextCursor)}
         isLoadingMore={isLoadingMore}
         loadError={loadError}
+        cooldownUntil={cooldownUntil}
         renderedCount={renderedCount}
         sentinelRef={sentinelRef}
         onLoadMore={() => void loadMore()}
+        onRetryNow={retryNow}
       />
     </div>
   );

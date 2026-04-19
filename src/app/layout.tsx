@@ -4,12 +4,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Fraunces, Inter } from "next/font/google";
 
+import { UmamiScript } from "~/app/_components/analytics/umami-script";
 import { LogoMark } from "~/app/_components/brand";
 import { PageFade } from "~/app/_components/motion";
 import { SiteFooter } from "~/app/_components/site-footer";
 import { SiteNav } from "~/app/_components/site-nav";
 import { ThemeProvider } from "~/app/_components/theme/theme-provider";
 import { ThemeToggle } from "~/app/_components/theme/theme-toggle";
+import { Web3Provider } from "~/app/_components/web3/web3-provider";
 import { TRPCReactProvider } from "~/trpc/react";
 
 const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -134,9 +136,10 @@ export default function RootLayout({
     >
       <body className="font-sans antialiased">
         <ThemeProvider>
-          <TRPCReactProvider>
-            <a
-              href="#main"
+          <Web3Provider>
+            <TRPCReactProvider>
+              <a
+                href="#main"
               className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-[var(--color-ink)] focus:px-3 focus:py-2 focus:text-sm focus:text-[var(--color-bg)]"
             >
               Skip to main content
@@ -177,8 +180,10 @@ export default function RootLayout({
 
               <SiteFooter />
             </div>
-          </TRPCReactProvider>
+            </TRPCReactProvider>
+          </Web3Provider>
         </ThemeProvider>
+        <UmamiScript />
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { ChainBadge } from "~/app/_components/chain-badge";
 import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
 
 type Crawler = ArchiveLiveSnapshot["crawlers"][number];
@@ -10,8 +11,9 @@ function CrawlerRow({ crawler }: { crawler: Crawler }) {
     <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-quiet)] px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm text-[var(--color-ink)]">
-            {crawler.label}
+          <p className="flex items-center gap-2 truncate text-sm text-[var(--color-ink)]">
+            <ChainBadge chainId={crawler.chainId} />
+            <span className="truncate">{crawler.label}</span>
           </p>
           <p className="mt-0.5 truncate font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[var(--color-muted)]">
             {crawler.contractAddress}
@@ -74,7 +76,10 @@ export function CrawlerPanel({
 
       <div className="mt-3 grid gap-2">
         {crawlers.slice(0, compact ? 3 : 5).map((crawler) => (
-          <CrawlerRow key={crawler.contractAddress} crawler={crawler} />
+          <CrawlerRow
+            key={`${crawler.chainId}:${crawler.contractAddress}`}
+            crawler={crawler}
+          />
         ))}
       </div>
     </div>

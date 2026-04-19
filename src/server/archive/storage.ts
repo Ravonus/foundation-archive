@@ -11,6 +11,8 @@ import {
 import path from "node:path";
 
 import { env } from "~/env";
+import { formatBytes } from "~/lib/utils";
+import { buildGatewayUrl } from "~/server/archive/ipfs";
 
 const ROOT_FILE_SENTINEL = "__root__";
 const ARCHIVE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
@@ -396,6 +398,193 @@ export async function downloadFileToArchive(input: {
   }
 
   return downloadFileToArchiveWithJs(input);
+}
+
+type KuboLink = {
+  Name?: string;
+  Hash?: string;
+  Size?: number;
+  Type?: number;
+};
+
+const KUBO_LS_TIMEOUT_MS = 20_000;
+const KUBO_DIRECTORY_TYPES = new Set([1, 5]);
+const KUBO_LS_MAX_DEPTH = 8;
+
+type DirectoryEntry = {
+  path: string;
+  cid: string;
+  size: number;
+};
+
+async function kuboLsLinks(arg: string): Promise<KuboLink[]> {
+  if (!env.KUBO_API_URL) return [];
+
+  const endpoint = new URL("/api/v0/ls", env.KUBO_API_URL);
+  endpoint.searchParams.set("arg", arg);
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: env.KUBO_API_AUTH_HEADER
+      ? { Authorization: env.KUBO_API_AUTH_HEADER }
+      : undefined,
+    signal: AbortSignal.timeout(KUBO_LS_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Kubo ls failed for ${arg}: ${response.status}`);
+  }
+
+  const result = (await response.json()) as {
+    Objects?: Array<{ Links?: KuboLink[] }>;
+  };
+
+  return result.Objects?.[0]?.Links ?? [];
+}
+
+async function expandKuboLink(args: {
+  rootCid: string;
+  basePath: string;
+  link: KuboLink;
+  depth: number;
+}): Promise<DirectoryEntry[]> {
+  const name = args.link.Name?.trim();
+  if (!name) return [];
+
+  const childPath = args.basePath ? `${args.basePath}/${name}` : name;
+  const isDirectory =
+    args.link.Type !== undefined && KUBO_DIRECTORY_TYPES.has(args.link.Type);
+
+  if (isDirectory) {
+    return kuboLsRecursive(args.rootCid, childPath, args.depth + 1);
+  }
+
+  return [
+    {
+      path: childPath,
+      cid: args.link.Hash ?? "",
+      size: args.link.Size ?? 0,
+    },
+  ];
+}
+
+async function kuboLsRecursive(
+  rootCid: string,
+  basePath = "",
+  depth = 0,
+): Promise<DirectoryEntry[]> {
+  if (depth > KUBO_LS_MAX_DEPTH) return [];
+
+  const arg = basePath ? `${rootCid}/${basePath}` : rootCid;
+  const links = await kuboLsLinks(arg);
+  const out: DirectoryEntry[] = [];
+
+  for (const link of links) {
+    const expanded = await expandKuboLink({ rootCid, basePath, link, depth });
+    out.push(...expanded);
+  }
+
+  return out;
+}
+
+export type DirectoryHydrationResult = {
+  attempted: number;
+  downloaded: number;
+  skipped: number;
+  totalBytes: number;
+  truncatedByBudget: boolean;
+};
+
+export async function hydrateCidDirectory(args: {
+  cid: string;
+  skipPath?: string | null;
+  sizeBudget?: number;
+}): Promise<DirectoryHydrationResult> {
+  const sizeBudget = args.sizeBudget ?? env.ARCHIVE_DIRECTORY_MAX_BYTES;
+  const empty: DirectoryHydrationResult = {
+    attempted: 0,
+    downloaded: 0,
+    skipped: 0,
+    totalBytes: 0,
+    truncatedByBudget: false,
+  };
+
+  if (!env.KUBO_API_URL) {
+    return empty;
+  }
+
+  let entries: DirectoryEntry[];
+  try {
+    entries = await kuboLsRecursive(args.cid);
+  } catch (error) {
+    console.warn(
+      `[archive] Skipping sibling hydration for ${args.cid}: Kubo ls failed —`,
+      formatErrorMessage(error),
+    );
+    return empty;
+  }
+
+  if (entries.length === 0) {
+    return empty;
+  }
+
+  const cleanedSkip = args.skipPath
+    ? cleanRelativePath(args.skipPath)
+    : null;
+
+  let attempted = 0;
+  let downloaded = 0;
+  let skipped = 0;
+  let totalBytes = 0;
+  let truncatedByBudget = false;
+
+  for (const entry of entries) {
+    const cleanedPath = cleanRelativePath(entry.path);
+    if (cleanedPath === cleanedSkip) {
+      skipped += 1;
+      continue;
+    }
+
+    const targetPath = getArchivedFilePath(args.cid, entry.path);
+    if (await pathExists(targetPath)) {
+      skipped += 1;
+      continue;
+    }
+
+    if (entry.size > 0 && totalBytes + entry.size > sizeBudget) {
+      truncatedByBudget = true;
+      console.warn(
+        `[archive] Sibling hydration for ${args.cid} stopped at ${formatBytes(totalBytes)} (budget ${formatBytes(sizeBudget)}); ${entries.length - attempted} entries remaining.`,
+      );
+      break;
+    }
+
+    attempted += 1;
+
+    try {
+      const result = await downloadFileToArchive({
+        cid: args.cid,
+        relativePath: entry.path,
+        gatewayUrl: buildGatewayUrl(args.cid, entry.path),
+        originalUrl: null,
+      });
+      totalBytes += result.byteSize;
+      downloaded += 1;
+    } catch (error) {
+      console.warn(
+        `[archive] Sibling hydration failed for ${args.cid}/${entry.path}:`,
+        formatErrorMessage(error),
+      );
+    }
+  }
+
+  return {
+    attempted,
+    downloaded,
+    skipped,
+    totalBytes,
+    truncatedByBudget,
+  };
 }
 
 export async function readArchivedAsset(cid: string, parts: string[]) {

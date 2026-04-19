@@ -7,12 +7,17 @@ import {
 } from "~/server/prisma-client";
 import { env } from "~/env";
 import { formatBytes } from "~/lib/utils";
+import {
+  dependencyManifestIsCurrent,
+  verifyArchivedRootDependencies,
+} from "~/server/archive/dependencies";
 import { parseIpfsReference } from "~/server/archive/ipfs";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { getArchivePolicyState } from "~/server/archive/state";
 import {
   downloadFileToArchive,
   ensureArchiveRoot,
+  hydrateCidDirectory,
   pinCidWithKubo,
 } from "~/server/archive/storage";
 import {
@@ -27,6 +32,7 @@ import {
 type RootRecord = {
   id: string;
   cid: string;
+  kind: RootKind;
   relativePath: string | null;
   gatewayUrl: string | null;
   originalUrl: string | null;
@@ -42,6 +48,10 @@ type RootRecord = {
 type BackupRootInput = {
   artworkId: string;
   bypassSmartBudget?: boolean;
+  artwork: {
+    previewUrl: string | null;
+    staticPreviewUrl: string | null;
+  };
   root: RootRecord | null;
 };
 
@@ -74,6 +84,38 @@ function isRootAlreadySatisfied(root: RootRecord) {
     root.pinStatus === BackupStatus.PINNED ||
     (!env.KUBO_API_URL && hasDownloadedRoot(root))
   );
+}
+
+async function rootNeedsDependencyVerification(root: RootRecord) {
+  if (!hasDownloadedRoot(root)) return false;
+  return !(await dependencyManifestIsCurrent(root));
+}
+
+async function shouldSkipSatisfiedRoot(root: RootRecord) {
+  if (!isRootAlreadySatisfied(root)) return false;
+  return !(await rootNeedsDependencyVerification(root));
+}
+
+async function resolveDownloadResult(args: {
+  client: DatabaseClient;
+  input: BackupRootInput;
+  root: RootRecord;
+  startedAt: Date;
+}) {
+  const { client, input, root, startedAt } = args;
+  if (hasDownloadedRoot(root)) {
+    return {
+      byteSize: root.byteSize ?? root.estimatedByteSize ?? 0,
+    };
+  }
+
+  const { downloadResult } = await downloadRootAndRecord({
+    client,
+    input,
+    root,
+    startedAt,
+  });
+  return downloadResult;
 }
 
 function recentFailedRetryAt(root: RootRecord) {
@@ -189,6 +231,18 @@ async function downloadRootAndRecord(args: {
     gatewayUrl: root.gatewayUrl,
     originalUrl: root.originalUrl,
   });
+
+  if (root.relativePath) {
+    const hydration = await hydrateCidDirectory({
+      cid: root.cid,
+      skipPath: root.relativePath,
+    });
+    if (hydration.downloaded > 0 || hydration.truncatedByBudget) {
+      console.warn(
+        `[archive] Hydrated ${hydration.downloaded} sibling asset(s) for ${root.cid} (${formatBytes(hydration.totalBytes)}${hydration.truncatedByBudget ? ", truncated by budget" : ""}).`,
+      );
+    }
+  }
 
   const updatedRoot = await client.ipfsRoot.update({
     where: { id: root.id },
@@ -331,10 +385,6 @@ async function backupSingleRoot(
   if (!input.root) return null;
   const root = input.root;
 
-  if (isRootAlreadySatisfied(root)) {
-    return { status: "skipped", availableAt: null };
-  }
-
   const startedAt = new Date();
 
   try {
@@ -351,19 +401,22 @@ async function backupSingleRoot(
     const deferred = await evaluateSmartBudget({ client, input, root });
     if (deferred) return deferred;
 
+    if (await shouldSkipSatisfiedRoot(root)) {
+      return { status: "skipped", availableAt: null };
+    }
+
     const downloadedRoot = hasDownloadedRoot(root);
-    const { downloadResult } = downloadedRoot
-      ? {
-          downloadResult: {
-            byteSize: root.byteSize ?? root.estimatedByteSize ?? 0,
-          },
-        }
-      : await downloadRootAndRecord({
-          client,
-          input,
-          root,
-          startedAt,
-        });
+    const downloadResult = await resolveDownloadResult({
+      client,
+      input,
+      root,
+      startedAt,
+    });
+
+    await verifyArchivedRootDependencies({
+      root,
+      artwork: input.artwork,
+    });
 
     if (env.KUBO_API_URL) {
       await pinRootWithKubo({
@@ -470,6 +523,7 @@ export async function backupArtwork(
     rootResults.push(
       await backupSingleRoot(client, {
         artworkId: artwork.id,
+        artwork,
         root: artwork.metadataRoot,
         bypassSmartBudget: options.bypassSmartBudget,
       }),
@@ -480,6 +534,7 @@ export async function backupArtwork(
     rootResults.push(
       await backupSingleRoot(client, {
         artworkId: artwork.id,
+        artwork,
         root: artwork.mediaRoot,
         bypassSmartBudget: options.bypassSmartBudget,
       }),

@@ -13,7 +13,7 @@ const nav: { label: string; href: string }[] = [
 const external: { label: string; href: string; icon: React.ReactNode }[] = [
   {
     label: "GitHub",
-    href: "https://github.com/Ravonus",
+    href: "https://github.com/Ravonus/foundation-archive",
     icon: <GithubIcon />,
   },
   {
@@ -83,6 +83,8 @@ export function SiteFooter() {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    data-umami-event="footer-nav-click"
+                    data-umami-event-label={item.label}
                     className="link-editorial text-[var(--color-body)] hover:text-[var(--color-ink)]"
                   >
                     {item.label}
@@ -103,6 +105,8 @@ export function SiteFooter() {
                     href={item.href}
                     target="_blank"
                     rel="noreferrer"
+                    data-umami-event="footer-external-click"
+                    data-umami-event-label={item.label}
                     className="inline-flex items-center gap-2 text-[var(--color-body)] hover:text-[var(--color-brand-green)]"
                   >
                     <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)]">

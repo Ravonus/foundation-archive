@@ -37,7 +37,10 @@ export function computePipelineShares(
   }
   return {
     pipelineTotal,
-    preservedShare: Math.min((stats.preservedRoots / pipelineTotal) * 100, 100),
+    preservedShare: Math.min(
+      (stats.fullyPreservedArtworks / pipelineTotal) * 100,
+      100,
+    ),
     queuedShare: Math.min((stats.pendingJobs / pipelineTotal) * 100, 100),
     deferredShare: Math.min((stats.deferredRoots / pipelineTotal) * 100, 100),
   };
@@ -47,21 +50,28 @@ function preservedCard(
   stats: ArchiveLiveSnapshot["stats"],
   shares: PipelineShares,
 ): StatCard {
+  const partialArchiveCount = Math.max(
+    stats.preservedRoots - stats.fullyPreservedArtworks,
+    0,
+  );
   const storageMeta =
     stats.pinnedRoots > 0
-      ? `${stats.pinnedRoots.toLocaleString()} backed up to IPFS`
+      ? `${stats.pinnedRoots.toLocaleString()} roots pinned to IPFS`
       : `${stats.downloadedRoots.toLocaleString()} files stored on our servers`;
 
   return {
     label: "Saved",
-    value: stats.preservedRoots,
+    value: stats.fullyPreservedArtworks,
     icon: DatabaseZap,
     tone: "ok",
     hint:
       shares.pipelineTotal > 0
-        ? `${Math.round(shares.preservedShare)}% of tracked works have archived files`
-        : "Works with archived files",
-    meta: `${stats.fullyPreservedArtworks.toLocaleString()} fully complete, ${storageMeta}`,
+        ? `${Math.round(shares.preservedShare)}% of tracked works are fully complete`
+        : "Works fully complete on the archive",
+    meta:
+      partialArchiveCount > 0
+        ? `${partialArchiveCount.toLocaleString()} still need remaining archive steps, ${storageMeta}`
+        : storageMeta,
     pulsing: false,
     progress: shares.preservedShare,
   };

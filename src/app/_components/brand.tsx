@@ -242,7 +242,7 @@ export function StatPanel({ value, label, note, className }: StatPanelProps) {
   return (
     <article
       className={cn(
-        "flex h-full flex-col justify-between rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-6",
+        "flex h-full flex-col justify-between rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4 sm:p-5",
         className,
       )}
     >
@@ -250,7 +250,7 @@ export function StatPanel({ value, label, note, className }: StatPanelProps) {
         {label}
       </p>
       <div className="mt-4">
-        <p className="font-serif text-2xl leading-tight tracking-tight text-[var(--color-brand-green)] hyphens-auto break-words sm:text-3xl">
+        <p className="font-serif text-lg leading-tight tracking-tight text-[var(--color-brand-green)] hyphens-auto break-words sm:text-xl lg:text-lg xl:text-xl">
           {value}
         </p>
         {note ? (

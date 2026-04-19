@@ -49,8 +49,8 @@ function chooseContentType(
       : null;
 
   return (
-    normalizedStored ??
     MIME_BY_EXTENSION[extension] ??
+    normalizedStored ??
     storedMimeType ??
     "application/octet-stream"
   );
@@ -82,7 +82,10 @@ export async function GET(_request: Request, props: ArchiveRouteProps) {
 
     const asset = await readArchivedAsset(cid, resolvedAssetPath);
     const extension = path.extname(asset.absolutePath).toLowerCase();
-    const fileName = root?.fileName ?? path.basename(asset.absolutePath);
+    const fileName =
+      assetPath.length > 0
+        ? path.basename(asset.absolutePath)
+        : (root?.fileName ?? path.basename(asset.absolutePath));
 
     return new Response(asset.contents, {
       headers: {

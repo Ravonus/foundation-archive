@@ -1,26 +1,93 @@
+/* eslint-disable max-lines */
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Check } from "lucide-react";
 
-import { DesktopBridgeProvider } from "~/app/_components/desktop-bridge-provider";
 import { ModelMediaPreview } from "~/app/_components/model-media-preview";
-import { DesktopShareButton } from "~/app/_components/desktop-share-button";
+import { DesktopSharePanel as ArtworkDesktopSharePanel } from "~/app/_components/desktop-share-panel";
 import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
+import { ArtworkActionsPanel } from "~/app/_components/web3/artwork-actions-panel";
+import {
+  chainExplorerAddressUrl,
+  chainLabel,
+} from "~/lib/chain-label";
 import { formatDate, shortAddress } from "~/lib/utils";
+import {
+  readDependencyManifest,
+  resolveArchivedLocalUrl,
+} from "~/server/archive/dependencies";
+import {
+  getTokenMarketState,
+  listTokenMarketHistory,
+} from "~/server/archive/foundation-market";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 import { type Prisma } from "~/server/prisma-client";
 
-import { TechnicalDetails, type RootCardItem } from "./_technical-details";
+import { MarketHistoryList } from "./_market-history";
+import {
+  TechnicalDetails,
+  type DependencyFlowCard,
+  type RootCardItem,
+} from "./_technical-details";
 
 export const dynamic = "force-dynamic";
 
 type ArtworkDetailPageProps = {
   params: Promise<{ slug: string }>;
 };
+
+type MetadataArtwork = {
+  title: string;
+  description: string | null;
+  artistName: string | null;
+  artistUsername: string | null;
+  collectionName: string | null;
+  staticPreviewUrl: string | null;
+  previewUrl: string | null;
+  mediaKind: string;
+  mediaStatus: string;
+  sourceUrl: string | null;
+  mediaRoot: {
+    cid: string;
+    relativePath: string | null;
+  } | null;
+};
+
+function metadataArtistLabel(artwork: MetadataArtwork) {
+  return (
+    artwork.artistName ??
+    (artwork.artistUsername ? `@${artwork.artistUsername}` : "Unknown artist")
+  );
+}
+
+function metadataDescription(artwork: MetadataArtwork) {
+  return (
+    artwork.description ??
+    `Preserved by Agorix's Foundation archive. ${artwork.collectionName ? `Part of ${artwork.collectionName}. ` : ""}A free, open archive of Foundation artists' work.`
+  );
+}
+
+async function metadataImageUrl(artwork: MetadataArtwork) {
+  const localMediaUrl =
+    artwork.mediaRoot && isLocalStatus(artwork.mediaStatus)
+      ? buildArchivePublicPath(
+          artwork.mediaRoot.cid,
+          artwork.mediaRoot.relativePath,
+        )
+      : null;
+  const localPreviewUrl = await resolveArchivedLocalUrl([
+    artwork.staticPreviewUrl,
+    artwork.previewUrl,
+  ]);
+
+  return artwork.mediaKind === "IMAGE"
+    ? (localMediaUrl ?? localPreviewUrl)
+    : localPreviewUrl;
+}
 
 export async function generateMetadata(
   props: ArtworkDetailPageProps,
@@ -37,7 +104,14 @@ export async function generateMetadata(
       staticPreviewUrl: true,
       previewUrl: true,
       mediaKind: true,
+      mediaStatus: true,
       sourceUrl: true,
+      mediaRoot: {
+        select: {
+          cid: true,
+          relativePath: true,
+        },
+      },
     },
   });
 
@@ -45,17 +119,9 @@ export async function generateMetadata(
     return { title: "Not found · Agorix" };
   }
 
-  const artist =
-    artwork.artistName ??
-    (artwork.artistUsername ? `@${artwork.artistUsername}` : "Unknown artist");
-  const title = `${artwork.title} by ${artist}`;
-  const description =
-    artwork.description ??
-    `Preserved by Agorix's Foundation archive. ${artwork.collectionName ? `Part of ${artwork.collectionName}. ` : ""}A free, open archive of Foundation artists' work.`;
-  const image =
-    artwork.staticPreviewUrl ??
-    artwork.previewUrl ??
-    (artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null);
+  const title = `${artwork.title} by ${metadataArtistLabel(artwork)}`;
+  const description = metadataDescription(artwork);
+  const image = await metadataImageUrl(artwork);
 
   return {
     title: `${title} · Agorix`,
@@ -92,6 +158,7 @@ type DerivedView = {
   browserMediaUrl: string | null;
   localMediaUrl: string | null;
   localMetadataUrl: string | null;
+  localPreviewUrl: string | null;
   gatewayMediaUrl: string | null;
   gatewayMetadataUrl: string | null;
   imagePreviewUrl: string | null;
@@ -116,12 +183,12 @@ function localUrlFor(root: IpfsRoot | null, status: string): string | null {
 function pickImagePreviewUrl(
   artwork: ArtworkWithRelations,
   browserMediaUrl: string | null,
+  localPreviewUrl: string | null,
 ): string | null {
   if (browserMediaUrl && artwork.mediaKind === "IMAGE") return browserMediaUrl;
-  if (artwork.staticPreviewUrl) return artwork.staticPreviewUrl;
-  if (artwork.previewUrl) return artwork.previewUrl;
+  if (localPreviewUrl) return localPreviewUrl;
   if (artwork.mediaKind !== "IMAGE") return null;
-  return artwork.sourceUrl;
+  return browserMediaUrl;
 }
 
 function artistDisplay(artwork: ArtworkWithRelations): string {
@@ -193,16 +260,24 @@ function healthCopy(h: Health) {
   }
 }
 
-function deriveView(artwork: ArtworkWithRelations): DerivedView {
+async function deriveView(artwork: ArtworkWithRelations): Promise<DerivedView> {
   const localMediaUrl = localUrlFor(artwork.mediaRoot, artwork.mediaStatus);
   const localMetadataUrl = localUrlFor(
     artwork.metadataRoot,
     artwork.metadataStatus,
   );
+  const localPreviewUrl = await resolveArchivedLocalUrl([
+    artwork.staticPreviewUrl,
+    artwork.previewUrl,
+  ]);
   const gatewayMediaUrl = artwork.mediaRoot?.gatewayUrl ?? null;
   const gatewayMetadataUrl = artwork.metadataRoot?.gatewayUrl ?? null;
   const browserMediaUrl = localMediaUrl ?? gatewayMediaUrl ?? artwork.sourceUrl;
-  const imagePreviewUrl = pickImagePreviewUrl(artwork, browserMediaUrl);
+  const imagePreviewUrl = pickImagePreviewUrl(
+    artwork,
+    browserMediaUrl,
+    localPreviewUrl,
+  );
   const health = healthOf({
     hasMetadataRoot: Boolean(artwork.metadataRoot),
     hasMediaRoot: Boolean(artwork.mediaRoot),
@@ -213,6 +288,7 @@ function deriveView(artwork: ArtworkWithRelations): DerivedView {
     browserMediaUrl,
     localMediaUrl,
     localMetadataUrl,
+    localPreviewUrl,
     gatewayMediaUrl,
     gatewayMetadataUrl,
     imagePreviewUrl,
@@ -226,6 +302,89 @@ function deriveView(artwork: ArtworkWithRelations): DerivedView {
     health,
     copy: healthCopy(health),
   };
+}
+
+async function dependencyFlowFor(args: {
+  label: string;
+  root: ArtworkWithRelations["metadataRoot"];
+  status: string;
+}): Promise<DependencyFlowCard | null> {
+  const { label, root, status } = args;
+  if (!root || !isLocalStatus(status)) return null;
+
+  const manifest = await readDependencyManifest(root.cid, root.relativePath);
+  if (!manifest) {
+    return {
+      label,
+      state: "needs-check",
+      summary:
+        "The root is saved locally, but linked-file verification has not run yet.",
+      items: [],
+    };
+  }
+
+  const items = manifest.nodes
+    .filter((node) => node.key !== manifest.rootKey)
+    .sort((left, right) => {
+      if (left.depth !== right.depth) return left.depth - right.depth;
+      return left.relativePath.localeCompare(right.relativePath);
+    });
+  const failedCount = items.filter((item) => item.status === "FAILED").length;
+  const downloadedCount = items.filter(
+    (item) => item.status === "DOWNLOADED",
+  ).length;
+
+  if (items.length === 0) {
+    return {
+      label,
+      state: manifest.verifiedAt ? "verified" : "needs-check",
+      summary: manifest.verifiedAt
+        ? "No linked files were discovered beyond the root itself."
+        : "No linked files are tracked yet.",
+      items: [],
+    };
+  }
+
+  return {
+    label,
+    state:
+      failedCount > 0
+        ? "needs-attention"
+        : manifest.verifiedAt
+          ? "verified"
+          : "needs-check",
+    summary:
+      failedCount > 0
+        ? `${failedCount} linked file${failedCount === 1 ? "" : "s"} still need attention.`
+        : `${downloadedCount} linked file${downloadedCount === 1 ? "" : "s"} verified for local replay.`,
+    items: items.map((item) => ({
+      key: item.key,
+      relativePath: item.relativePath,
+      localUrl: item.localUrl,
+      gatewayUrl: item.gatewayUrl,
+      sourceType: item.sourceType,
+      discoveredFrom: item.discoveredFrom,
+      depth: item.depth,
+      status: item.status,
+    })),
+  };
+}
+
+async function dependencyFlowsForArtwork(artwork: ArtworkWithRelations) {
+  return (
+    await Promise.all([
+      dependencyFlowFor({
+        label: "Metadata",
+        root: artwork.metadataRoot,
+        status: artwork.metadataStatus,
+      }),
+      dependencyFlowFor({
+        label: "Media",
+        root: artwork.mediaRoot,
+        status: artwork.mediaStatus,
+      }),
+    ])
+  ).filter((value): value is DependencyFlowCard => Boolean(value));
 }
 
 export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
@@ -248,7 +407,50 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
     notFound();
   }
 
-  const view = deriveView(artwork);
+  const [view, dependencyFlows, marketState, marketHistory] = await Promise.all([
+    deriveView(artwork),
+    dependencyFlowsForArtwork(artwork),
+    getTokenMarketState(db, {
+      chainId: artwork.chainId,
+      nftContract: artwork.contractAddress,
+      tokenId: artwork.tokenId,
+    }),
+    listTokenMarketHistory(
+      db,
+      {
+        chainId: artwork.chainId,
+        nftContract: artwork.contractAddress,
+        tokenId: artwork.tokenId,
+      },
+      { limit: 50 },
+    ),
+  ]);
+
+  const actionsProps = {
+    chainId: artwork.chainId,
+    contractAddress: artwork.contractAddress,
+    tokenId: artwork.tokenId,
+    title: artwork.title,
+    activeBuyPrice: marketState.activeBuyPrice
+      ? {
+          marketContract: marketState.activeBuyPrice.marketContract,
+          price: marketState.activeBuyPrice.price,
+        }
+      : null,
+    liveAuction: marketState.liveAuction
+      ? {
+          marketContract: marketState.liveAuction.marketContract,
+          auctionId: marketState.liveAuction.auctionId,
+          status: marketState.liveAuction.status,
+          endTime: marketState.liveAuction.endTime
+            ? marketState.liveAuction.endTime.toISOString()
+            : null,
+          highestBid: marketState.liveAuction.highestBid,
+          reservePrice: marketState.liveAuction.reservePrice,
+        }
+      : null,
+    isRescuable: marketState.isRescuable,
+  };
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 pt-8 pb-16">
@@ -258,6 +460,11 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
         <div>
           <ArtworkHeader artwork={artwork} view={view} />
           <MetadataPanel artwork={artwork} />
+          <FadeUp delay={0.7} duration={0.6} className="block">
+            <div className="mt-8">
+              <ArtworkActionsPanel {...actionsProps} />
+            </div>
+          </FadeUp>
           <ActionRow artwork={artwork} view={view} />
           <DesktopSharePanel artwork={artwork} view={view} />
         </div>
@@ -265,6 +472,15 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
       <TechnicalDetails
         rootItems={rootCardItems({ artwork, view })}
         backups={artwork.backups}
+        dependencyFlows={dependencyFlows}
+        historySlot={
+          marketHistory.length > 0 ? (
+            <MarketHistoryList
+              events={marketHistory}
+              chainId={artwork.chainId}
+            />
+          ) : null
+        }
       />
     </main>
   );
@@ -289,20 +505,26 @@ function renderPreviewInner({ artwork, view }: SectionProps) {
     return (
       <video
         src={view.browserMediaUrl ?? undefined}
-        poster={artwork.staticPreviewUrl ?? view.imagePreviewUrl ?? undefined}
+        poster={view.localPreviewUrl ?? undefined}
         controls
         loop
         muted
         playsInline
-        className="aspect-square w-full bg-black object-contain"
+        className="mx-auto block max-h-[80vh] w-full bg-black object-contain"
       />
     );
   }
   if (view.canRenderBrowserModel && view.browserMediaUrl) {
+    const modelCandidates = view.localMediaUrl
+      ? []
+      : [view.gatewayMediaUrl, artwork.sourceUrl].filter(
+          (url): url is string => Boolean(url) && url !== view.browserMediaUrl,
+        );
     return (
       <ModelMediaPreview
         src={view.browserMediaUrl}
-        poster={artwork.staticPreviewUrl ?? view.imagePreviewUrl}
+        candidates={modelCandidates}
+        poster={view.localPreviewUrl}
         alt={artwork.title}
         className="aspect-square w-full"
       />
@@ -313,7 +535,7 @@ function renderPreviewInner({ artwork, view }: SectionProps) {
       <BlurImage
         src={view.imagePreviewUrl}
         alt={artwork.title}
-        className="aspect-square w-full object-contain"
+        className="mx-auto block max-h-[80vh] w-full object-contain"
       />
     );
   }
@@ -388,10 +610,19 @@ function MetadataPanel({ artwork }: { artwork: ArtworkWithRelations }) {
   return (
     <FadeUp delay={0.65} duration={0.6} className="block">
       <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+        <MetaItem label="Chain">{chainLabel(artwork.chainId)}</MetaItem>
         <MetaItem label="Contract">
-          <span className="font-mono">
+          <Link
+            href={chainExplorerAddressUrl(
+              artwork.chainId,
+              artwork.contractAddress,
+            )}
+            target="_blank"
+            rel="noreferrer"
+            className="link-editorial font-mono"
+          >
             {shortAddress(artwork.contractAddress)}
-          </span>
+          </Link>
         </MetaItem>
         <MetaItem label="Token">
           <span className="font-mono">#{artwork.tokenId}</span>
@@ -456,37 +687,18 @@ function ActionRow({ artwork, view }: SectionProps) {
 function DesktopSharePanel({ artwork, view }: SectionProps) {
   const { hasShareableRoots } = view;
   return (
-    <FadeUp delay={0.85} duration={0.6} className="block">
-      <div className="mt-8 rounded-sm border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-        <p className="font-medium text-[var(--color-ink)]">
-          {hasShareableRoots
-            ? "Optional: keep a copy on your own computer"
-            : "Not ready for your own copy yet"}
-        </p>
-        <p className="mt-2 text-sm text-[var(--color-body)]">
-          {hasShareableRoots
-            ? "This work is already saved in the archive. If you'd like to keep an extra copy on your own computer, you can use the desktop app."
-            : "We haven't captured the files for this work yet, so there's nothing to send to the desktop app at the moment."}
-        </p>
-        {hasShareableRoots ? (
-          <div className="mt-4">
-            <DesktopBridgeProvider>
-              <DesktopShareButton
-                work={{
-                  title: artwork.title,
-                  contractAddress: artwork.contractAddress,
-                  tokenId: artwork.tokenId,
-                  foundationUrl: artwork.foundationUrl,
-                  artistUsername: artwork.artistUsername,
-                  metadataCid: artwork.metadataRoot?.cid,
-                  mediaCid: artwork.mediaRoot?.cid,
-                }}
-              />
-            </DesktopBridgeProvider>
-          </div>
-        ) : null}
-      </div>
-    </FadeUp>
+    <ArtworkDesktopSharePanel
+      hasShareableRoots={hasShareableRoots}
+      work={{
+        title: artwork.title,
+        contractAddress: artwork.contractAddress,
+        tokenId: artwork.tokenId,
+        foundationUrl: artwork.foundationUrl,
+        artistUsername: artwork.artistUsername,
+        metadataCid: artwork.metadataRoot?.cid,
+        mediaCid: artwork.mediaRoot?.cid,
+      }}
+    />
   );
 }
 

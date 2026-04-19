@@ -2,31 +2,23 @@ import { createPublicClient, http } from "viem";
 import { base, mainnet } from "viem/chains";
 
 import { env } from "~/env";
-
-export const ETHEREUM_CHAIN_ID = 1;
-export const BASE_CHAIN_ID = 8453;
-
-export const SUPPORTED_CHAIN_IDS = [
-  ETHEREUM_CHAIN_ID,
+import {
   BASE_CHAIN_ID,
-] as const;
-export type SupportedChainId = (typeof SUPPORTED_CHAIN_IDS)[number];
+  ETHEREUM_CHAIN_ID,
+  chainLabel,
+} from "~/lib/chain-label";
 
-export function isSupportedChainId(
-  chainId: number,
-): chainId is SupportedChainId {
-  return (SUPPORTED_CHAIN_IDS as readonly number[]).includes(chainId);
-}
-
-export function chainLabel(chainId: number): string {
-  if (chainId === ETHEREUM_CHAIN_ID) return "Ethereum Mainnet";
-  if (chainId === BASE_CHAIN_ID) return "Base";
-  return `Chain ${chainId}`;
-}
-
-export function chainSlug(chainId: number): "eth" | "base" {
-  return chainId === BASE_CHAIN_ID ? "base" : "eth";
-}
+export {
+  BASE_CHAIN_ID,
+  ETHEREUM_CHAIN_ID,
+  SUPPORTED_CHAIN_IDS,
+  type SupportedChainId,
+  chainLabel,
+  chainShortLabel,
+  chainSlug,
+  chainExplorerAddressUrl,
+  isSupportedChainId,
+} from "~/lib/chain-label";
 
 function rpcEnvNameFor(chainId: number): "BASE_RPC_URL" | "ETHEREUM_RPC_URL" {
   return chainId === BASE_CHAIN_ID ? "BASE_RPC_URL" : "ETHEREUM_RPC_URL";

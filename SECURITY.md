@@ -6,7 +6,7 @@ Thank you for helping keep foundation-archive safe for the artists, collectors, 
 
 **Please do not open a public GitHub issue for security problems.**
 
-Email the maintainer: **chadkoslovsky@gmail.com** with subject `[security]`.
+Email the maintainer: **ravonus@agorix.io** with subject `[security]`.
 
 Include, where possible:
 
