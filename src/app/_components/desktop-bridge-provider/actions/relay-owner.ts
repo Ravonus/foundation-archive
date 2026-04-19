@@ -239,6 +239,7 @@ function createUpdateRelayDeviceConfig(deps: RelayOwnerDeps) {
         relay_enabled: input.relay_enabled,
         relay_server_url: input.relay_server_url,
         relay_device_name: input.relay_device_name,
+        tunnel_enabled: input.tunnel_enabled,
       },
       fallback: "Unable to send updated settings to the linked desktop app.",
     });

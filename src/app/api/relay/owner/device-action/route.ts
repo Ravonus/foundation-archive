@@ -17,6 +17,7 @@ const configSchema = z.object({
   relay_enabled: z.boolean().optional().nullable(),
   relay_server_url: z.string().min(1).optional().nullable(),
   relay_device_name: z.string().min(1).optional().nullable(),
+  tunnel_enabled: z.boolean().optional().nullable(),
 });
 
 const schema = z.discriminatedUnion("kind", [

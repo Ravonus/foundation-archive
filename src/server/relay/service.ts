@@ -28,6 +28,7 @@ export type RelayUpdateConfigPayload = {
   relay_enabled?: boolean | null;
   relay_server_url?: string | null;
   relay_device_name?: string | null;
+  tunnel_enabled?: boolean | null;
 };
 
 function createPairingCode() {
