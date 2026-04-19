@@ -5,6 +5,7 @@ import {
 } from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { archivePinningEnabled } from "~/server/archive/jobs/shared";
+import { queueArtworkBackup } from "~/server/archive/jobs/queue";
 import { getArchivePolicyState } from "~/server/archive/state";
 
 import { type DatabaseClient } from "./types";
@@ -231,20 +232,71 @@ export async function maybeAdvanceSmartPinBudget(
     },
   });
 
+  const requeued = await requeueDeferredArtworksForTier(client, nextBudget);
+
   await emitArchiveEvent(client, {
     type: "policy.smart-pin-budget-raised",
-    summary: `Advanced the smart-pin tier to ${nextBudget} bytes after a full Foundation scan pass.`,
+    summary: `Advanced the smart-pin tier to ${nextBudget} bytes after a full Foundation scan pass — re-queued ${requeued} deferred artwork(s).`,
     cid: smallestDeferredRoot.cid,
     sizeBytes: target,
     data: {
       previousBudgetBytes: policy.smartPinMaxBytes,
       nextBudgetBytes: nextBudget,
       targetCid: smallestDeferredRoot.cid,
+      requeuedArtworkCount: requeued,
     },
   });
 
   return {
     advanced: true,
     policy: updatedPolicy,
+    requeuedArtworkCount: requeued,
   };
+}
+
+/// Find every artwork that has at least one root previously deferred at a
+/// lower tier and whose recorded size now fits the new budget, and enqueue
+/// a fresh BACKUP_ARTWORK job for it. `queueArtworkBackup` dedupes on
+/// artworkId so callers can't double-queue. Returns the number of distinct
+/// artworks queued.
+export async function requeueDeferredArtworksForTier(
+  client: DatabaseClient,
+  newBudgetBytes: number,
+): Promise<number> {
+  const deferredRoots = await client.ipfsRoot.findMany({
+    where: {
+      backupStatus: BackupStatus.PENDING,
+      lastDeferredAt: { not: null },
+      deferredUntilByteSize: { lt: newBudgetBytes },
+      OR: [
+        { estimatedByteSize: { lte: newBudgetBytes } },
+        {
+          AND: [
+            { estimatedByteSize: null },
+            { byteSize: { lte: newBudgetBytes } },
+          ],
+        },
+      ],
+    },
+    select: {
+      metadataFor: { select: { id: true } },
+      mediaFor: { select: { id: true } },
+    },
+  });
+
+  const artworkIds = new Set<string>();
+  for (const root of deferredRoots) {
+    for (const artwork of root.metadataFor) artworkIds.add(artwork.id);
+    for (const artwork of root.mediaFor) artworkIds.add(artwork.id);
+  }
+
+  for (const artworkId of artworkIds) {
+    await queueArtworkBackup({
+      client,
+      artworkId,
+      availableAt: new Date(),
+    });
+  }
+
+  return artworkIds.size;
 }
