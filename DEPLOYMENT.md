@@ -52,8 +52,10 @@ At minimum, set:
 Current public production values:
 
 - `NEXT_PUBLIC_SITE_URL=https://foundation.agorix.io`
-- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL=https://foundation.agorix.io`
+- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL=https://socket-foundation.agorix.io`
 - `ARCHIVE_SOCKET_INTERNAL_URL=http://socket:43129`
+
+Use a real websocket-capable public socket host for `NEXT_PUBLIC_ARCHIVE_SOCKET_URL`. Pointing it at the main Next app origin leaves `/socket.io` behind an HTTP rewrite, which can trap clients in polling instead of upgrading.
 
 `ETHEREUM_RPC_URL` is still optional.
 
