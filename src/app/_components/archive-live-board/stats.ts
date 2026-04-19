@@ -47,6 +47,11 @@ function preservedCard(
   stats: ArchiveLiveSnapshot["stats"],
   shares: PipelineShares,
 ): StatCard {
+  const storageMeta =
+    stats.pinnedRoots > 0
+      ? `${stats.pinnedRoots.toLocaleString()} backed up to IPFS`
+      : `${stats.downloadedRoots.toLocaleString()} files stored on our servers`;
+
   return {
     label: "Saved",
     value: stats.preservedRoots,
@@ -54,12 +59,9 @@ function preservedCard(
     tone: "ok",
     hint:
       shares.pipelineTotal > 0
-        ? `${Math.round(shares.preservedShare)}% of tracked works are safe`
-        : "Works fully saved",
-    meta:
-      stats.pinnedRoots > 0
-        ? `${stats.pinnedRoots.toLocaleString()} backed up to IPFS`
-        : `${stats.downloadedRoots.toLocaleString()} stored on our servers`,
+        ? `${Math.round(shares.preservedShare)}% of tracked works have archived files`
+        : "Works with archived files",
+    meta: `${stats.fullyPreservedArtworks.toLocaleString()} fully complete, ${storageMeta}`,
     pulsing: false,
     progress: shares.preservedShare,
   };

@@ -48,6 +48,7 @@ function emptyArchiveLiveSnapshot(): ArchiveLiveSnapshot {
       runningJobs: 0,
       failedJobs: 0,
       preservedRoots: 0,
+      fullyPreservedArtworks: 0,
       downloadedRoots: 0,
       pinnedRoots: 0,
       deferredRoots: 0,

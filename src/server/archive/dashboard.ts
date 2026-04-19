@@ -190,6 +190,66 @@ const ARTWORK_WITH_ROOT_WHERE = {
   OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
 };
 
+function anyPreservedArtworkWhere() {
+  return {
+    ...ARTWORK_WITH_ROOT_WHERE,
+    OR: [
+      {
+        metadataStatus: {
+          in: SATISFIED_ARTWORK_STATUSES,
+        },
+      },
+      {
+        mediaStatus: {
+          in: SATISFIED_ARTWORK_STATUSES,
+        },
+      },
+    ],
+  };
+}
+
+function fullyPreservedArtworkWhere() {
+  return {
+    ...ARTWORK_WITH_ROOT_WHERE,
+    metadataStatus: {
+      in: SATISFIED_ARTWORK_STATUSES,
+    },
+    mediaStatus: {
+      in: SATISFIED_ARTWORK_STATUSES,
+    },
+  };
+}
+
+function deferredArtworkWhere() {
+  return {
+    AND: [
+      ARTWORK_WITH_ROOT_WHERE,
+      {
+        OR: [
+          {
+            metadataStatus: BackupStatus.PENDING,
+            metadataRoot: {
+              is: {
+                backupStatus: BackupStatus.PENDING,
+                lastDeferredAt: { not: null },
+              },
+            },
+          },
+          {
+            mediaStatus: BackupStatus.PENDING,
+            mediaRoot: {
+              is: {
+                backupStatus: BackupStatus.PENDING,
+                lastDeferredAt: { not: null },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 async function findNextDeferredRoot(
   client: DatabaseClient,
   smartPinMaxBytes: number,
@@ -221,7 +281,8 @@ async function fetchSnapshotStats(client: DatabaseClient) {
     readyPendingJobs,
     runningJobs,
     failedJobs,
-    preservedArtworks,
+    anyPreservedArtworks,
+    fullyPreservedArtworks,
     downloadedRoots,
     pinnedRoots,
     deferredArtworks,
@@ -252,46 +313,15 @@ async function fetchSnapshotStats(client: DatabaseClient) {
       },
     }),
     client.artwork.count({
-      where: {
-        ...ARTWORK_WITH_ROOT_WHERE,
-        metadataStatus: {
-          in: SATISFIED_ARTWORK_STATUSES,
-        },
-        mediaStatus: {
-          in: SATISFIED_ARTWORK_STATUSES,
-        },
-      },
+      where: anyPreservedArtworkWhere(),
+    }),
+    client.artwork.count({
+      where: fullyPreservedArtworkWhere(),
     }),
     client.ipfsRoot.count({ where: { backupStatus: "DOWNLOADED" } }),
     client.ipfsRoot.count({ where: { pinStatus: "PINNED" } }),
     client.artwork.count({
-      where: {
-        AND: [
-          ARTWORK_WITH_ROOT_WHERE,
-          {
-            OR: [
-              {
-                metadataStatus: "PENDING",
-                metadataRoot: {
-                  is: {
-                    backupStatus: "PENDING",
-                    lastDeferredAt: { not: null },
-                  },
-                },
-              },
-              {
-                mediaStatus: "PENDING",
-                mediaRoot: {
-                  is: {
-                    backupStatus: "PENDING",
-                    lastDeferredAt: { not: null },
-                  },
-                },
-              },
-            ],
-          },
-        ],
-      },
+      where: deferredArtworkWhere(),
     }),
   ]);
 
@@ -301,7 +331,8 @@ async function fetchSnapshotStats(client: DatabaseClient) {
     pendingJobs: readyPendingJobs + runningJobs,
     runningJobs,
     failedJobs,
-    preservedRoots: preservedArtworks,
+    preservedRoots: anyPreservedArtworks,
+    fullyPreservedArtworks,
     downloadedRoots,
     pinnedRoots,
     deferredRoots: deferredArtworks,

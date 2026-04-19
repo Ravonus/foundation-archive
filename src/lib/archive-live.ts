@@ -86,6 +86,7 @@ export interface ArchiveLiveStats {
   runningJobs: number;
   failedJobs: number;
   preservedRoots: number;
+  fullyPreservedArtworks: number;
   downloadedRoots: number;
   pinnedRoots: number;
   deferredRoots: number;
