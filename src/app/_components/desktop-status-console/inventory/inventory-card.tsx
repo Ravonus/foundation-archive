@@ -164,13 +164,24 @@ function useInventoryCardContent(
         new Set(
           [
             primaryMatch?.posterUrl ?? null,
+            item.previewLocalGatewayUrl ?? null,
+            item.previewPublicGatewayUrl ?? null,
+            item.mediaCid ? buildPublicUtilityGatewayUrl(item.mediaCid) : null,
             item.localGatewayUrl ?? null,
             item.publicGatewayUrl ?? null,
             buildPublicUtilityGatewayUrl(item.cid),
           ].filter((value): value is string => Boolean(value)),
         ),
       ),
-    [item.cid, item.localGatewayUrl, item.publicGatewayUrl, primaryMatch?.posterUrl],
+    [
+      item.cid,
+      item.mediaCid,
+      item.localGatewayUrl,
+      item.publicGatewayUrl,
+      item.previewLocalGatewayUrl,
+      item.previewPublicGatewayUrl,
+      primaryMatch?.posterUrl,
+    ],
   );
 
   return { title, subtitle, previewCandidates };

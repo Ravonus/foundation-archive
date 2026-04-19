@@ -11,6 +11,7 @@ import { useDesktopConsoleState } from "./hooks/use-desktop-console-state";
 import { AdvancedSettingsSection } from "./sections/advanced-settings-section";
 import { BridgeStatusHeader } from "./sections/bridge-status-header";
 import { ConnectSection } from "./sections/connect-section";
+import { PublicGatewaySection } from "./sections/public-gateway-section";
 import { SavedWorksSection } from "./sections/saved-works-section";
 import { UploadSection } from "./sections/upload-section";
 
@@ -164,6 +165,15 @@ export function DesktopStatusConsole() {
         isRepairing={transitions.isRepairing}
         runRepair={actions.runRepair}
         runVerify={actions.runVerify}
+      />
+
+      <PublicGatewaySection
+        canControl={canControlSelectedDevice}
+        controlLabel={controlLabel}
+        configDraft={raw.configDraft}
+        setConfigDraft={raw.setConfigDraft}
+        isSavingConfig={transitions.isSavingConfig}
+        saveConfig={actions.saveConfig}
       />
 
       <AdvancedSettingsSection
