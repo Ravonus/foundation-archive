@@ -40,7 +40,10 @@ export async function generateMetadata({
       (resolved.username ? `@${resolved.username}` : resolved.accountAddress);
     const title = `${displayName} · Agorix`;
     const description = `Works by ${displayName} saved in Agorix's Foundation archive.`;
-    const image = resolved.profileImageUrl ?? undefined;
+    // og:image / twitter:image come from `opengraph-image.tsx` — a
+    // dynamically generated PNG that composes the banner + avatar + bio,
+    // cached server-side (see that file for the revalidate window). Leaving
+    // `images` off here lets Next.js wire the file-based image in.
     return {
       title,
       description,
@@ -48,13 +51,11 @@ export async function generateMetadata({
         title,
         description,
         type: "profile",
-        images: image ? [{ url: image, alt: displayName }] : undefined,
       },
       twitter: {
-        card: image ? "summary" : "summary",
+        card: "summary_large_image",
         title,
         description,
-        images: image ? [image] : undefined,
       },
     };
   } catch {

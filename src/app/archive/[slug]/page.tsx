@@ -123,8 +123,11 @@ export async function generateMetadata(
 
   const title = `${artwork.title} by ${metadataArtistLabel(artwork)}`;
   const description = metadataDescription(artwork);
-  const image = await metadataImageUrl(artwork);
 
+  // og:image / twitter:image come from `opengraph-image.tsx` — a
+  // dynamically generated PNG that composes the work preview + artist
+  // avatar + title + description, cached server-side (see that file for
+  // the revalidate window).
   return {
     title: `${title} · Agorix`,
     description,
@@ -132,13 +135,11 @@ export async function generateMetadata(
       title,
       description,
       type: "article",
-      images: image ? [{ url: image, alt: title }] : undefined,
     },
     twitter: {
-      card: image ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title,
       description,
-      images: image ? [image] : undefined,
     },
   };
 }
