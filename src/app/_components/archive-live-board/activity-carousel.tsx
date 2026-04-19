@@ -17,6 +17,10 @@ import { EASE } from "./constants";
 import { toneClass } from "./tone";
 import type { ActivityGroup, ActivitySignal } from "./types";
 
+const FRESH_HOLD_MS = 6_400;
+const COMPACT_ROTATE_MS = 7_200;
+const FULL_ROTATE_MS = 9_200;
+
 function useActivityCarouselState(
   groups: Array<ActivityGroup>,
   latestEvent: ArchiveLiveEvent | null,
@@ -58,7 +62,7 @@ function useActivityCarouselState(
       if (nextKey) {
         const timeout = window.setTimeout(() => {
           setFreshKey((current) => (current === nextKey ? null : current));
-        }, 4_800);
+        }, FRESH_HOLD_MS);
         return () => {
           window.cancelAnimationFrame(frame);
           window.clearTimeout(timeout);
@@ -79,7 +83,7 @@ function useActivityCarouselState(
 
     const interval = window.setInterval(() => {
       setActiveIndex((current) => (current + 1) % groups.length);
-    }, compact ? 4_800 : 6_200);
+    }, compact ? COMPACT_ROTATE_MS : FULL_ROTATE_MS);
 
     return () => window.clearInterval(interval);
   }, [compact, groups.length, reduce]);

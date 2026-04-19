@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { io, type Socket } from "socket.io-client";
 
 import type {
@@ -10,38 +16,32 @@ import { ARCHIVE_WORKER_FRESH_MS as WORKER_FRESH_MS } from "~/lib/archive-live";
 
 import { resolveSocketHealthUrl, resolveSocketUrl } from "./socket-urls";
 
-interface ArchiveSocketHandlers {
-  setIsConnected: (value: boolean) => void;
-  setDaemonReachable: (value: boolean | null) => void;
-  setSnapshot: (snapshot: ArchiveLiveSnapshot) => void;
-  setPulseId: (id: string | null) => void;
-  setLatestEvent: (event: ArchiveLiveEvent | null) => void;
-  checkHealth: () => void;
-}
-
-function bindSocketHandlers(socket: Socket, handlers: ArchiveSocketHandlers) {
-  socket.on("connect", () => {
-    handlers.setIsConnected(true);
-    handlers.setDaemonReachable(true);
-  });
-  socket.on("disconnect", () => handlers.setIsConnected(false));
-  socket.on("connect_error", () => {
-    handlers.setIsConnected(false);
-    handlers.checkHealth();
-  });
-  socket.on("archive:snapshot", (nextSnapshot: ArchiveLiveSnapshot) => {
-    handlers.setSnapshot(nextSnapshot);
-  });
-  socket.on("archive:update", (envelope: ArchiveSocketEnvelope) => {
-    handlers.setSnapshot(envelope.snapshot);
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    handlers.setPulseId(envelope.event?.id ?? null);
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    handlers.setLatestEvent(envelope.event ?? null);
-  });
-}
-
 const FALLBACK_RECOVERY_POLL_MS = 15_000;
+const LIVE_EVENT_SURFACE_MS = 6_500;
+const LIVE_EVENT_PULSE_MS = 2_400;
+const MAX_SURFACED_EVENTS = 14;
+const MAX_STAGED_EVENTS = 18;
+
+function mergeVisibleEvents(
+  current: Array<ArchiveLiveEvent>,
+  nextEvents: Array<ArchiveLiveEvent>,
+) {
+  const merged = [...nextEvents, ...current];
+  const deduped: Array<ArchiveLiveEvent> = [];
+  const seen = new Set<string>();
+
+  for (const event of merged) {
+    if (seen.has(event.id)) continue;
+    seen.add(event.id);
+    deduped.push(event);
+
+    if (deduped.length >= MAX_SURFACED_EVENTS) {
+      break;
+    }
+  }
+
+  return deduped;
+}
 
 function workerSeenRecently(lastSeenAt: string | null) {
   return Boolean(
@@ -78,6 +78,7 @@ function useRecoveryFallback(input: {
   workerLastSeenAt: string | null;
   workerStatus: string | null;
   setSnapshot: (snapshot: ArchiveLiveSnapshot) => void;
+  syncVisibleEvents: (events: Array<ArchiveLiveEvent>) => void;
   setLatestEvent: (event: ArchiveLiveEvent | null) => void;
 }) {
   const {
@@ -88,6 +89,7 @@ function useRecoveryFallback(input: {
     workerLastSeenAt,
     workerStatus,
     setSnapshot,
+    syncVisibleEvents,
     setLatestEvent,
   } = input;
 
@@ -118,6 +120,7 @@ function useRecoveryFallback(input: {
         const nextSnapshot = (await response.json()) as ArchiveLiveSnapshot;
 
         setSnapshot(nextSnapshot);
+        syncVisibleEvents(nextSnapshot.recentEvents);
         setLatestEvent(nextSnapshot.recentEvents[0] ?? null);
       } catch {
         // The socket health probe already surfaces daemon outages. The fallback
@@ -143,21 +146,114 @@ function useRecoveryFallback(input: {
     workerStatus,
     setLatestEvent,
     setSnapshot,
+    syncVisibleEvents,
   ]);
+}
+
+function useStagedArchiveEvents(initialSnapshot: ArchiveLiveSnapshot) {
+  const [pulseId, setPulseId] = useState<string | null>(null);
+  const [latestEvent, setLatestEvent] = useState<ArchiveLiveEvent | null>(
+    initialSnapshot.recentEvents[0] ?? null,
+  );
+  const [visibleEvents, setVisibleEvents] = useState(initialSnapshot.recentEvents);
+  const [stagedEvents, setStagedEvents] = useState<Array<ArchiveLiveEvent>>([]);
+  const latestEventIdRef = useRef<string | null>(
+    initialSnapshot.recentEvents[0]?.id ?? null,
+  );
+
+  const syncVisibleEvents = useCallback((events: Array<ArchiveLiveEvent>) => {
+    setVisibleEvents((current) => mergeVisibleEvents(current, events));
+  }, []);
+
+  useEffect(() => {
+    latestEventIdRef.current = latestEvent?.id ?? null;
+  }, [latestEvent]);
+
+  const stageEvent = useCallback((event: ArchiveLiveEvent | null) => {
+    if (!event) return;
+
+    setStagedEvents((current) => {
+      if (
+        latestEventIdRef.current === event.id ||
+        current.some((queuedEvent) => queuedEvent.id === event.id)
+      ) {
+        return current;
+      }
+
+      const next = [...current, event];
+      return next.slice(-MAX_STAGED_EVENTS);
+    });
+  }, []);
+  const surfaceNextEvent = useEffectEvent(() => {
+    setStagedEvents((current) => {
+      const nextEvent = current[0];
+      if (!nextEvent) return current;
+
+      setLatestEvent(nextEvent);
+      setPulseId(nextEvent.id);
+      setVisibleEvents((visible) => mergeVisibleEvents(visible, [nextEvent]));
+      return current.slice(1);
+    });
+  });
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      surfaceNextEvent();
+    }, LIVE_EVENT_SURFACE_MS);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!pulseId) return;
+
+    const timeout = window.setTimeout(() => {
+      setPulseId((current) => (current === pulseId ? null : current));
+    }, LIVE_EVENT_PULSE_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [pulseId]);
+
+  return {
+    pulseId,
+    latestEvent,
+    setLatestEvent,
+    visibleEvents,
+    queuedUpdateCount: stagedEvents.length,
+    stageEvent,
+    syncVisibleEvents,
+  };
 }
 
 export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [isConnected, setIsConnected] = useState(false);
   const [daemonReachable, setDaemonReachable] = useState<boolean | null>(null);
-  const [pulseId, setPulseId] = useState<string | null>(null);
-  const [latestEvent, setLatestEvent] = useState<ArchiveLiveEvent | null>(
-    initialSnapshot.recentEvents[0] ?? null,
-  );
   const pendingJobs = snapshot.stats.pendingJobs;
   const runningJobs = snapshot.stats.runningJobs;
   const workerLastSeenAt = snapshot.worker?.lastSeenAt ?? null;
   const workerStatus = snapshot.worker?.status ?? null;
+  const {
+    pulseId,
+    latestEvent,
+    setLatestEvent,
+    visibleEvents,
+    queuedUpdateCount,
+    stageEvent,
+    syncVisibleEvents,
+  } = useStagedArchiveEvents(initialSnapshot);
+  const handleArchiveSnapshot = useEffectEvent(
+    (nextSnapshot: ArchiveLiveSnapshot) => {
+      setSnapshot(nextSnapshot);
+      syncVisibleEvents(nextSnapshot.recentEvents);
+    },
+  );
+  const handleArchiveUpdate = useEffectEvent(
+    (envelope: ArchiveSocketEnvelope) => {
+      setSnapshot(envelope.snapshot);
+      stageEvent(envelope.event);
+    },
+  );
 
   useEffect(() => {
     const socketUrl = resolveSocketUrl();
@@ -189,14 +285,19 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       upgrade: false,
     });
 
-    bindSocketHandlers(socket, {
-      setIsConnected,
-      setDaemonReachable,
-      setSnapshot,
-      setPulseId,
-      setLatestEvent,
-      checkHealth: () => void checkHealth(),
+    socket.on("connect", () => {
+      setIsConnected(true);
+      setDaemonReachable(true);
     });
+    socket.on("disconnect", () => {
+      setIsConnected(false);
+    });
+    socket.on("connect_error", () => {
+      setIsConnected(false);
+      void checkHealth();
+    });
+    socket.on("archive:snapshot", handleArchiveSnapshot);
+    socket.on("archive:update", handleArchiveUpdate);
 
     return () => {
       active = false;
@@ -204,6 +305,7 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
       socket.disconnect();
     };
   }, []);
+
   useRecoveryFallback({
     daemonReachable,
     isConnected,
@@ -212,6 +314,7 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
     workerLastSeenAt,
     workerStatus,
     setSnapshot,
+    syncVisibleEvents,
     setLatestEvent,
   });
 
@@ -222,5 +325,7 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
     daemonReachable,
     pulseId,
     latestEvent,
+    visibleEvents,
+    queuedUpdateCount,
   };
 }

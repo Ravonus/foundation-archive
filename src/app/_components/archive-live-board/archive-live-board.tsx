@@ -172,16 +172,20 @@ function BoardSecondaryGrid({
   hideFeed,
   derived,
   latestEvent,
+  queuedUpdateCount,
   snapshot,
   showCrawler,
+  visibleEvents,
   pulseId,
 }: {
   compact: boolean;
   hideFeed: boolean;
   derived: ReturnType<typeof useBoardDerived>;
   latestEvent: Parameters<typeof ActivityPanel>[0]["latestEvent"];
+  queuedUpdateCount: number;
   snapshot: ArchiveLiveSnapshot;
   showCrawler: boolean;
+  visibleEvents: ArchiveLiveSnapshot["recentEvents"];
   pulseId: string | null;
 }) {
   const hasQueue = snapshot.stats.pendingJobs > 0;
@@ -203,6 +207,7 @@ function BoardSecondaryGrid({
           hasQueue={hasQueue}
           groups={derived.activityGroups}
           latestEvent={latestEvent}
+          queuedUpdateCount={queuedUpdateCount}
           compact={compact}
         />
         {showCrawler && snapshot.crawlers.length > 0 ? (
@@ -210,7 +215,11 @@ function BoardSecondaryGrid({
         ) : null}
       </div>
       {hideFeed ? null : (
-        <LiveFeedPanel events={snapshot.recentEvents} pulseId={pulseId} />
+        <LiveFeedPanel
+          events={visibleEvents}
+          pulseId={pulseId}
+          queuedUpdateCount={queuedUpdateCount}
+        />
       )}
     </div>
   );
@@ -233,6 +242,8 @@ export function ArchiveLiveBoard({
     daemonReachable,
     pulseId,
     latestEvent,
+    queuedUpdateCount,
+    visibleEvents,
   } = useArchiveLiveSnapshot(initialSnapshot);
   const { toggleCrawlerMutation, setPaceMutation } =
     useArchiveBoardMutations(setSnapshot);
@@ -265,8 +276,10 @@ export function ArchiveLiveBoard({
         hideFeed={hideFeed}
         derived={derived}
         latestEvent={latestEvent}
+        queuedUpdateCount={queuedUpdateCount}
         snapshot={snapshot}
         showCrawler={showCrawler}
+        visibleEvents={visibleEvents}
         pulseId={pulseId}
       />
     </section>
