@@ -9,7 +9,9 @@ import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { DesktopSharePanel as ArtworkDesktopSharePanel } from "~/app/_components/desktop-share-panel";
 import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
+import { ProfileHero } from "~/app/_components/profile/profile-hero";
 import { ArtworkActionsPanelShell } from "~/app/_components/web3/artwork-actions-panel-shell";
+import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
 import {
   chainExplorerAddressUrl,
   chainLabel,
@@ -407,24 +409,30 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
     notFound();
   }
 
-  const [view, dependencyFlows, marketState, marketHistory] = await Promise.all([
-    deriveView(artwork),
-    dependencyFlowsForArtwork(artwork),
-    getTokenMarketState(db, {
-      chainId: artwork.chainId,
-      nftContract: artwork.contractAddress,
-      tokenId: artwork.tokenId,
-    }),
-    listTokenMarketHistory(
-      db,
-      {
+  const [view, dependencyFlows, marketState, marketHistory, artistProfile] =
+    await Promise.all([
+      deriveView(artwork),
+      dependencyFlowsForArtwork(artwork),
+      getTokenMarketState(db, {
         chainId: artwork.chainId,
         nftContract: artwork.contractAddress,
         tokenId: artwork.tokenId,
-      },
-      { limit: 50 },
-    ),
-  ]);
+      }),
+      listTokenMarketHistory(
+        db,
+        {
+          chainId: artwork.chainId,
+          nftContract: artwork.contractAddress,
+          tokenId: artwork.tokenId,
+        },
+        { limit: 50 },
+      ),
+      artwork.artistUsername
+        ? fetchFoundationUserByUsername(artwork.artistUsername).catch(
+            () => null,
+          )
+        : Promise.resolve(null),
+    ]);
 
   const actionsProps = {
     chainId: artwork.chainId,
@@ -455,6 +463,16 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
   return (
     <main className="mx-auto w-full max-w-5xl px-6 pt-8 pb-16">
       <BackLink />
+      {artistProfile ? (
+        <div className="mt-6">
+          <ArtistHero
+            artistName={artwork.artistName}
+            artistUsername={artwork.artistUsername}
+            artistWallet={artwork.artistWallet}
+            profile={artistProfile}
+          />
+        </div>
+      ) : null}
       <div className="mt-6 grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
         <MediaPreview artwork={artwork} view={view} />
         <div>
@@ -483,6 +501,83 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
         }
       />
     </main>
+  );
+}
+
+type ArtistHeroProfile = {
+  username: string | null;
+  name: string | null;
+  profileImageUrl: string | null;
+  coverImageUrl: string | null;
+  bio: string | null;
+  accountAddress: string;
+};
+
+function ArtistHero({
+  artistName,
+  artistUsername,
+  artistWallet,
+  profile,
+}: {
+  artistName: string | null;
+  artistUsername: string | null;
+  artistWallet: string | null;
+  profile: ArtistHeroProfile;
+}) {
+  const displayName =
+    profile.name ??
+    artistName ??
+    (profile.username ? `@${profile.username}` : null) ??
+    (artistUsername ? `@${artistUsername}` : null) ??
+    (artistWallet ? shortAddress(artistWallet) : "Unknown artist");
+  const usernameBadge =
+    profile.username ?? artistUsername
+      ? `@${profile.username ?? artistUsername ?? ""}`
+      : undefined;
+  const archiveHref = profile.username
+    ? `/profile/${encodeURIComponent(profile.username)}`
+    : artistUsername
+      ? `/profile/${encodeURIComponent(artistUsername)}`
+      : artistWallet
+        ? `/profile/${encodeURIComponent(artistWallet)}`
+        : null;
+
+  const aside = archiveHref ? (
+    <div className="rounded-[1.4rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
+      <p className="font-mono text-[0.62rem] uppercase tracking-[0.24em] text-[var(--color-muted)]">
+        Archive
+      </p>
+      <p className="mt-2 text-sm text-[var(--color-body)]">
+        Browse the full collection of this artist&apos;s works being preserved
+        in Agorix.
+      </p>
+      <Link
+        href={archiveHref}
+        className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-ink)] hover:bg-[var(--color-ink)] hover:text-[var(--color-bg)]"
+      >
+        View archive
+        <ArrowUpRight className="h-3.5 w-3.5" />
+      </Link>
+    </div>
+  ) : null;
+
+  return (
+    <ProfileHero
+      name={displayName}
+      eyebrow="Artist"
+      usernameBadge={usernameBadge}
+      subtitle={artistWallet ? shortAddress(artistWallet) : undefined}
+      avatarUrl={profile.profileImageUrl}
+      avatarLabel={displayName}
+      bannerUrl={profile.coverImageUrl}
+      bio={profile.bio}
+      foundationUrl={
+        profile.username
+          ? `https://foundation.app/@${profile.username}`
+          : undefined
+      }
+      aside={aside}
+    />
   );
 }
 
