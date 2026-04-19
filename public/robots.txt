@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Internal + API surfaces — not useful to index
+Disallow: /api/
+Disallow: /_next/
+Disallow: /desktop/
+Disallow: /decentralization/
+Disallow: /about/
+Disallow: /donate/
+
+# Heavy auto-generated media routes — let Kubo serve these directly
+Disallow: /ipfs/
+
+Sitemap: https://foundation.agorix.io/sitemap.xml
