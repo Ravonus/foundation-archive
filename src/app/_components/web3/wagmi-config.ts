@@ -30,12 +30,22 @@ const connectors = connectorsForWallets(
   },
 );
 
+const mainnetRpcUrl =
+  env.NEXT_PUBLIC_ETHEREUM_RPC_URL ?? "https://cloudflare-eth.com";
+const baseRpcUrl = env.NEXT_PUBLIC_BASE_RPC_URL ?? "https://mainnet.base.org";
+
+const transportOptions = {
+  batch: { batchSize: 100, wait: 16 },
+  retryCount: 0,
+  timeout: 15_000,
+} as const;
+
 export const wagmiConfig = createConfig({
   chains: [mainnet, base],
   connectors,
   transports: {
-    [mainnet.id]: http(),
-    [base.id]: http(),
+    [mainnet.id]: http(mainnetRpcUrl, transportOptions),
+    [base.id]: http(baseRpcUrl, transportOptions),
   },
   ssr: true,
 });

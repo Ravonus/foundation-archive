@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { io, type Socket } from "socket.io-client";
 
 import type {
   ArchiveLiveEvent,
@@ -14,21 +13,13 @@ import type {
 } from "~/lib/archive-live";
 import { ARCHIVE_WORKER_FRESH_MS as WORKER_FRESH_MS } from "~/lib/archive-live";
 
-import {
-  resolveSocketHealthUrl,
-  resolveSocketIoTransportOptions,
-  resolveSocketUrl,
-} from "./socket-urls";
+import { acquireArchiveSocket } from "./archive-socket-client";
 
-const FALLBACK_RECOVERY_POLL_MS = 15_000;
+const FALLBACK_RECOVERY_POLL_MS = 30_000;
 const LIVE_EVENT_SURFACE_MS = 6_500;
 const LIVE_EVENT_PULSE_MS = 2_400;
 const MAX_SURFACED_EVENTS = 14;
 const MAX_STAGED_EVENTS = 18;
-const HEALTH_OFFLINE_GRACE_MS = 20_000;
-const SOCKET_CONNECT_TIMEOUT_MS = 20_000;
-const SOCKET_RECONNECT_DELAY_MS = 1_000;
-const SOCKET_RECONNECT_DELAY_MAX_MS = 10_000;
 
 function mergeVisibleEvents(
   current: Array<ArchiveLiveEvent>,
@@ -58,14 +49,13 @@ function workerSeenRecently(lastSeenAt: string | null) {
 }
 
 function shouldPollRecoveryRoute(input: {
-  daemonReachable: boolean | null;
   isConnected: boolean;
   pendingJobs: number;
   runningJobs: number;
   workerLastSeenAt: string | null;
   workerStatus: string | null;
 }) {
-  if (input.isConnected || input.daemonReachable !== false) {
+  if (input.isConnected) {
     return false;
   }
 
@@ -79,7 +69,6 @@ function shouldPollRecoveryRoute(input: {
 }
 
 function useRecoveryFallback(input: {
-  daemonReachable: boolean | null;
   isConnected: boolean;
   pendingJobs: number;
   runningJobs: number;
@@ -90,7 +79,6 @@ function useRecoveryFallback(input: {
   setLatestEvent: (event: ArchiveLiveEvent | null) => void;
 }) {
   const {
-    daemonReachable,
     isConnected,
     pendingJobs,
     runningJobs,
@@ -104,7 +92,6 @@ function useRecoveryFallback(input: {
   useEffect(() => {
     if (
       !shouldPollRecoveryRoute({
-        daemonReachable,
         isConnected,
         pendingJobs,
         runningJobs,
@@ -118,6 +105,7 @@ function useRecoveryFallback(input: {
     let active = true;
 
     const refreshFromRecoveryRoute = async () => {
+      if (document.hidden) return;
       try {
         const response = await fetch("/api/archive/live/recover", {
           method: "POST",
@@ -131,8 +119,7 @@ function useRecoveryFallback(input: {
         syncVisibleEvents(nextSnapshot.recentEvents);
         setLatestEvent(nextSnapshot.recentEvents[0] ?? null);
       } catch {
-        // The socket health probe already surfaces daemon outages. The fallback
-        // route is best-effort and should fail quietly.
+        // Best-effort fallback; ignore transient errors.
       }
     };
 
@@ -146,7 +133,6 @@ function useRecoveryFallback(input: {
       window.clearInterval(recoveryInterval);
     };
   }, [
-    daemonReachable,
     isConnected,
     pendingJobs,
     runningJobs,
@@ -263,69 +249,39 @@ function useArchiveLiveSocketConnection(input: {
   );
 
   useEffect(() => {
-    const socketUrl = resolveSocketUrl();
-    const socketTransportOptions = resolveSocketIoTransportOptions(socketUrl);
-    const healthUrl = resolveSocketHealthUrl();
-    let active = true;
-    let lastHealthyAt = 0;
+    const { socket, release } = acquireArchiveSocket();
 
-    const setReachability = (reachable: boolean) => {
-      if (!active) return;
-
-      if (reachable) {
-        lastHealthyAt = Date.now();
-        setDaemonReachable(true);
-        return;
-      }
-
-      const withinGraceWindow =
-        lastHealthyAt > 0 &&
-        Date.now() - lastHealthyAt < HEALTH_OFFLINE_GRACE_MS;
-      setDaemonReachable(withinGraceWindow ? true : false);
-    };
-
-    const checkHealth = async () => {
-      if (!healthUrl) return;
-
-      try {
-        const response = await fetch(healthUrl, { cache: "no-store" });
-        setReachability(response.ok);
-      } catch {
-        setReachability(false);
-      }
-    };
-
-    void checkHealth();
-    const healthInterval = window.setInterval(() => {
-      void checkHealth();
-    }, 10_000);
-
-    const socket: Socket = io(socketUrl, {
-      reconnection: true,
-      reconnectionDelay: SOCKET_RECONNECT_DELAY_MS,
-      reconnectionDelayMax: SOCKET_RECONNECT_DELAY_MAX_MS,
-      timeout: SOCKET_CONNECT_TIMEOUT_MS,
-      ...socketTransportOptions,
-    });
-
-    socket.on("connect", () => {
+    const onConnect = () => {
       setIsConnected(true);
-      setReachability(true);
-    });
-    socket.on("disconnect", () => {
+      setDaemonReachable(true);
+    };
+    const onDisconnect = () => setIsConnected(false);
+    const onConnectError = () => {
       setIsConnected(false);
-    });
-    socket.on("connect_error", () => {
-      setIsConnected(false);
-      void checkHealth();
-    });
-    socket.on("archive:snapshot", handleArchiveSnapshot);
-    socket.on("archive:update", handleArchiveUpdate);
+      setDaemonReachable(false);
+    };
+    const onSnapshot = (next: ArchiveLiveSnapshot) => {
+      handleArchiveSnapshot(next);
+    };
+    const onUpdate = (envelope: ArchiveSocketEnvelope) => {
+      handleArchiveUpdate(envelope);
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("archive:snapshot", onSnapshot);
+    socket.on("archive:update", onUpdate);
+
+    if (socket.connected) queueMicrotask(onConnect);
 
     return () => {
-      active = false;
-      window.clearInterval(healthInterval);
-      socket.disconnect();
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("archive:snapshot", onSnapshot);
+      socket.off("archive:update", onUpdate);
+      release();
     };
   }, [
     stageEvent,
@@ -363,7 +319,6 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
   });
 
   useRecoveryFallback({
-    daemonReachable,
     isConnected,
     pendingJobs,
     runningJobs,

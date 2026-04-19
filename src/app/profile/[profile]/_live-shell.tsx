@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { io, type Socket } from "socket.io-client";
 import {
   useEffect,
   useEffectEvent,
@@ -11,10 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  resolveSocketIoTransportOptions,
-  resolveSocketUrl,
-} from "~/app/_components/archive-live-board/socket-urls";
+import { acquireArchiveSocket } from "~/app/_components/archive-live-board/archive-socket-client";
 import { type ArchiveSocketEnvelope } from "~/lib/archive-live";
 import { cn } from "~/lib/utils";
 
@@ -100,27 +96,25 @@ export function ProfileLiveShell({
   );
 
   useEffect(() => {
-    const socketUrl = resolveSocketUrl();
-    const socket: Socket = io(socketUrl, {
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
-      timeout: 20000,
-      ...resolveSocketIoTransportOptions(socketUrl),
-    });
+    const { socket, release } = acquireArchiveSocket();
 
-    socket.on("connect", () => {
-      setIsConnected(true);
-    });
-    socket.on("disconnect", () => {
-      setIsConnected(false);
-    });
-    socket.on("connect_error", () => {
-      setIsConnected(false);
-    });
-    socket.on("archive:update", handleArchiveUpdate);
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+    const onUpdate = (envelope: ArchiveSocketEnvelope) =>
+      handleArchiveUpdate(envelope);
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onDisconnect);
+    socket.on("archive:update", onUpdate);
+
+    if (socket.connected) queueMicrotask(onConnect);
 
     return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onDisconnect);
+      socket.off("archive:update", onUpdate);
       if (refreshTimeoutRef.current) {
         window.clearTimeout(refreshTimeoutRef.current);
         refreshTimeoutRef.current = null;
@@ -129,7 +123,7 @@ export function ProfileLiveShell({
         window.clearTimeout(pulseTimeoutRef.current);
         pulseTimeoutRef.current = null;
       }
-      socket.disconnect();
+      release();
     };
   }, []);
 
