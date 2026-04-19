@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 
@@ -27,68 +27,145 @@ function useActivityCarouselState(
   compact: boolean,
 ) {
   const reduce = useReducedMotion();
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [orderedKeys, setOrderedKeys] = useState(() => groups.map((group) => group.key));
+  const [activeKey, setActiveKey] = useState<string | null>(
+    groups[0]?.key ?? null,
+  );
   const [freshKey, setFreshKey] = useState<string | null>(null);
+  const activeChangeSourceRef = useRef<"auto" | "manual">("auto");
   const railRef = useRef<HTMLDivElement | null>(null);
   const thumbRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const registerThumbRef = (index: number, node: HTMLButtonElement | null) => {
     thumbRefs.current[index] = node;
   };
+  const groupMap = useMemo(
+    () => new Map(groups.map((group) => [group.key, group])),
+    [groups],
+  );
+  const orderedGroups = useMemo(() => {
+    const stable = orderedKeys
+      .map((key) => groupMap.get(key))
+      .filter((group): group is ActivityGroup => Boolean(group));
+    const seen = new Set(stable.map((group) => group.key));
+    const additions = groups.filter((group) => !seen.has(group.key));
+    return [...stable, ...additions];
+  }, [groupMap, groups, orderedKeys]);
+  const activeIndex = useMemo(() => {
+    const resolvedIndex = orderedGroups.findIndex((group) => group.key === activeKey);
+    return resolvedIndex >= 0 ? resolvedIndex : 0;
+  }, [activeKey, orderedGroups]);
 
   const latestGroupIndex = useMemo(
     () =>
-      groups.findIndex((group) =>
+      orderedGroups.findIndex((group) =>
         activityGroupMatchesEvent(group.artwork, latestEvent),
       ),
-    [groups, latestEvent],
+    [orderedGroups, latestEvent],
   );
 
   useEffect(() => {
     if (groups.length === 0) {
+      setOrderedKeys([]);
+      return;
+    }
+
+    setOrderedKeys((current) => {
+      const next = current.filter((key) => groupMap.has(key));
+      const seen = new Set(next);
+
+      for (const group of groups) {
+        if (seen.has(group.key)) continue;
+        next.push(group.key);
+        seen.add(group.key);
+      }
+
+      return next;
+    });
+  }, [groupMap, groups]);
+
+  useEffect(() => {
+    if (orderedGroups.length === 0) {
       const frame = window.requestAnimationFrame(() => {
-        setActiveIndex(0);
+        setActiveKey(null);
         setFreshKey(null);
       });
       return () => window.cancelAnimationFrame(frame);
     }
 
-    if (latestGroupIndex >= 0) {
-      const nextKey = groups[latestGroupIndex]?.key ?? null;
+    if (!activeKey || !orderedGroups.some((group) => group.key === activeKey)) {
+      const nextKey = orderedGroups[0]?.key ?? null;
       const frame = window.requestAnimationFrame(() => {
-        setActiveIndex(latestGroupIndex);
-        setFreshKey(nextKey);
+        activeChangeSourceRef.current = "auto";
+        setActiveKey(nextKey);
       });
-
-      if (nextKey) {
-        const timeout = window.setTimeout(() => {
-          setFreshKey((current) => (current === nextKey ? null : current));
-        }, FRESH_HOLD_MS);
-        return () => {
-          window.cancelAnimationFrame(frame);
-          window.clearTimeout(timeout);
-        };
-      }
-
       return () => window.cancelAnimationFrame(frame);
     }
 
-    const frame = window.requestAnimationFrame(() => {
-      setActiveIndex((current) => Math.min(current, groups.length - 1));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [groups, latestGroupIndex]);
+    return;
+  }, [activeKey, orderedGroups]);
 
   useEffect(() => {
-    if (reduce || groups.length < 2) return;
+    if (latestGroupIndex < 0) return;
+
+    const nextKey = orderedGroups[latestGroupIndex]?.key ?? null;
+    if (!nextKey) return;
+
+    setFreshKey(nextKey);
+    const timeout = window.setTimeout(() => {
+      setFreshKey((current) => (current === nextKey ? null : current));
+    }, FRESH_HOLD_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [latestGroupIndex, orderedGroups]);
+
+  useEffect(() => {
+    if (reduce || orderedGroups.length < 2) return;
 
     const interval = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % groups.length);
+      activeChangeSourceRef.current = "auto";
+      setActiveKey((current) => {
+        const currentIndex = orderedGroups.findIndex(
+          (group) => group.key === current,
+        );
+        const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+        const nextIndex = (safeIndex + 1) % orderedGroups.length;
+        return orderedGroups[nextIndex]?.key ?? orderedGroups[0]?.key ?? null;
+      });
     }, compact ? COMPACT_ROTATE_MS : FULL_ROTATE_MS);
 
     return () => window.clearInterval(interval);
-  }, [compact, groups.length, reduce]);
+  }, [compact, orderedGroups, reduce]);
+
+  const commitActiveKey = useCallback(
+    (nextKey: string | null, source: "auto" | "manual") => {
+      if (!nextKey) return;
+      activeChangeSourceRef.current = source;
+      setActiveKey(nextKey);
+    },
+    [],
+  );
+
+  const selectIndex = useCallback(
+    (index: number) => {
+      const nextKey = orderedGroups[index]?.key ?? null;
+      commitActiveKey(nextKey, "manual");
+    },
+    [commitActiveKey, orderedGroups],
+  );
+
+  const stepIndex = useCallback(
+    (direction: -1 | 1) => {
+      if (orderedGroups.length === 0) return;
+      const nextIndex =
+        (activeIndex + direction + orderedGroups.length) % orderedGroups.length;
+      selectIndex(nextIndex);
+    },
+    [activeIndex, orderedGroups.length, selectIndex],
+  );
 
   useEffect(() => {
+    if (activeChangeSourceRef.current !== "manual") return;
+
     const rail = railRef.current;
     const target = thumbRefs.current[activeIndex];
     if (!rail || !target) return;
@@ -104,12 +181,16 @@ function useActivityCarouselState(
       left: Math.max(0, nextLeft),
       behavior: reduce ? "auto" : "smooth",
     });
+    activeChangeSourceRef.current = "auto";
   }, [activeIndex, reduce]);
 
   return {
+    groups: orderedGroups,
     reduce,
     activeIndex,
-    setActiveIndex,
+    selectIndex,
+    goPrev: () => stepIndex(-1),
+    goNext: () => stepIndex(1),
     freshKey,
     railRef,
     registerThumbRef,
@@ -198,10 +279,12 @@ function CarouselHeroCaption({ active }: { active: ActivityGroup }) {
       : "Unknown artist");
   return (
     <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgba(17,17,17,0.86))] p-4 text-white">
-      <p className="font-serif text-xl leading-tight sm:text-2xl">
+      <p className="min-h-[3.25rem] line-clamp-2 font-serif text-xl leading-tight sm:text-2xl">
         {active.artwork.title}
       </p>
-      <p className="mt-1 text-sm text-white/78">{subtitle}</p>
+      <p className="mt-1 min-h-[1.25rem] truncate text-sm text-white/78">
+        {subtitle}
+      </p>
     </div>
   );
 }
@@ -258,12 +341,12 @@ function CarouselDetailCids({ active }: { active: ActivityGroup }) {
         Content IDs
       </p>
       {active.artwork.metadataCid ? (
-        <p className="break-all text-xs text-[var(--color-body)]">
+        <p className="line-clamp-2 break-all text-xs text-[var(--color-body)]">
           Details: {active.artwork.metadataCid}
         </p>
       ) : null}
       {active.artwork.mediaCid ? (
-        <p className="break-all text-xs text-[var(--color-body)]">
+        <p className="line-clamp-2 break-all text-xs text-[var(--color-body)]">
           Artwork: {active.artwork.mediaCid}
         </p>
       ) : null}
@@ -312,10 +395,10 @@ function CarouselDetail({
         <p className="font-mono text-[0.62rem] uppercase tracking-[0.24em] text-[var(--color-muted)]">
           Now featuring
         </p>
-        <h4 className="mt-2 font-serif text-2xl text-[var(--color-ink)] sm:text-3xl">
+        <h4 className="mt-2 min-h-[4.75rem] line-clamp-2 font-serif text-2xl text-[var(--color-ink)] sm:min-h-[5.5rem] sm:text-3xl">
           {active.artwork.title}
         </h4>
-        <p className="mt-2 text-sm leading-relaxed text-[var(--color-body)]">
+        <p className="mt-2 min-h-[4.5rem] line-clamp-3 text-sm leading-relaxed text-[var(--color-body)] sm:min-h-[5.25rem] sm:line-clamp-4">
           {signal.summary}
         </p>
         <CarouselDetailStats active={active} />
@@ -346,7 +429,7 @@ function CarouselActiveSlide({
         exit={{ opacity: 0, y: reduce ? 0 : -14 }}
         transition={{ duration: 0.45, ease: EASE }}
         className={cn(
-          "relative mx-auto grid min-w-0 gap-4",
+          "relative mx-auto grid min-w-0 gap-4 lg:min-h-[34rem]",
           compact
             ? "max-w-[min(100%,64rem)] md:grid-cols-[minmax(0,0.94fr)_minmax(18rem,0.88fr)]"
             : "max-w-[min(100%,70rem)] lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]",
@@ -361,18 +444,18 @@ function CarouselActiveSlide({
 
 function CarouselNavButtons({
   total,
-  setActiveIndex,
+  goPrev,
+  goNext,
 }: {
   total: number;
-  setActiveIndex: (updater: (current: number) => number) => void;
+  goPrev: () => void;
+  goNext: () => void;
 }) {
   return (
     <div className="flex items-center gap-1.5">
       <button
         type="button"
-        onClick={() =>
-          setActiveIndex((current) => (current === 0 ? total - 1 : current - 1))
-        }
+        onClick={goPrev}
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-body)]"
         aria-label="Previous work"
       >
@@ -380,7 +463,7 @@ function CarouselNavButtons({
       </button>
       <button
         type="button"
-        onClick={() => setActiveIndex((current) => (current + 1) % total)}
+        onClick={goNext}
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-body)]"
         aria-label="Next work"
       >
@@ -393,11 +476,13 @@ function CarouselNavButtons({
 function CarouselStatusRow({
   activeIndex,
   total,
-  setActiveIndex,
+  goPrev,
+  goNext,
 }: {
   activeIndex: number;
   total: number;
-  setActiveIndex: (updater: (current: number) => number) => void;
+  goPrev: () => void;
+  goNext: () => void;
 }) {
   return (
     <div className="flex w-full max-w-full min-w-0 items-center justify-between gap-3">
@@ -408,7 +493,7 @@ function CarouselStatusRow({
         <span className="truncate">Rotating through recent arrivals</span>
       </div>
       {total > 1 ? (
-        <CarouselNavButtons total={total} setActiveIndex={setActiveIndex} />
+        <CarouselNavButtons total={total} goPrev={goPrev} goNext={goNext} />
       ) : null}
     </div>
   );
@@ -497,11 +582,6 @@ function CarouselThumbButton({
           ? "border-[var(--color-line-strong)] shadow-[0_20px_60px_-40px_rgba(17,17,17,0.45)]"
           : "border-[var(--color-line)]",
       )}
-      animate={{
-        y: selected ? -2 : 0,
-        scale: selected ? 1.01 : 1,
-      }}
-      transition={{ duration: 0.35, ease: EASE }}
     >
       {fresh ? (
         <motion.span
@@ -529,15 +609,15 @@ function CarouselThumbRail({
   groups,
   activeIndex,
   freshKey,
-  setActiveIndex,
+  selectIndex,
   railRef,
   registerThumbRef,
 }: {
   groups: Array<ActivityGroup>;
   activeIndex: number;
   freshKey: string | null;
-  setActiveIndex: (index: number) => void;
-  railRef: React.RefObject<HTMLDivElement | null>;
+  selectIndex: (index: number) => void;
+  railRef: { current: HTMLDivElement | null };
   registerThumbRef: (index: number, node: HTMLButtonElement | null) => void;
 }) {
   return (
@@ -556,7 +636,7 @@ function CarouselThumbRail({
             prioritizeImage={
               index === activeIndex || group.key === freshKey || index < 4
             }
-            onSelect={setActiveIndex}
+            onSelect={selectIndex}
             registerRef={registerThumbRef}
           />
         ))}
@@ -585,19 +665,22 @@ export function ActivityCarousel({
   compact: boolean;
 }) {
   const {
+    groups: orderedGroups,
     reduce,
     activeIndex,
-    setActiveIndex,
+    selectIndex,
+    goPrev,
+    goNext,
     freshKey,
     railRef,
     registerThumbRef,
   } = useActivityCarouselState(groups, latestEvent, compact);
 
-  if (groups.length === 0) {
+  if (orderedGroups.length === 0) {
     return <EmptyCarouselState />;
   }
 
-  const active = getActiveGroup(groups, activeIndex);
+  const active = getActiveGroup(orderedGroups, activeIndex);
   const signal = activitySignal(
     activityGroupMatchesEvent(active.artwork, latestEvent) ? latestEvent : null,
   );
@@ -620,14 +703,15 @@ export function ActivityCarousel({
       <div className="w-full max-w-full min-w-0 space-y-3">
         <CarouselStatusRow
           activeIndex={activeIndex}
-          total={groups.length}
-          setActiveIndex={setActiveIndex}
+          total={orderedGroups.length}
+          goPrev={goPrev}
+          goNext={goNext}
         />
         <CarouselThumbRail
-          groups={groups}
+          groups={orderedGroups}
           activeIndex={activeIndex}
           freshKey={freshKey}
-          setActiveIndex={setActiveIndex}
+          selectIndex={selectIndex}
           railRef={railRef}
           registerThumbRef={registerThumbRef}
         />
