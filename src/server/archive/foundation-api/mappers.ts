@@ -4,6 +4,7 @@ import { type MediaKind } from "~/server/prisma-client";
 import {
   buildFoundationMintUrl,
   inferFoundationMediaKind,
+  rewriteFoundationAssetUrl,
 } from "~/server/archive/foundation";
 import {
   type foundationCollectionDiscoverySchema,
@@ -56,8 +57,8 @@ export function mapFoundationUser(user: FoundationUser): FoundationUserProfile {
   return {
     accountAddress: user.accountAddress,
     name: user.name ?? null,
-    profileImageUrl: user.profileImageUrl ?? null,
-    coverImageUrl: user.coverImageUrl ?? null,
+    profileImageUrl: rewriteFoundationAssetUrl(user.profileImageUrl),
+    coverImageUrl: rewriteFoundationAssetUrl(user.coverImageUrl),
     bio: user.bio ?? null,
     username: user.username ?? null,
   };

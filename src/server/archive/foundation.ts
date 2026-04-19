@@ -118,6 +118,19 @@ export function buildFoundationMintUrl(
   return `${buildFoundationBaseUrl()}/mint/${chainSlug(chainId)}/${contractAddress}/${tokenId.toString()}`;
 }
 
+// Foundation stores creator asset paths against f8n-production.s3.amazonaws.com,
+// but the bucket is no longer served publicly — the live site reads the same
+// keys through the imgix CDN. Rewrite so rendered <img> src resolves.
+export function rewriteFoundationAssetUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null;
+  return url.replace(
+    /^https?:\/\/f8n-production\.s3\.amazonaws\.com\//,
+    "https://f8n-production.imgix.net/",
+  );
+}
+
 const FOUNDATION_USER_AGENT =
   "foundation-archive/0.1 (+https://foundation.app)";
 const NEXT_DATA_PATTERN =
@@ -255,9 +268,9 @@ function mapFoundationProfile(json: FoundationProfileNextData, url: string) {
   return {
     accountAddress: json.props?.pageProps?.publicKey ?? user.publicKey,
     bio: user.bio ?? null,
-    coverImageUrl: user.coverImageUrl ?? null,
+    coverImageUrl: rewriteFoundationAssetUrl(user.coverImageUrl),
     name: user.name ?? null,
-    profileImageUrl: user.profileImageUrl ?? null,
+    profileImageUrl: rewriteFoundationAssetUrl(user.profileImageUrl),
     username: user.username ?? null,
     url,
   };
