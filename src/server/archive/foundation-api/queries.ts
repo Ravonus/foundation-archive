@@ -79,6 +79,30 @@ export async function fetchFoundationWorksByCreator(
   return filterIpfsWorks(data.nfts.items.map((work) => mapFoundationWork(work)));
 }
 
+export async function fetchFoundationWorksByCreatorPage(
+  accountAddress: string,
+  page = 0,
+  perPage = 24,
+) {
+  const creator = getAddress(accountAddress);
+  const data = foundationNftsByCreatorSchema.parse(
+    await fetchFoundationGraphql(NFTS_BY_CREATOR_QUERY, {
+      by: {
+        creator,
+      },
+      page,
+      perPage,
+    }),
+  );
+
+  return {
+    items: filterIpfsWorks(data.nfts.items.map((work) => mapFoundationWork(work))),
+    page: data.nfts.page,
+    totalItems: data.nfts.totalItems,
+    rawItemCount: data.nfts.items.length,
+  };
+}
+
 interface CreatorPaginationState {
   itemsLength: number;
   perPage: number;

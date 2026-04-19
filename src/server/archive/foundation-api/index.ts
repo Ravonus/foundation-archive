@@ -13,6 +13,7 @@ export {
   fetchFoundationUserByUsername,
   fetchFoundationWorksByCollection,
   fetchFoundationWorksByCreator,
+  fetchFoundationWorksByCreatorPage,
   searchFoundationCollectionsPage,
   searchFoundationUsers,
   searchFoundationWorks,

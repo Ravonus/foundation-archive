@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { getAddress } from "viem";
 
 import { type ArtworkGridItem } from "~/app/_components/artwork-grid";
-import { loadArchivedWorksForArtist } from "~/app/archive/_data";
 import { toArchivedGridItem, toDiscoveredGridItem } from "~/app/archive/_grid-item";
-import { type ArchivedArtworkRow, artworkKey } from "~/app/archive/_types";
-import { archiveItemStatus } from "~/lib/archive-browse";
+import {
+  type ArchivedArtworkRow,
+  artworkKey,
+  hasCapturedServerRoot,
+} from "~/app/archive/_types";
 import {
   buildFoundationProfileUrl,
   tryFetchFoundationProfileByUsername,
@@ -13,11 +15,75 @@ import {
 import {
   discoverFoundationWorks,
   fetchFoundationUserByUsername,
+  fetchFoundationWorksByCreatorPage,
   type FoundationLookupWork,
 } from "~/server/archive/foundation-api";
 import { db } from "~/server/db";
+import { BackupStatus, type Prisma } from "~/server/prisma-client";
 
-import { type PartitionedItems, type ResolvedProfile } from "./_types";
+import {
+  type ProfileItemCounts,
+  type ProfileView,
+  type ResolvedProfile,
+} from "./_types";
+
+export const PROFILE_PAGE_SIZE = 24;
+export const PROFILE_FOUNDATION_PAGE_SIZE = 24;
+
+const ARCHIVED_SELECT = {
+  id: true,
+  chainId: true,
+  slug: true,
+  title: true,
+  artistName: true,
+  artistUsername: true,
+  artistWallet: true,
+  collectionName: true,
+  tokenId: true,
+  contractAddress: true,
+  foundationContractType: true,
+  mediaKind: true,
+  metadataStatus: true,
+  mediaStatus: true,
+  sourceUrl: true,
+  previewUrl: true,
+  staticPreviewUrl: true,
+  foundationUrl: true,
+  updatedAt: true,
+  metadataRoot: {
+    select: {
+      cid: true,
+      relativePath: true,
+      gatewayUrl: true,
+    },
+  },
+  mediaRoot: {
+    select: {
+      cid: true,
+      relativePath: true,
+      gatewayUrl: true,
+    },
+  },
+} as const;
+
+const HAS_ROOTS_WHERE: Prisma.ArtworkWhereInput = {
+  OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
+};
+
+const PRESERVED_WHERE: Prisma.ArtworkWhereInput = {
+  AND: [
+    { OR: [{ metadataRootId: null }, { metadataStatus: BackupStatus.PINNED }] },
+    { OR: [{ mediaRootId: null }, { mediaStatus: BackupStatus.PINNED }] },
+  ],
+};
+
+const SAVED_WHERE: Prisma.ArtworkWhereInput = {
+  AND: [HAS_ROOTS_WHERE, PRESERVED_WHERE],
+};
+
+const SYNCING_WHERE: Prisma.ArtworkWhereInput = {
+  AND: [HAS_ROOTS_WHERE, { NOT: PRESERVED_WHERE }],
+};
 
 function emptyResolvedProfile(accountAddress: string): ResolvedProfile {
   return {
@@ -130,19 +196,6 @@ export function enrichProfileFromWorks(
   };
 }
 
-export function enrichProfileFromArchived(
-  resolved: ResolvedProfile,
-  archivedWorks: ArchivedArtworkRow[],
-): ResolvedProfile {
-  const first = archivedWorks[0];
-
-  return {
-    ...resolved,
-    username: resolved.username ?? first?.artistUsername ?? null,
-    name: resolved.name ?? first?.artistName ?? null,
-  };
-}
-
 export async function hydrateProfileFromFoundation(
   resolved: ResolvedProfile,
 ): Promise<ResolvedProfile> {
@@ -166,79 +219,231 @@ export async function hydrateProfileFromFoundation(
   };
 }
 
-export async function loadArchivedProfileWorks(resolved: ResolvedProfile) {
-  return loadArchivedWorksForArtist({
-    accountAddress: resolved.accountAddress,
-    username: resolved.username,
-  });
-}
-
-type ProfileBucket = "saved" | "syncing" | "found";
-
-function bucketForItem(item: ArtworkGridItem): ProfileBucket {
-  const status = archiveItemStatus(item);
-  if (status === "preserved") return "saved";
-  if (status === "missing") return "found";
-  return "syncing";
-}
-
-export function partitionWorksByArchiveState(
-  works: FoundationLookupWork[],
-  archivedWorks: ArchivedArtworkRow[],
-): PartitionedItems {
-  const archivedByKey = new Map(
-    archivedWorks.map((artwork) => [
-      artworkKey(artwork.contractAddress, artwork.tokenId),
-      artwork,
-    ]),
-  );
-  const seen = new Set<string>();
-  const items: ArtworkGridItem[] = [];
-  const counts = {
-    total: 0,
-    saved: 0,
-    syncing: 0,
-    found: 0,
-  };
-
-  for (const work of works) {
-    const key = artworkKey(work.contractAddress, work.tokenId);
-    const archived = archivedByKey.get(key);
-    const item = archived ? toArchivedGridItem(archived) : toDiscoveredGridItem(work);
-    items.push(item);
-    seen.add(key);
-  }
-
-  for (const archived of archivedWorks) {
-    const key = artworkKey(archived.contractAddress, archived.tokenId);
-    if (seen.has(key)) continue;
-    items.push(toArchivedGridItem(archived));
-    seen.add(key);
-  }
-
-  for (const item of items) {
-    counts.total += 1;
-    counts[bucketForItem(item)] += 1;
-  }
-
-  return { items, counts };
-}
-
-export function normalizeProfileView(view: string) {
+export function normalizeProfileView(view: string | undefined): ProfileView {
   if (view === "saved" || view === "on-server") return "saved";
   if (view === "syncing") return "syncing";
   if (view === "found" || view === "not-yet") return "found";
   return "all";
 }
 
-export function selectVisibleItems(
-  view: string,
-  items: ArtworkGridItem[],
-): ArtworkGridItem[] {
-  const normalized = normalizeProfileView(view);
-  if (normalized === "all") return items;
+function buildArtistWhere(input: {
+  accountAddress: string;
+  username: string | null;
+}): Prisma.ArtworkWhereInput {
+  const artistFilters: Prisma.ArtworkWhereInput[] = [
+    { artistWallet: input.accountAddress.toLowerCase() },
+  ];
+  if (input.username) {
+    artistFilters.push({
+      artistUsername: {
+        equals: input.username,
+        mode: "insensitive",
+      },
+    });
+  }
+  return { OR: artistFilters };
+}
 
-  return items.filter((item) => bucketForItem(item) === normalized);
+function buildArtistArchivedWhere(input: {
+  accountAddress: string;
+  username: string | null;
+  view: ProfileView;
+}): Prisma.ArtworkWhereInput {
+  const artistWhere = buildArtistWhere(input);
+  switch (input.view) {
+    case "saved":
+      return { AND: [artistWhere, SAVED_WHERE] };
+    case "syncing":
+      return { AND: [artistWhere, SYNCING_WHERE] };
+    case "all":
+      return { AND: [artistWhere, HAS_ROOTS_WHERE] };
+    case "found":
+      return { AND: [artistWhere, { NOT: HAS_ROOTS_WHERE }] };
+  }
+}
+
+export type ProfileCursor = {
+  id: string;
+  updatedAt: string;
+};
+
+export function encodeProfileCursor(cursor: ProfileCursor) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+export function decodeProfileCursor(
+  encoded: string | null | undefined,
+): ProfileCursor | null {
+  if (!encoded) return null;
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+    if (typeof parsed.id !== "string") return null;
+    if (typeof parsed.updatedAt !== "string") return null;
+    if (Number.isNaN(Date.parse(parsed.updatedAt))) return null;
+    return { id: parsed.id, updatedAt: parsed.updatedAt };
+  } catch {
+    return null;
+  }
+}
+
+function buildCursorWhere(cursor: ProfileCursor): Prisma.ArtworkWhereInput {
+  const updatedAt = new Date(cursor.updatedAt);
+  return {
+    OR: [
+      { updatedAt: { lt: updatedAt } },
+      {
+        AND: [{ updatedAt }, { id: { lt: cursor.id } }],
+      },
+    ],
+  };
+}
+
+export async function loadArchivedArtistPage(input: {
+  accountAddress: string;
+  username: string | null;
+  view: ProfileView;
+  encodedCursor: string | null;
+}): Promise<{ rows: ArchivedArtworkRow[]; nextCursor: string | null }> {
+  const baseWhere = buildArtistArchivedWhere(input);
+  const cursor = decodeProfileCursor(input.encodedCursor);
+  const where = cursor
+    ? { AND: [baseWhere, buildCursorWhere(cursor)] }
+    : baseWhere;
+
+  const rows = await db.artwork.findMany({
+    where,
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    take: PROFILE_PAGE_SIZE + 1,
+    select: ARCHIVED_SELECT,
+  });
+
+  const page = rows.slice(0, PROFILE_PAGE_SIZE);
+  const hasMore = rows.length > PROFILE_PAGE_SIZE;
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeProfileCursor({
+          id: last.id,
+          updatedAt: last.updatedAt.toISOString(),
+        })
+      : null;
+
+  return { rows: page, nextCursor };
+}
+
+export async function computeArtistCounts(input: {
+  accountAddress: string;
+  username: string | null;
+  foundationTotal: number;
+}): Promise<ProfileItemCounts> {
+  const artistWhere = buildArtistWhere(input);
+  const [withRootsCount, savedCount, syncingCount] = await Promise.all([
+    db.artwork.count({ where: { AND: [artistWhere, HAS_ROOTS_WHERE] } }),
+    db.artwork.count({ where: { AND: [artistWhere, SAVED_WHERE] } }),
+    db.artwork.count({ where: { AND: [artistWhere, SYNCING_WHERE] } }),
+  ]);
+
+  const found = Math.max(0, input.foundationTotal - withRootsCount);
+  const total = withRootsCount + found;
+
+  return {
+    total,
+    saved: savedCount,
+    syncing: syncingCount,
+    found,
+  };
+}
+
+export async function fetchFoundationArtistPage(
+  accountAddress: string,
+  page: number,
+) {
+  return fetchFoundationWorksByCreatorPage(
+    accountAddress,
+    page,
+    PROFILE_FOUNDATION_PAGE_SIZE,
+  );
+}
+
+export function hasMoreFoundationPages(
+  page: number,
+  totalItems: number,
+  rawItemCount: number,
+) {
+  const fetched = (page + 1) * PROFILE_FOUNDATION_PAGE_SIZE;
+  if (rawItemCount < PROFILE_FOUNDATION_PAGE_SIZE) return false;
+  return fetched < totalItems;
+}
+
+function buildArchivedMap(archived: ArchivedArtworkRow[]) {
+  return new Map(
+    archived.map((row) => [artworkKey(row.contractAddress, row.tokenId), row]),
+  );
+}
+
+export async function resolveArchivedRowsForWorks(
+  input: { accountAddress: string; username: string | null },
+  works: FoundationLookupWork[],
+): Promise<Map<string, ArchivedArtworkRow>> {
+  if (works.length === 0) return new Map();
+
+  const rows = await db.artwork.findMany({
+    where: {
+      AND: [
+        buildArtistWhere(input),
+        {
+          OR: works.map((work) => ({
+            chainId: work.chainId,
+            contractAddress: work.contractAddress,
+            tokenId: work.tokenId,
+          })),
+        },
+      ],
+    },
+    select: ARCHIVED_SELECT,
+  });
+
+  return buildArchivedMap(rows);
+}
+
+export function mergeArchivedAndFoundation(input: {
+  view: ProfileView;
+  archivedRows: ArchivedArtworkRow[];
+  foundationWorks: FoundationLookupWork[];
+  archivedByKey: Map<string, ArchivedArtworkRow>;
+  seenKeys?: Set<string>;
+}): { items: ArtworkGridItem[]; seenKeys: Set<string> } {
+  const seen = new Set<string>(input.seenKeys ?? []);
+  const items: ArtworkGridItem[] = [];
+
+  for (const row of input.archivedRows) {
+    const key = artworkKey(row.contractAddress, row.tokenId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(toArchivedGridItem(row));
+  }
+
+  if (input.view === "saved" || input.view === "syncing") {
+    return { items, seenKeys: seen };
+  }
+
+  for (const work of input.foundationWorks) {
+    const key = artworkKey(work.contractAddress, work.tokenId);
+    if (seen.has(key)) continue;
+    const archived = input.archivedByKey.get(key);
+    if (archived && hasCapturedServerRoot(archived)) {
+      if (input.view === "found") continue;
+      seen.add(key);
+      items.push(toArchivedGridItem(archived));
+    } else {
+      seen.add(key);
+      items.push(toDiscoveredGridItem(work));
+    }
+  }
+
+  return { items, seenKeys: seen };
 }
 
 export function foundationUrlFor(resolved: ResolvedProfile) {

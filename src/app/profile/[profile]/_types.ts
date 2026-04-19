@@ -25,7 +25,16 @@ export type ProfileItemCounts = {
   found: number;
 };
 
-export type PartitionedItems = {
+export type ProfileView = "all" | "saved" | "syncing" | "found";
+
+export type ProfileCursorState = {
+  dbCursor: string | null;
+  foundationPage: number;
+  foundationExhausted: boolean;
+};
+
+export type ProfileBrowseInitial = {
   items: ArtworkGridItem[];
-  counts: ProfileItemCounts;
+  seenKeys: string[];
+  cursor: ProfileCursorState;
 };
