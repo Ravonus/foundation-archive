@@ -181,14 +181,19 @@ export async function maybeAdvanceSmartPinBudget(
     };
   }
 
-  const [hasCurrentTierWork, scanCompleted, hasAutomationBacklog] =
-    await Promise.all([
-      hasPendingRootsInCurrentTier(client, policy.smartPinMaxBytes),
-      automaticCrawlerScanCompleted(client),
-      hasActiveAutomationBacklog(client),
-    ]);
+  // Only gate on current-tier work. The earlier gates (scanCompleted +
+  // !hasAutomationBacklog) were intended as "system is idle" checks, but
+  // with continuous discovery running indefinitely, they were never both
+  // true and the budget never advanced — every deferred root was pinned
+  // at the 5MB start tier forever. If there's nothing left to do at the
+  // current tier, that *is* the signal that the tier is exhausted and we
+  // can move up.
+  const hasCurrentTierWork = await hasPendingRootsInCurrentTier(
+    client,
+    policy.smartPinMaxBytes,
+  );
 
-  if (hasCurrentTierWork || !scanCompleted || hasAutomationBacklog) {
+  if (hasCurrentTierWork) {
     return {
       advanced: false,
       policy,
