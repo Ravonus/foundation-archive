@@ -35,6 +35,7 @@ export function ProfileHeader({
           <img
             src={coverImageUrl}
             alt=""
+            referrerPolicy="no-referrer"
             className="h-full w-full object-cover opacity-25"
           />
         </div>

@@ -68,6 +68,8 @@ async function lookupArtistProfile(
     accountAddress: scraped.accountAddress,
     name: scraped.name,
     profileImageUrl: scraped.profileImageUrl,
+    coverImageUrl: scraped.coverImageUrl,
+    bio: scraped.bio,
     username: scraped.username,
   };
 }
@@ -87,6 +89,8 @@ async function prependDirectMintArtistProfile(
       accountAddress: directProfile.accountAddress,
       name: directProfile.name ?? directMintWork.artistName,
       profileImageUrl: directProfile.profileImageUrl ?? null,
+      coverImageUrl: directProfile.coverImageUrl ?? null,
+      bio: directProfile.bio ?? null,
       username: directProfile.username ?? directMintWork.artistUsername,
     },
     ...profiles,
@@ -108,6 +112,8 @@ async function scrapedProfileByUsername(
     accountAddress: scraped.accountAddress,
     name: scraped.name,
     profileImageUrl: scraped.profileImageUrl,
+    coverImageUrl: scraped.coverImageUrl,
+    bio: scraped.bio,
     username: scraped.username,
   };
 }
@@ -146,6 +152,8 @@ function ensureDirectMintArtistProfile(
       accountAddress: directMintWork.artistWallet,
       name: directMintWork.artistName,
       profileImageUrl: null,
+      coverImageUrl: null,
+      bio: null,
       username: directMintWork.artistUsername,
     },
     ...profiles,

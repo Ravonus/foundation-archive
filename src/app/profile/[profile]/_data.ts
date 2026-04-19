@@ -100,6 +100,8 @@ async function resolveProfileFromUsernameKey(
       username: foundProfile.username ?? normalizedKey,
       name: foundProfile.name ?? null,
       profileImageUrl: foundProfile.profileImageUrl ?? null,
+      coverImageUrl: foundProfile.coverImageUrl ?? null,
+      bio: foundProfile.bio ?? null,
     };
   }
 

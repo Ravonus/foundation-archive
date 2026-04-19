@@ -44,7 +44,14 @@ export function ProfileAvatar({
       <img
         src={imageUrl ?? undefined}
         alt={label ?? "Profile avatar"}
-        onError={() => setFailed(true)}
+        referrerPolicy="no-referrer"
+        onError={() => {
+          console.warn("[ProfileAvatar] image failed to load", {
+            imageUrl,
+            label,
+          });
+          setFailed(true);
+        }}
         className={cn("block max-w-full rounded-full object-cover", className)}
       />
     );

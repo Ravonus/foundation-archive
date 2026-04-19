@@ -4,6 +4,8 @@ export interface FoundationUserProfile {
   accountAddress: string;
   name: string | null;
   profileImageUrl: string | null;
+  coverImageUrl: string | null;
+  bio: string | null;
   username: string | null;
 }
 

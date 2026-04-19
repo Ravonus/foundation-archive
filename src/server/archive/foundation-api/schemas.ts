@@ -14,6 +14,8 @@ export const foundationUserSchema = z.object({
   name: z.string().nullable().optional(),
   username: z.string().nullable().optional(),
   profileImageUrl: z.string().nullable().optional(),
+  coverImageUrl: z.string().nullable().optional(),
+  bio: z.string().nullable().optional(),
 });
 
 export const foundationCollectionSchema = z.object({
@@ -127,6 +129,8 @@ export const USER_BY_USERNAME_QUERY = `
       name
       username
       profileImageUrl
+      coverImageUrl
+      bio
     }
   }
 `;

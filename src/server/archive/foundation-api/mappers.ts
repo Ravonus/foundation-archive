@@ -57,6 +57,8 @@ export function mapFoundationUser(user: FoundationUser): FoundationUserProfile {
     accountAddress: user.accountAddress,
     name: user.name ?? null,
     profileImageUrl: user.profileImageUrl ?? null,
+    coverImageUrl: user.coverImageUrl ?? null,
+    bio: user.bio ?? null,
     username: user.username ?? null,
   };
 }
