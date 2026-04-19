@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -94,8 +93,6 @@ function setBridgeConnected(input: {
 
 function shouldProbeBridge(
   bridgeUrl: string,
-  session: BridgeSession | null,
-  pathname: string,
 ) {
   if (typeof window === "undefined") return true;
 
@@ -109,11 +106,7 @@ function shouldProbeBridge(
       return true;
     }
 
-    if (session) {
-      return true;
-    }
-
-    return pathname === "/desktop" || pathname.startsWith("/desktop/");
+    return false;
   } catch {
     return true;
   }
@@ -229,14 +222,12 @@ export function useBridgeHealthProbe(
   session: BridgeSession | null,
   setters: HealthProbeSetters,
 ) {
-  const pathname = usePathname();
-
   const [networkStatus, setNetworkStatus] = useState<BridgeNetworkStatus>(
     INITIAL_NETWORK_STATUS,
   );
   const [retryTick, setRetryTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const probeEnabled = shouldProbeBridge(bridgeUrl, session, pathname);
+  const probeEnabled = shouldProbeBridge(bridgeUrl);
 
   useBridgeProbeLoop({
     bridgeUrl,
@@ -253,6 +244,7 @@ export function useBridgeHealthProbe(
   }, []);
 
   return {
+    probeEnabled,
     networkStatus: probeEnabled ? networkStatus : INITIAL_NETWORK_STATUS,
     retryNow,
   };

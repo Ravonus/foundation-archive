@@ -12,17 +12,61 @@ import {
   Radio,
 } from "lucide-react";
 
-import type {
-  BridgePinInventoryItem,
-  PinVerificationResult,
-} from "~/app/_components/desktop-bridge-provider";
+import type { BridgePinInventoryItem } from "~/app/_components/desktop-bridge-provider";
+import { ModelMediaPreview } from "~/app/_components/model-media-preview";
+import { buildPublicUtilityGatewayUrl } from "~/lib/desktop-relay";
 import { cn, formatDate, shortAddress } from "~/lib/utils";
 
-import { itemContext, itemLabel, type PinMatch } from "../types";
+import {
+  itemContext,
+  itemLabel,
+  pinItemCids,
+  type PinMatch,
+  type PinVerificationSummary,
+} from "../types";
 
 export type PinHealth = "saved" | "unreachable" | "checking" | "missing";
 
+type PreviewKind = "IMAGE" | "VIDEO" | "AUDIO" | "HTML" | "MODEL" | "UNKNOWN";
+
+type PreviewCandidate = {
+  url: string;
+  kind: PreviewKind;
+};
+
 const EASE = [0.22, 1, 0.36, 1] as const;
+const PREVIEW_KIND_MARKERS: Array<{
+  kind: Exclude<PreviewKind, "UNKNOWN">;
+  markers: string[];
+}> = [
+  {
+    kind: "IMAGE",
+    markers: [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"],
+  },
+  {
+    kind: "VIDEO",
+    markers: [".mp4", ".mov", ".webm"],
+  },
+  {
+    kind: "AUDIO",
+    markers: [".mp3", ".wav", ".ogg", ".aac"],
+  },
+  {
+    kind: "HTML",
+    markers: [".html"],
+  },
+  {
+    kind: "MODEL",
+    markers: [
+      ".glb",
+      ".gltf",
+      ".usdz",
+      "model/gltf",
+      "model/vnd.usdz",
+      "model",
+    ],
+  },
+];
 
 function healthClass(health: PinHealth) {
   switch (health) {
@@ -39,20 +83,42 @@ function healthClass(health: PinHealth) {
 
 function healthLabel(
   health: PinHealth,
-  verification: PinVerificationResult | null,
+  verification: PinVerificationSummary | null,
 ) {
-  switch (health) {
-    case "saved":
-      return verification && verification.providerCount > 0
-        ? `${verification.providerCount} on network`
-        : "Saved";
-    case "unreachable":
-      return "Not on network";
-    case "checking":
-      return "Checking network…";
-    case "missing":
-      return "Needs saving";
+  const multiRootLabel = buildMultiRootHealthLabel(health, verification);
+
+  if (multiRootLabel) return multiRootLabel;
+
+  if (health === "saved") {
+    return verification && verification.providerCount > 0
+      ? `${verification.providerCount} on network`
+      : "Saved";
   }
+
+  if (health === "unreachable") return "Not on network";
+  if (health === "checking") return "Checking network…";
+  return "Needs saving";
+}
+
+function buildMultiRootHealthLabel(
+  health: PinHealth,
+  verification: PinVerificationSummary | null,
+) {
+  if (!verification || verification.totalRoots <= 1) return null;
+
+  if (health === "saved") {
+    return `${verification.totalRoots}/${verification.totalRoots} live`;
+  }
+
+  if (health === "unreachable") {
+    return `${verification.reachableRoots}/${verification.totalRoots} live`;
+  }
+
+  if (health === "checking") {
+    return `Checking ${verification.checkedRoots}/${verification.totalRoots}…`;
+  }
+
+  return null;
 }
 
 function healthIcon(health: PinHealth) {
@@ -70,14 +136,67 @@ function healthIcon(health: PinHealth) {
 
 export function pinHealthFor(
   item: BridgePinInventoryItem,
-  verification: PinVerificationResult | null,
+  verification: PinVerificationSummary | null,
   verifying: boolean,
 ): PinHealth {
   if (!item.pinned) return "missing";
-  if (verifying && !verification) return "checking";
+  if (verification?.hasFailure) return "unreachable";
+  if (verifying && (!verification || verification.incomplete))
+    return "checking";
   if (!verification) return "saved";
-  if (verification.reachable && verification.providerCount > 0) return "saved";
+  if (
+    verification.reachable ||
+    (!verification.hasFailure && verification.reachableRoots > 0)
+  ) {
+    return "saved";
+  }
   return "unreachable";
+}
+
+function normalizePreviewKind(value: string | null | undefined): PreviewKind {
+  const normalized = value?.trim().toUpperCase();
+  if (
+    normalized === "IMAGE" ||
+    normalized === "VIDEO" ||
+    normalized === "AUDIO" ||
+    normalized === "HTML" ||
+    normalized === "MODEL"
+  ) {
+    return normalized;
+  }
+  return "UNKNOWN";
+}
+
+function previewKindFromUrl(url: string): PreviewKind {
+  const lower = url.toLowerCase();
+  return (
+    PREVIEW_KIND_MARKERS.find(({ markers }) =>
+      markers.some((marker) => lower.includes(marker)),
+    )?.kind ?? "UNKNOWN"
+  );
+}
+
+function previewKindForPreviewUrl(
+  url: string,
+  fallbackKind: PreviewKind,
+  openUrl: string | null,
+): PreviewKind {
+  if (openUrl && url !== openUrl) return "IMAGE";
+
+  const fromUrl = previewKindFromUrl(url);
+  if (fromUrl !== "UNKNOWN") return fromUrl;
+  return fallbackKind;
+}
+
+function dedupePreviewCandidates(candidates: Array<PreviewCandidate | null>) {
+  const seen = new Set<string>();
+
+  return candidates.filter((candidate): candidate is PreviewCandidate => {
+    if (!candidate) return false;
+    if (seen.has(candidate.url)) return false;
+    seen.add(candidate.url);
+    return true;
+  });
 }
 
 function CardPoster({
@@ -85,17 +204,29 @@ function CardPoster({
   candidates,
 }: {
   title: string;
-  candidates: string[];
+  candidates: PreviewCandidate[];
 }) {
-  const candidateSeed = candidates.join("\u0001");
+  const candidateSeed = candidates
+    .map((candidate) => `${candidate.kind}:${candidate.url}`)
+    .join("\u0001");
   const [candidateState, setCandidateState] = useState(() => ({
     seed: candidateSeed,
     index: 0,
   }));
   const index =
     candidateState.seed === candidateSeed ? candidateState.index : 0;
-
   const active = candidates[index] ?? null;
+  const modelPosterUrl =
+    candidates.find(
+      (candidate) =>
+        candidate.kind === "IMAGE" && candidate.url !== active?.url,
+    )?.url ?? null;
+
+  const advanceCandidate = () =>
+    setCandidateState((current) => ({
+      seed: candidateSeed,
+      index: current.seed === candidateSeed ? current.index + 1 : index + 1,
+    }));
 
   if (!active) {
     return (
@@ -105,18 +236,64 @@ function CardPoster({
     );
   }
 
+  if (active.kind === "VIDEO") {
+    return (
+      <video
+        src={active.url}
+        muted
+        playsInline
+        autoPlay
+        loop
+        preload="metadata"
+        onError={advanceCandidate}
+        className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
+      />
+    );
+  }
+
+  if (active.kind === "HTML") {
+    return (
+      <iframe
+        src={active.url}
+        title={title}
+        loading="lazy"
+        className="h-full w-full border-0 bg-[var(--color-surface-alt)]"
+      />
+    );
+  }
+
+  if (active.kind === "AUDIO") {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[var(--color-surface-alt)] px-4">
+        <audio
+          src={active.url}
+          controls
+          preload="metadata"
+          onError={advanceCandidate}
+          className="w-full max-w-[16rem]"
+        />
+      </div>
+    );
+  }
+
+  if (active.kind === "MODEL") {
+    return (
+      <ModelMediaPreview
+        src={active.url}
+        poster={modelPosterUrl}
+        alt={title}
+        className="h-full w-full"
+      />
+    );
+  }
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={active}
+      src={active.url}
       alt={title}
       loading="lazy"
-      onError={() =>
-        setCandidateState((current) => ({
-          seed: candidateSeed,
-          index: current.seed === candidateSeed ? current.index + 1 : index + 1,
-        }))
-      }
+      onError={advanceCandidate}
       className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
     />
   );
@@ -127,7 +304,7 @@ function HealthBadge({
   verification,
 }: {
   health: PinHealth;
-  verification: PinVerificationResult | null;
+  verification: PinVerificationSummary | null;
 }) {
   return (
     <span
@@ -150,16 +327,61 @@ function resolveHref(primaryMatch: PinMatch | null) {
 function buildPreviewCandidates(
   item: BridgePinInventoryItem,
   primaryMatch: PinMatch | null,
-): string[] {
-  return Array.from(
-    new Set(
-      [
-        primaryMatch?.posterUrl ?? null,
-        item.localGatewayUrl ?? null,
-        item.publicGatewayUrl ?? null,
-      ].filter((value): value is string => Boolean(value)),
-    ),
+): PreviewCandidate[] {
+  const mediaKind = normalizePreviewKind(item.mediaKind);
+  const utilityGatewayUrl = buildPublicUtilityGatewayUrl(
+    item.mediaCid ?? item.cid,
   );
+
+  return dedupePreviewCandidates([
+    primaryMatch?.posterUrl
+      ? { url: primaryMatch.posterUrl, kind: "IMAGE" }
+      : null,
+    item.previewLocalGatewayUrl
+      ? {
+          url: item.previewLocalGatewayUrl,
+          kind: previewKindForPreviewUrl(
+            item.previewLocalGatewayUrl,
+            mediaKind,
+            item.localGatewayUrl,
+          ),
+        }
+      : null,
+    item.previewPublicGatewayUrl
+      ? {
+          url: item.previewPublicGatewayUrl,
+          kind: previewKindForPreviewUrl(
+            item.previewPublicGatewayUrl,
+            mediaKind,
+            item.publicGatewayUrl,
+          ),
+        }
+      : null,
+    item.localGatewayUrl
+      ? {
+          url: item.localGatewayUrl,
+          kind:
+            previewKindFromUrl(item.localGatewayUrl) !== "UNKNOWN"
+              ? previewKindFromUrl(item.localGatewayUrl)
+              : mediaKind,
+        }
+      : null,
+    item.publicGatewayUrl
+      ? {
+          url: item.publicGatewayUrl,
+          kind:
+            previewKindFromUrl(item.publicGatewayUrl) !== "UNKNOWN"
+              ? previewKindFromUrl(item.publicGatewayUrl)
+              : mediaKind,
+        }
+      : null,
+    utilityGatewayUrl
+      ? {
+          url: utilityGatewayUrl,
+          kind: mediaKind,
+        }
+      : null,
+  ]);
 }
 
 function buildTitle(
@@ -199,28 +421,47 @@ function CardMetaRow({
 }: {
   item: BridgePinInventoryItem;
   primaryMatch: PinMatch | null;
-  verification: PinVerificationResult | null;
+  verification: PinVerificationSummary | null;
 }) {
-  const verifiedAt = verification?.checkedAt ?? item.lastVerifiedAt ?? null;
+  const detailError = item.lastError ?? verification?.error ?? null;
+  const metaLines = buildCardMetaLines({
+    item,
+    primaryMatch,
+    verification,
+  });
 
   return (
     <div className="mt-3 space-y-1 text-xs text-[var(--color-muted)]">
       <p className="font-mono text-[0.7rem] break-all">
         {item.cid.slice(0, 14)}…{item.cid.slice(-6)}
       </p>
-      {verifiedAt ? <p>Checked {formatDate(verifiedAt)}</p> : null}
-      {primaryMatch ? (
-        <p>
-          {shortAddress(primaryMatch.contractAddress)} #{primaryMatch.tokenId}
-        </p>
-      ) : null}
-      {item.lastError ? (
-        <p className="line-clamp-1 text-[var(--color-err)]/90">
-          {item.lastError}
-        </p>
+      {metaLines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+      {detailError ? (
+        <p className="line-clamp-2 text-[var(--color-err)]/90">{detailError}</p>
       ) : null}
     </div>
   );
+}
+
+function buildCardMetaLines(input: {
+  item: BridgePinInventoryItem;
+  primaryMatch: PinMatch | null;
+  verification: PinVerificationSummary | null;
+}) {
+  const verifiedAt =
+    input.verification?.checkedAt ?? input.item.lastVerifiedAt ?? null;
+  const relatedRoots = pinItemCids(input.item);
+  return [
+    verifiedAt ? `Checked ${formatDate(verifiedAt)}` : null,
+    relatedRoots.length > 1
+      ? `${input.verification?.reachableRoots ?? 0}/${relatedRoots.length} linked roots`
+      : null,
+    input.primaryMatch
+      ? `${shortAddress(input.primaryMatch.contractAddress)} #${input.primaryMatch.tokenId}`
+      : null,
+  ].filter((line): line is string => Boolean(line));
 }
 
 function CardActions({
@@ -230,6 +471,9 @@ function CardActions({
   item: BridgePinInventoryItem;
   primaryMatch: PinMatch | null;
 }) {
+  const utilityGatewayUrl = buildPublicUtilityGatewayUrl(
+    item.mediaCid ?? item.cid,
+  );
   const pills = [
     primaryMatch?.foundationUrl
       ? {
@@ -242,17 +486,24 @@ function CardActions({
       ? { href: item.localGatewayUrl, label: "Desktop", external: true }
       : null,
     item.publicGatewayUrl
-      ? { href: item.publicGatewayUrl, label: "Public", external: true }
+      ? { href: item.publicGatewayUrl, label: "Pinned", external: true }
+      : null,
+    utilityGatewayUrl
+      ? { href: utilityGatewayUrl, label: "Public", external: true }
       : null,
   ].filter((value): value is NonNullable<typeof value> => Boolean(value));
 
-  if (pills.length === 0) return null;
+  const uniquePills = Array.from(
+    new Map(pills.map((pill) => [pill.href, pill])).values(),
+  );
+
+  if (uniquePills.length === 0) return null;
 
   return (
     <div className="mt-3 flex flex-wrap gap-1.5 text-[0.72rem]">
-      {pills.map((pill) => (
+      {uniquePills.map((pill) => (
         <Link
-          key={pill.label}
+          key={pill.href}
           href={pill.href}
           target={pill.external ? "_blank" : undefined}
           rel={pill.external ? "noreferrer" : undefined}
@@ -275,7 +526,7 @@ export function PinWorkCard({
 }: {
   item: BridgePinInventoryItem;
   matches: PinMatch[];
-  verification: PinVerificationResult | null;
+  verification: PinVerificationSummary | null;
   verifying: boolean;
   largeGrid?: boolean;
 }) {

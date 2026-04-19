@@ -70,7 +70,18 @@ const MEDIA_KIND_TOKENS: ReadonlyArray<{
     tokens: ["svg", "image", ".png", ".jpg", ".jpeg", ".gif", ".webp"],
   },
   { kind: MediaKind.HTML, tokens: ["html"] },
-  { kind: MediaKind.MODEL, tokens: ["model"] },
+  {
+    kind: MediaKind.MODEL,
+    tokens: [
+      "model",
+      ".glb",
+      ".gltf",
+      ".usdz",
+      "model/gltf",
+      "model/vnd.usdz",
+      "3d",
+    ],
+  },
 ];
 
 export function inferFoundationMediaKind(input: {

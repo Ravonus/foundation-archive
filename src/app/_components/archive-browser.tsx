@@ -205,6 +205,7 @@ export function ArchiveBrowser(props: ArchiveBrowserProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isNavigating, startNavigation] = useTransition();
+  const browserRef = useRef<HTMLDivElement>(null);
   const searchParamsString = searchParams.toString();
   const resetKey = [
     props.query,
@@ -221,6 +222,24 @@ export function ArchiveBrowser(props: ArchiveBrowserProps) {
         next.delete("cursor");
       }
       const href = next.toString() ? `${pathname}?${next}` : pathname;
+
+      if (
+        options?.resetCursor &&
+        browserRef.current &&
+        typeof window !== "undefined"
+      ) {
+        const rect = browserRef.current.getBoundingClientRect();
+        if (rect.top < 24 || rect.top > window.innerHeight * 0.35) {
+          const reduceMotion = window.matchMedia(
+            "(prefers-reduced-motion: reduce)",
+          ).matches;
+          browserRef.current.scrollIntoView({
+            block: "start",
+            behavior: reduceMotion ? "auto" : "smooth",
+          });
+        }
+      }
+
       startNavigation(() => {
         router.push(href, { scroll: false });
       });
@@ -229,13 +248,18 @@ export function ArchiveBrowser(props: ArchiveBrowserProps) {
   );
 
   return (
-    <ArchiveBrowserSession
-      key={resetKey}
-      {...props}
-      isNavigating={isNavigating}
-      searchParamsString={searchParamsString}
-      updateSearch={updateSearch}
-    />
+    <div
+      ref={browserRef}
+      className="scroll-mt-[calc(var(--header-offset,64px)+16px)]"
+    >
+      <ArchiveBrowserSession
+        key={resetKey}
+        {...props}
+        isNavigating={isNavigating}
+        searchParamsString={searchParamsString}
+        updateSearch={updateSearch}
+      />
+    </div>
   );
 }
 

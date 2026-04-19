@@ -21,6 +21,10 @@ const LIVE_EVENT_SURFACE_MS = 6_500;
 const LIVE_EVENT_PULSE_MS = 2_400;
 const MAX_SURFACED_EVENTS = 14;
 const MAX_STAGED_EVENTS = 18;
+const HEALTH_OFFLINE_GRACE_MS = 20_000;
+const SOCKET_CONNECT_TIMEOUT_MS = 20_000;
+const SOCKET_RECONNECT_DELAY_MS = 1_000;
+const SOCKET_RECONNECT_DELAY_MAX_MS = 10_000;
 
 function mergeVisibleEvents(
   current: Array<ArchiveLiveEvent>,
@@ -259,17 +263,30 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
     const socketUrl = resolveSocketUrl();
     const healthUrl = resolveSocketHealthUrl();
     let active = true;
+    let lastHealthyAt = 0;
+
+    const setReachability = (reachable: boolean) => {
+      if (!active) return;
+
+      if (reachable) {
+        lastHealthyAt = Date.now();
+        setDaemonReachable(true);
+        return;
+      }
+
+      const withinGraceWindow =
+        lastHealthyAt > 0 && Date.now() - lastHealthyAt < HEALTH_OFFLINE_GRACE_MS;
+      setDaemonReachable(withinGraceWindow ? true : false);
+    };
 
     const checkHealth = async () => {
       if (!healthUrl) return;
 
       try {
         const response = await fetch(healthUrl, { cache: "no-store" });
-        if (!active) return;
-        setDaemonReachable(response.ok);
+        setReachability(response.ok);
       } catch {
-        if (!active) return;
-        setDaemonReachable(false);
+        setReachability(false);
       }
     };
 
@@ -280,14 +297,16 @@ export function useArchiveLiveSnapshot(initialSnapshot: ArchiveLiveSnapshot) {
 
     const socket: Socket = io(socketUrl, {
       reconnection: true,
-      reconnectionDelay: 1_000,
-      timeout: 5_000,
-      upgrade: false,
+      reconnectionDelay: SOCKET_RECONNECT_DELAY_MS,
+      reconnectionDelayMax: SOCKET_RECONNECT_DELAY_MAX_MS,
+      timeout: SOCKET_CONNECT_TIMEOUT_MS,
+      rememberUpgrade: true,
+      transports: ["websocket"],
     });
 
     socket.on("connect", () => {
       setIsConnected(true);
-      setDaemonReachable(true);
+      setReachability(true);
     });
     socket.on("disconnect", () => {
       setIsConnected(false);

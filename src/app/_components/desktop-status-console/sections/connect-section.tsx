@@ -1,6 +1,15 @@
 "use client";
 
-import { ArrowUpRight, Cable, LoaderCircle, Unplug } from "lucide-react";
+import { useEffect } from "react";
+import {
+  AlertCircle,
+  ArrowUpRight,
+  Cable,
+  CheckCircle2,
+  ExternalLink,
+  LoaderCircle,
+  Unplug,
+} from "lucide-react";
 
 import { formatDate } from "~/lib/utils";
 import type {
@@ -8,77 +17,96 @@ import type {
   RelayPairing,
 } from "~/app/_components/desktop-bridge-provider";
 
-import type { ConfigDraft } from "../types";
+import type { DeepLinkStatus } from "../hooks/use-desktop-console-raw-state";
 
 type ConnectProps = {
   reachable: boolean;
-  configDraft: ConfigDraft;
-  setConfigDraft: (updater: (current: ConfigDraft) => ConfigDraft) => void;
+  relayConnected: boolean;
+  localBridgeProbeEnabled: boolean;
+  ownerTokenReady: boolean;
   pairing: RelayPairing | null;
   pairingUrl: string | null;
+  deepLinkStatus: DeepLinkStatus;
   selectedDevice: RelayOwnerDevice | null;
   isConnectingLocal: boolean;
   isPairing: boolean;
   isDisconnecting: boolean;
   connectThisComputer: () => void;
-  createPair: () => void;
+  preparePairingLink: (options?: { force?: boolean; silent?: boolean }) => void;
+  openPreparedPairing: () => void;
   disconnectSelectedDevice: () => void;
 };
 
-function ConnectIntro({ reachable }: { reachable: boolean }) {
+const PAIRING_REFRESH_BUFFER_MS = 30_000;
+
+function pairingStillUsable(pairing: RelayPairing | null) {
+  if (!pairing) return false;
+
+  const expiresAt = Date.parse(pairing.expiresAt);
+  if (Number.isNaN(expiresAt)) return true;
+  return expiresAt - Date.now() > PAIRING_REFRESH_BUFFER_MS;
+}
+
+function ConnectIntro({
+  reachable,
+  relayConnected,
+  selectedDevice,
+}: {
+  reachable: boolean;
+  relayConnected: boolean;
+  selectedDevice: RelayOwnerDevice | null;
+}) {
+  if (relayConnected) {
+    return (
+      <>
+        <p className="font-mono text-[0.68rem] tracking-[0.3em] text-[var(--color-muted)] uppercase">
+          Open desktop app
+        </p>
+        <h3 className="mt-2 font-serif text-3xl text-[var(--color-ink)]">
+          Your desktop app is already linked
+        </h3>
+        <p className="mt-2 text-sm text-[var(--color-body)]">
+          Archive pages can already send works to{" "}
+          <span className="font-medium text-[var(--color-ink)]">
+            {selectedDevice?.deviceLabel ?? "this computer"}
+          </span>
+          . You can jump straight to your saved works below.
+        </p>
+      </>
+    );
+  }
+
+  if (reachable) {
+    return (
+      <>
+        <p className="font-mono text-[0.68rem] tracking-[0.3em] text-[var(--color-muted)] uppercase">
+          Connect desktop app
+        </p>
+        <h3 className="mt-2 font-serif text-3xl text-[var(--color-ink)]">
+          The app is already open here
+        </h3>
+        <p className="mt-2 text-sm text-[var(--color-body)]">
+          Click once to connect this browser to the desktop app on this
+          computer. After that, archive pages can send works here automatically.
+        </p>
+      </>
+    );
+  }
+
   return (
     <>
       <p className="font-mono text-[0.68rem] tracking-[0.3em] text-[var(--color-muted)] uppercase">
-        Step 1
+        Open desktop app
       </p>
       <h3 className="mt-2 font-serif text-3xl text-[var(--color-ink)]">
-        Connect the desktop app
+        One click should do it
       </h3>
       <p className="mt-2 text-sm text-[var(--color-body)]">
-        Give this computer a friendly name (optional), then click the button
-        below. Once connected, you can save works to your computer from any
-        work&apos;s page.
+        We&apos;ll try to open the desktop app and connect it automatically. If
+        your browser ignores the deep link, you&apos;ll get a manual link right
+        below.
       </p>
-
-      {reachable ? (
-        <p className="mt-3 text-sm text-[var(--color-muted)]">
-          Good news: the app is already running on this computer. You can
-          connect in one click. No link needed.
-        </p>
-      ) : null}
     </>
-  );
-}
-
-function DeviceNameInput({
-  configDraft,
-  setConfigDraft,
-}: {
-  configDraft: ConfigDraft;
-  setConfigDraft: (updater: (current: ConfigDraft) => ConfigDraft) => void;
-}) {
-  return (
-    <div className="mt-5 space-y-4">
-      <label className="block">
-        <span className="mb-1 block text-sm text-[var(--color-body)]">
-          Computer name (optional)
-        </span>
-        <span className="mb-2 block text-xs text-[var(--color-muted)]">
-          Helps you recognize this computer if you connect more than one.
-        </span>
-        <input
-          value={configDraft.relayDeviceName}
-          onChange={(event) =>
-            setConfigDraft((current) => ({
-              ...current,
-              relayDeviceName: event.target.value,
-            }))
-          }
-          placeholder="e.g. Studio MacBook"
-          className="w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-ink)] outline-none"
-        />
-      </label>
-    </div>
   );
 }
 
@@ -94,7 +122,7 @@ function ConnectLocalButton({
       type="button"
       onClick={onClick}
       disabled={isConnectingLocal}
-      title="Use the desktop app that's already running on this computer."
+      title="Connect the desktop app that's already open on this computer."
       className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] disabled:opacity-55"
     >
       {isConnectingLocal ? (
@@ -107,33 +135,44 @@ function ConnectLocalButton({
   );
 }
 
-function CreatePairButton({
-  reachable,
+function OpenAppButton({
   isPairing,
-  onClick,
+  pairingUrl,
+  onPrepare,
+  onOpen,
 }: {
-  reachable: boolean;
   isPairing: boolean;
-  onClick: () => void;
+  pairingUrl: string | null;
+  onPrepare: () => void;
+  onOpen: () => void;
 }) {
-  const classes = reachable
-    ? "inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] px-4 py-2 text-sm text-[var(--color-body)] disabled:opacity-55"
-    : "inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] disabled:opacity-55";
+  if (pairingUrl) {
+    return (
+      <a
+        href={pairingUrl}
+        onClick={onOpen}
+        className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] hover:opacity-90"
+      >
+        <ExternalLink aria-hidden className="h-4 w-4" />
+        Open desktop app
+      </a>
+    );
+  }
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={onPrepare}
       disabled={isPairing}
-      className={classes}
-      title="Generate a one-time link to open the desktop app (works on a different computer too)."
+      title="Prepare a one-time desktop app link."
+      className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] disabled:opacity-55"
     >
       {isPairing ? (
         <LoaderCircle aria-hidden className="h-4 w-4 animate-spin" />
       ) : (
         <Cable aria-hidden className="h-4 w-4" />
       )}
-      {reachable ? "Create a link instead" : "Create a connection link"}
+      Open desktop app
     </button>
   );
 }
@@ -150,7 +189,7 @@ function DisconnectButton({
       type="button"
       onClick={onClick}
       disabled={isDisconnecting}
-      title="Stop this site from sending works to this computer. Your saved works stay."
+      title="Stop this site from sending works to this desktop app. Your saved works stay on the computer."
       className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] px-4 py-2 text-sm text-[var(--color-body)] disabled:opacity-55"
     >
       {isDisconnecting ? (
@@ -167,28 +206,34 @@ function ActionButtons(
   props: Pick<
     ConnectProps,
     | "reachable"
-    | "selectedDevice"
+    | "relayConnected"
+    | "pairingUrl"
     | "isConnectingLocal"
     | "isPairing"
     | "isDisconnecting"
     | "connectThisComputer"
-    | "createPair"
+    | "preparePairingLink"
+    | "openPreparedPairing"
+    | "selectedDevice"
     | "disconnectSelectedDevice"
   >,
 ) {
   return (
     <div className="mt-5 flex flex-wrap gap-2">
-      {props.reachable ? (
+      {props.reachable && !props.relayConnected ? (
         <ConnectLocalButton
           isConnectingLocal={props.isConnectingLocal}
           onClick={props.connectThisComputer}
         />
       ) : null}
-      <CreatePairButton
-        reachable={props.reachable}
-        isPairing={props.isPairing}
-        onClick={props.createPair}
-      />
+      {!props.reachable ? (
+        <OpenAppButton
+          isPairing={props.isPairing}
+          pairingUrl={props.pairingUrl}
+          onPrepare={() => props.preparePairingLink({ force: true })}
+          onOpen={props.openPreparedPairing}
+        />
+      ) : null}
       {props.selectedDevice ? (
         <DisconnectButton
           isDisconnecting={props.isDisconnecting}
@@ -199,42 +244,209 @@ function ActionButtons(
   );
 }
 
+function statusTone(status: DeepLinkStatus, relayConnected: boolean) {
+  if (relayConnected) {
+    return {
+      border: "border-emerald-500/40",
+      background: "bg-emerald-500/10",
+      text: "text-emerald-200",
+    };
+  }
+
+  if (status === "error") {
+    return {
+      border: "border-rose-500/40",
+      background: "bg-rose-500/10",
+      text: "text-rose-100",
+    };
+  }
+
+  return {
+    border: "border-[var(--color-line)]",
+    background: "bg-[var(--color-surface-alt)]",
+    text: "text-[var(--color-ink)]",
+  };
+}
+
+function StatusIcon({
+  deepLinkStatus,
+  relayConnected,
+}: {
+  deepLinkStatus: DeepLinkStatus;
+  relayConnected: boolean;
+}) {
+  if (relayConnected) {
+    return <CheckCircle2 aria-hidden className="h-5 w-5 text-emerald-300" />;
+  }
+
+  if (deepLinkStatus === "preparing" || deepLinkStatus === "opening") {
+    return <LoaderCircle aria-hidden className="h-5 w-5 animate-spin" />;
+  }
+
+  if (deepLinkStatus === "waiting") {
+    return <Cable aria-hidden className="h-5 w-5 text-[var(--color-ink)]" />;
+  }
+
+  if (deepLinkStatus === "error") {
+    return <AlertCircle aria-hidden className="h-5 w-5 text-rose-200" />;
+  }
+
+  return <Cable aria-hidden className="h-5 w-5 text-[var(--color-ink)]" />;
+}
+
+function statusCopy({
+  reachable,
+  relayConnected,
+  ownerTokenReady,
+  pairing,
+  deepLinkStatus,
+  selectedDevice,
+}: Pick<
+  ConnectProps,
+  | "reachable"
+  | "relayConnected"
+  | "ownerTokenReady"
+  | "pairing"
+  | "deepLinkStatus"
+  | "selectedDevice"
+>) {
+  if (relayConnected) {
+    return {
+      title: "Desktop app connected",
+      body: `This browser is linked to ${selectedDevice?.deviceLabel ?? "your desktop app"}. Archive pages can send works there now.`,
+    };
+  }
+
+  if (reachable) {
+    return {
+      title: "Desktop app found on this computer",
+      body: "The app is already running locally. Click once to connect this browser and you're done.",
+    };
+  }
+
+  if (!ownerTokenReady) {
+    return {
+      title: "Preparing your secure link",
+      body: "Getting a one-time connection link ready so the browser can open the desktop app safely.",
+    };
+  }
+
+  if (deepLinkStatus === "preparing") {
+    return {
+      title: "Preparing your app link",
+      body: "Making a fresh one-time link for this browser and this computer.",
+    };
+  }
+
+  if (deepLinkStatus === "opening") {
+    return {
+      title: "Opening the desktop app",
+      body: "Your browser should hand off to the installed desktop app now.",
+    };
+  }
+
+  if (deepLinkStatus === "waiting") {
+    return {
+      title: "Waiting for the app to confirm",
+      body: "The app should pop open and tell the site it's ready. Keep this tab open for a moment.",
+    };
+  }
+
+  if (deepLinkStatus === "error") {
+    return {
+      title: "Couldn't prepare the app link",
+      body: "Try the button again below. If the browser ignores it, the manual link stays available here too.",
+    };
+  }
+
+  if (pairing) {
+    return {
+      title: "Your app link is ready",
+      body: "Click Open desktop app below. If nothing happens, use the manual link right under it.",
+    };
+  }
+
+  return {
+    title: "Open the desktop app",
+    body: "We’ll create a one-time link in the background, then one click should open and connect the app.",
+  };
+}
+
+function DeepLinkStatusCard(
+  props: Pick<
+    ConnectProps,
+    | "reachable"
+    | "relayConnected"
+    | "ownerTokenReady"
+    | "pairing"
+    | "deepLinkStatus"
+    | "selectedDevice"
+  >,
+) {
+  const tone = statusTone(props.deepLinkStatus, props.relayConnected);
+  const copy = statusCopy(props);
+
+  return (
+    <div
+      className={`mt-6 rounded-[1.6rem] border p-5 ${tone.border} ${tone.background}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 ${tone.text}`}>
+          <StatusIcon
+            deepLinkStatus={props.deepLinkStatus}
+            relayConnected={props.relayConnected}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-[var(--color-ink)]">
+            {copy.title}
+          </p>
+          <p className="mt-2 text-sm text-[var(--color-body)]">{copy.body}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PairingCard({
   pairing,
   pairingUrl,
+  onOpen,
 }: {
   pairing: RelayPairing;
   pairingUrl: string | null;
+  onOpen: () => void;
 }) {
   return (
     <div className="mt-6 rounded-[1.6rem] border border-[var(--color-line)] bg-[var(--color-surface-alt)] p-5">
-      <p className="font-mono text-[0.76rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
-        Ready to open
+      <p className="font-medium text-[var(--color-ink)]">
+        If the app didn&apos;t open, try the link again.
       </p>
-      <p className="mt-2 text-sm text-[var(--color-body)]">
-        Click the button below to open the app. This link expires{" "}
-        {formatDate(pairing.expiresAt)}.
+      <p className="mt-2 text-sm text-[var(--color-muted)]">
+        This one-time link expires {formatDate(pairing.expiresAt)}.
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {pairingUrl ? (
+
+      {pairingUrl ? (
+        <div className="mt-4 flex flex-wrap gap-2">
           <a
             href={pairingUrl}
+            onClick={onOpen}
             className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-bg)] hover:opacity-90"
           >
-            Open desktop app
+            Open app again
             <ArrowUpRight aria-hidden className="h-4 w-4" />
           </a>
-        ) : null}
-      </div>
-      <div className="mt-4 rounded-[1.2rem] border border-dashed border-[var(--color-line)] px-4 py-3">
-        <p className="font-mono text-[0.66rem] tracking-[0.24em] text-[var(--color-muted)] uppercase">
-          Backup code
+        </div>
+      ) : null}
+
+      <details className="mt-4 rounded-[1.2rem] border border-dashed border-[var(--color-line)] px-4 py-3">
+        <summary className="cursor-pointer text-sm font-medium text-[var(--color-ink)]">
+          Manual link and backup code
+        </summary>
+        <p className="mt-3 text-xs text-[var(--color-muted)]">
+          Only use this if your browser refuses to open the app automatically.
         </p>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">
-          If the button doesn&apos;t open the app, type this code into the
-          app&apos;s &ldquo;Connect from link&rdquo; screen.
-        </p>
-        <p className="mt-2 font-serif text-3xl text-[var(--color-ink)]">
+        <p className="mt-3 font-serif text-3xl text-[var(--color-ink)]">
           {pairing.pairingCode}
         </p>
         {pairingUrl ? (
@@ -242,43 +454,117 @@ function PairingCard({
             {pairingUrl}
           </p>
         ) : null}
-      </div>
+      </details>
     </div>
   );
 }
 
-function PairingPlaceholder() {
+function RelayNote({
+  localBridgeProbeEnabled,
+  selectedDevice,
+}: {
+  localBridgeProbeEnabled: boolean;
+  selectedDevice: RelayOwnerDevice | null;
+}) {
+  if (localBridgeProbeEnabled) return null;
+
   return (
-    <div className="mt-6 rounded-[1.6rem] border border-dashed border-[var(--color-line)] bg-[var(--color-surface-alt)] px-6 py-10 text-center text-sm text-[var(--color-muted)]">
-      Click &ldquo;Create a connection link&rdquo; above when you&apos;re ready
-      to connect.
-    </div>
+    <p className="mt-4 text-xs text-[var(--color-muted)]">
+      This browser can&apos;t talk to `127.0.0.1` directly from the public site,
+      so the page waits for the archive relay instead. If you already linked{" "}
+      {selectedDevice?.deviceLabel ?? "a desktop app"}, its saved works will
+      appear here as soon as that app reconnects.
+    </p>
   );
 }
 
 export function ConnectSection(props: ConnectProps) {
+  const {
+    deepLinkStatus,
+    isPairing,
+    ownerTokenReady,
+    pairing,
+    preparePairingLink,
+    reachable,
+    relayConnected,
+  } = props;
+
+  useEffect(() => {
+    if (reachable || relayConnected || !ownerTokenReady) {
+      return;
+    }
+
+    if (isPairing) {
+      return;
+    }
+
+    if (
+      deepLinkStatus === "preparing" ||
+      deepLinkStatus === "opening" ||
+      deepLinkStatus === "waiting" ||
+      deepLinkStatus === "error"
+    ) {
+      return;
+    }
+
+    if (pairingStillUsable(pairing)) {
+      return;
+    }
+
+    preparePairingLink({ silent: true });
+  }, [
+    deepLinkStatus,
+    isPairing,
+    ownerTokenReady,
+    pairing,
+    preparePairingLink,
+    reachable,
+    relayConnected,
+  ]);
+
   return (
     <div className="rounded-[2rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-6">
-      <ConnectIntro reachable={props.reachable} />
-      <DeviceNameInput
-        configDraft={props.configDraft}
-        setConfigDraft={props.setConfigDraft}
+      <ConnectIntro
+        reachable={props.reachable}
+        relayConnected={props.relayConnected}
+        selectedDevice={props.selectedDevice}
       />
+
+      <DeepLinkStatusCard
+        reachable={props.reachable}
+        relayConnected={props.relayConnected}
+        ownerTokenReady={props.ownerTokenReady}
+        pairing={props.pairing}
+        deepLinkStatus={props.deepLinkStatus}
+        selectedDevice={props.selectedDevice}
+      />
+
       <ActionButtons
         reachable={props.reachable}
+        relayConnected={props.relayConnected}
+        pairingUrl={props.pairingUrl}
         selectedDevice={props.selectedDevice}
         isConnectingLocal={props.isConnectingLocal}
         isPairing={props.isPairing}
         isDisconnecting={props.isDisconnecting}
         connectThisComputer={props.connectThisComputer}
-        createPair={props.createPair}
+        preparePairingLink={props.preparePairingLink}
+        openPreparedPairing={props.openPreparedPairing}
         disconnectSelectedDevice={props.disconnectSelectedDevice}
       />
+
+      <RelayNote
+        localBridgeProbeEnabled={props.localBridgeProbeEnabled}
+        selectedDevice={props.selectedDevice}
+      />
+
       {props.pairing ? (
-        <PairingCard pairing={props.pairing} pairingUrl={props.pairingUrl} />
-      ) : (
-        <PairingPlaceholder />
-      )}
+        <PairingCard
+          pairing={props.pairing}
+          pairingUrl={props.pairingUrl}
+          onOpen={props.openPreparedPairing}
+        />
+      ) : null}
     </div>
   );
 }

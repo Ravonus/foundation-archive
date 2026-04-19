@@ -5,7 +5,7 @@ import {
 } from "~/lib/archive-browse";
 import { type FoundationLookupWork } from "~/server/archive/foundation-api";
 import { db } from "~/server/db";
-import { MediaKind, type Prisma } from "~/server/prisma-client";
+import { BackupStatus, MediaKind, type Prisma } from "~/server/prisma-client";
 
 import {
   ARCHIVE_PAGE_SIZE,
@@ -89,8 +89,10 @@ function buildStatusWhere(
   };
   const preservedWhere: Prisma.ArtworkWhereInput = {
     AND: [
-      { OR: [{ metadataRootId: null }, { metadataStatus: "PINNED" }] },
-      { OR: [{ mediaRootId: null }, { mediaStatus: "PINNED" }] },
+      {
+        OR: [{ metadataRootId: null }, { metadataStatus: BackupStatus.PINNED }],
+      },
+      { OR: [{ mediaRootId: null }, { mediaStatus: BackupStatus.PINNED }] },
     ],
   };
   const partialWhere: Prisma.ArtworkWhereInput = {
@@ -100,13 +102,19 @@ function buildStatusWhere(
       {
         OR: [
           { metadataRootId: null },
-          { metadataStatus: { in: ["DOWNLOADED", "PINNED"] } },
+          {
+            metadataStatus: {
+              in: [BackupStatus.DOWNLOADED, BackupStatus.PINNED],
+            },
+          },
         ],
       },
       {
         OR: [
           { mediaRootId: null },
-          { mediaStatus: { in: ["DOWNLOADED", "PINNED"] } },
+          {
+            mediaStatus: { in: [BackupStatus.DOWNLOADED, BackupStatus.PINNED] },
+          },
         ],
       },
     ],
@@ -122,7 +130,9 @@ function buildStatusWhere(
     case "failed":
       return failedWhere;
     case "missing":
-      return { id: "__missing__" };
+      return {
+        AND: [{ metadataRootId: null }, { mediaRootId: null }],
+      };
   }
 }
 
@@ -158,9 +168,13 @@ export function buildArchivedWhere(
   status: ArchiveStatusFilter,
   media: ArchiveMediaFilter,
 ): Prisma.ArtworkWhereInput {
-  const filters: Prisma.ArtworkWhereInput[] = [
-    { OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }] },
-  ];
+  const filters: Prisma.ArtworkWhereInput[] = [];
+
+  if (status !== "missing") {
+    filters.push({
+      OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
+    });
+  }
 
   if (query) {
     filters.push(queryFilter(query));

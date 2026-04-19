@@ -22,6 +22,12 @@ export type RelayPinInventoryItem = {
   syncPath: string | null;
   localGatewayUrl: string | null;
   publicGatewayUrl: string | null;
+  previewLocalGatewayUrl: string | null;
+  previewPublicGatewayUrl: string | null;
+  mediaKind: string | null;
+  metadataCid: string | null;
+  mediaCid: string | null;
+  relatedCids: string[];
   lastSyncedAt: string | null;
   lastSyncError: string | null;
   syncCount: number;
@@ -75,6 +81,7 @@ export type RelayOwnerClientMessage =
     };
 
 export const FOUNDATION_SHARE_BRIDGE_SCHEME = "foundationsharebridge";
+export const PUBLIC_UTILITY_GATEWAY_BASE_URL = "https://dweb.link";
 
 function isLoopback(hostname: string) {
   return hostname === "127.0.0.1" || hostname === "localhost";
@@ -138,4 +145,8 @@ export function buildFoundationShareBridgeDeepLink(input: {
   params.set("pairing_code", input.pairingCode);
   params.set("device_name", input.deviceName);
   return `${FOUNDATION_SHARE_BRIDGE_SCHEME}://pair?${params.toString()}`;
+}
+
+export function buildPublicUtilityGatewayUrl(cid: string) {
+  return `${PUBLIC_UTILITY_GATEWAY_BASE_URL}/ipfs/${encodeURIComponent(cid.trim())}`;
 }

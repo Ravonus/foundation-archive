@@ -76,8 +76,10 @@ export function ProfileLiveShell({
     const socket: Socket = io(resolveSocketUrl(), {
       reconnection: true,
       reconnectionDelay: 1000,
-      timeout: 5000,
-      upgrade: false,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
+      rememberUpgrade: true,
+      transports: ["websocket"],
     });
 
     socket.on("connect", () => {

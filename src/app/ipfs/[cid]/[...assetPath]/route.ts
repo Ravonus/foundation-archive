@@ -31,11 +31,12 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
+  ".svg": "image/svg+xml",
   ".txt": "text/plain; charset=utf-8",
+  ".usdz": "model/vnd.usdz+zip",
   ".wav": "audio/wav",
   ".webm": "video/webm",
   ".webp": "image/webp",
-  ".svg": "image/svg+xml",
 };
 
 function chooseContentType(

@@ -74,9 +74,15 @@ function SummaryTotals({
         {pinnedCount} file{pinnedCount === 1 ? "" : "s"} saved on this computer
         {extra}.
       </p>
-      <p className="mt-1 text-[var(--color-muted)]">
-        Last checked {formatDate(visibleInventoryTime)}.
-      </p>
+      {visibleInventoryTime ? (
+        <p className="mt-1 text-[var(--color-muted)]">
+          Last checked {formatDate(visibleInventoryTime)}.
+        </p>
+      ) : (
+        <p className="mt-1 text-[var(--color-muted)]">
+          Open or reconnect the desktop app to load the latest saved works.
+        </p>
+      )}
     </div>
   );
 }
@@ -91,7 +97,7 @@ function SummaryActions({
 >) {
   return (
     <div className="mt-5 flex flex-wrap gap-2">
-      {selectedDevice ? (
+      {selectedDevice?.connected ? (
         <button
           type="button"
           onClick={() => requestRelayInventory(selectedDevice.id)}
@@ -122,14 +128,14 @@ export function PinsSummarySection(props: PinsSummaryProps) {
   return (
     <div className="rounded-[2rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-6">
       <p className="font-mono text-[0.68rem] tracking-[0.3em] text-[var(--color-muted)] uppercase">
-        2. Your saved works
+        Saved works
       </p>
       <h3 className="mt-2 font-serif text-3xl text-[var(--color-ink)]">
-        What&apos;s already on this computer
+        What&apos;s on this computer
       </h3>
       <p className="mt-2 text-sm text-[var(--color-body)]">
-        Foundation works show their archive links here. Anything else the app
-        is holding for you is listed too.
+        Once the desktop app is connected, your saved works appear here. If a
+        work matches the archive, you&apos;ll see its archive page too.
       </p>
 
       <DeviceTabs

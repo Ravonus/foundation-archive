@@ -17,6 +17,8 @@ type HeaderProps = {
   feedback: string | null;
   error: string | null;
   networkStatus: BridgeNetworkStatus;
+  relayConnected: boolean;
+  localBridgeProbeEnabled: boolean;
   reachable: boolean;
   retryNetwork: () => void;
 };
@@ -83,6 +85,8 @@ export function BridgeStatusHeader({
   feedback,
   error,
   networkStatus,
+  relayConnected,
+  localBridgeProbeEnabled,
   reachable,
   retryNetwork,
 }: HeaderProps) {
@@ -102,6 +106,8 @@ export function BridgeStatusHeader({
       <div className="mt-4">
         <NetworkStatusBanner
           status={networkStatus}
+          relayConnected={relayConnected}
+          localBridgeProbeEnabled={localBridgeProbeEnabled}
           reachable={reachable}
           retry={retryNetwork}
         />

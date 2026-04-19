@@ -250,7 +250,7 @@ export function StatPanel({ value, label, note, className }: StatPanelProps) {
         {label}
       </p>
       <div className="mt-4">
-        <p className="font-serif text-3xl tracking-tight text-[var(--color-brand-green)] sm:text-4xl">
+        <p className="font-serif text-2xl leading-tight tracking-tight text-[var(--color-brand-green)] hyphens-auto break-words sm:text-3xl">
           {value}
         </p>
         {note ? (

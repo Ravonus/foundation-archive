@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Check } from "lucide-react";
 
 import { DesktopBridgeProvider } from "~/app/_components/desktop-bridge-provider";
+import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { DesktopShareButton } from "~/app/_components/desktop-share-button";
 import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
@@ -13,10 +14,7 @@ import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 import { type Prisma } from "~/server/prisma-client";
 
-import {
-  TechnicalDetails,
-  type RootCardItem,
-} from "./_technical-details";
+import { TechnicalDetails, type RootCardItem } from "./_technical-details";
 
 export const dynamic = "force-dynamic";
 
@@ -91,12 +89,14 @@ type ArtworkWithRelations = Prisma.ArtworkGetPayload<{
 type IpfsRoot = NonNullable<ArtworkWithRelations["metadataRoot"]>;
 
 type DerivedView = {
+  browserMediaUrl: string | null;
   localMediaUrl: string | null;
   localMetadataUrl: string | null;
   gatewayMediaUrl: string | null;
   gatewayMetadataUrl: string | null;
   imagePreviewUrl: string | null;
   canRenderBrowserVideo: boolean;
+  canRenderBrowserModel: boolean;
   hasShareableRoots: boolean;
   health: Health;
   copy: ReturnType<typeof healthCopy>;
@@ -115,9 +115,9 @@ function localUrlFor(root: IpfsRoot | null, status: string): string | null {
 
 function pickImagePreviewUrl(
   artwork: ArtworkWithRelations,
-  gatewayMediaUrl: string | null,
+  browserMediaUrl: string | null,
 ): string | null {
-  if (gatewayMediaUrl && artwork.mediaKind === "IMAGE") return gatewayMediaUrl;
+  if (browserMediaUrl && artwork.mediaKind === "IMAGE") return browserMediaUrl;
   if (artwork.staticPreviewUrl) return artwork.staticPreviewUrl;
   if (artwork.previewUrl) return artwork.previewUrl;
   if (artwork.mediaKind !== "IMAGE") return null;
@@ -201,7 +201,8 @@ function deriveView(artwork: ArtworkWithRelations): DerivedView {
   );
   const gatewayMediaUrl = artwork.mediaRoot?.gatewayUrl ?? null;
   const gatewayMetadataUrl = artwork.metadataRoot?.gatewayUrl ?? null;
-  const imagePreviewUrl = pickImagePreviewUrl(artwork, gatewayMediaUrl);
+  const browserMediaUrl = localMediaUrl ?? gatewayMediaUrl ?? artwork.sourceUrl;
+  const imagePreviewUrl = pickImagePreviewUrl(artwork, browserMediaUrl);
   const health = healthOf({
     hasMetadataRoot: Boolean(artwork.metadataRoot),
     hasMediaRoot: Boolean(artwork.mediaRoot),
@@ -209,13 +210,16 @@ function deriveView(artwork: ArtworkWithRelations): DerivedView {
     mediaStatus: artwork.mediaStatus,
   });
   return {
+    browserMediaUrl,
     localMediaUrl,
     localMetadataUrl,
     gatewayMediaUrl,
     gatewayMetadataUrl,
     imagePreviewUrl,
     canRenderBrowserVideo:
-      Boolean(gatewayMediaUrl) && artwork.mediaKind === "VIDEO",
+      Boolean(browserMediaUrl) && artwork.mediaKind === "VIDEO",
+    canRenderBrowserModel:
+      Boolean(browserMediaUrl) && artwork.mediaKind === "MODEL",
     hasShareableRoots: Boolean(
       artwork.metadataRoot?.cid ?? artwork.mediaRoot?.cid,
     ),
@@ -284,13 +288,23 @@ function renderPreviewInner({ artwork, view }: SectionProps) {
   if (view.canRenderBrowserVideo) {
     return (
       <video
-        src={view.gatewayMediaUrl ?? undefined}
+        src={view.browserMediaUrl ?? undefined}
         poster={artwork.staticPreviewUrl ?? view.imagePreviewUrl ?? undefined}
         controls
         loop
         muted
         playsInline
         className="aspect-square w-full bg-black object-contain"
+      />
+    );
+  }
+  if (view.canRenderBrowserModel && view.browserMediaUrl) {
+    return (
+      <ModelMediaPreview
+        src={view.browserMediaUrl}
+        poster={artwork.staticPreviewUrl ?? view.imagePreviewUrl}
+        alt={artwork.title}
+        className="aspect-square w-full"
       />
     );
   }
@@ -429,14 +443,8 @@ function ActionRow({ artwork, view }: SectionProps) {
           label="View original media"
           rel="noreferrer"
         />
-        <ActionPill
-          href={view.localMetadataUrl}
-          label="View Agorix metadata"
-        />
-        <ActionPill
-          href={view.localMediaUrl}
-          label="View Agorix media"
-        />
+        <ActionPill href={view.localMetadataUrl} label="View Agorix metadata" />
+        <ActionPill href={view.localMediaUrl} label="View Agorix media" />
         {slugPath ? (
           <ShareLinkButton title={artwork.title} path={slugPath} />
         ) : null}

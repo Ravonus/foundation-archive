@@ -20,6 +20,156 @@ type ActionArgs = {
   selectedDevice: RelayOwnerDevice | null;
 };
 
+type PreparePairingOptions = {
+  force?: boolean;
+  silent?: boolean;
+};
+
+const PAIRING_POLL_INTERVAL_MS = 1_000;
+const PAIRING_WAIT_TIMEOUT_MS = 15_000;
+const PAIRING_REFRESH_BUFFER_MS = 30_000;
+
+type LocalReloadResult =
+  | {
+      status: "success";
+      configDraft: ConfigDraft;
+      now: string;
+      pinsPayload: BridgePinsResponse;
+    }
+  | {
+      status: "skipped";
+    }
+  | {
+      status: "error";
+      error: unknown;
+    };
+
+type RelayReloadResult =
+  | {
+      status: "success";
+      devices: RelayOwnerDevice[];
+    }
+  | {
+      status: "error";
+      devices: RelayOwnerDevice[];
+      error: unknown;
+    };
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function isPairingReady(pairing: RelayPairing | null) {
+  if (!pairing) return false;
+
+  const expiresAt = Date.parse(pairing.expiresAt);
+  if (Number.isNaN(expiresAt)) return true;
+  return expiresAt - Date.now() > PAIRING_REFRESH_BUFFER_MS;
+}
+
+async function waitForConnectedRelayDevice(
+  refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
+) {
+  const deadline = Date.now() + PAIRING_WAIT_TIMEOUT_MS;
+  let latestDevices: RelayOwnerDevice[] = [];
+
+  while (Date.now() <= deadline) {
+    try {
+      latestDevices = await refreshRelayDevices();
+      const preferred = pickPreferredDevice(latestDevices);
+
+      if (preferred?.connected) {
+        return preferred;
+      }
+    } catch {
+      // Keep waiting so a just-opened desktop app has a chance to finish linking.
+    }
+
+    await sleep(PAIRING_POLL_INTERVAL_MS);
+  }
+
+  return pickPreferredDevice(latestDevices);
+}
+
+async function reloadLocalBridge(
+  state: DesktopConsoleState,
+  enabled: boolean,
+): Promise<LocalReloadResult> {
+  if (!enabled) {
+    return { status: "skipped" };
+  }
+
+  try {
+    const [healthPayload, configPayload, pinsPayload] = await Promise.all([
+      state.bridge.refreshHealth(),
+      state.bridge.fetchConfig(),
+      state.bridge.listPins(),
+    ]);
+
+    return {
+      status: "success",
+      configDraft: draftFromConfig(configPayload),
+      now: healthPayload.now,
+      pinsPayload,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      error,
+    };
+  }
+}
+
+async function reloadRelayDevices(
+  state: DesktopConsoleState,
+): Promise<RelayReloadResult> {
+  try {
+    return {
+      status: "success",
+      devices: await state.bridge.refreshRelayDevices(),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      devices: state.bridge.relayDevices,
+      error,
+    };
+  }
+}
+
+function resolveReloadFailure(
+  localResult: LocalReloadResult,
+  relayResult: RelayReloadResult,
+) {
+  if (relayResult.status === "error") {
+    return relayResult.error;
+  }
+
+  if (localResult.status === "error") {
+    return localResult.error;
+  }
+
+  return new Error("Refresh failed.");
+}
+
+function resolveReloadFeedback(input: {
+  refreshLocalBridge: boolean;
+  reachable: boolean;
+  selectedDevice: RelayOwnerDevice | null;
+}) {
+  if (input.selectedDevice?.connected && !input.reachable) {
+    return "Checked your linked desktop app.";
+  }
+
+  if (!input.refreshLocalBridge) {
+    return "Checked for linked desktop apps.";
+  }
+
+  return "Got the latest from your desktop app.";
+}
+
 function useReload({ state, selectedDevice }: ActionArgs) {
   const { bridge, raw, transitions } = state;
 
@@ -28,18 +178,46 @@ function useReload({ state, selectedDevice }: ActionArgs) {
       raw.setFeedback(null);
       bridge.clearError();
 
+      const refreshLocalBridge =
+        bridge.reachable || bridge.localBridgeProbeEnabled;
+
       void Promise.all([
-        bridge.refreshHealth(),
-        bridge.fetchConfig(),
-        bridge.listPins(),
-        bridge.refreshRelayDevices(),
+        reloadLocalBridge(state, refreshLocalBridge),
+        reloadRelayDevices(state),
       ])
-        .then(([healthPayload, configPayload, pinsPayload]) => {
-          raw.setConfigDraft(draftFromConfig(configPayload));
-          raw.setLocalInventory(pinsPayload);
-          raw.setLastLocalRefreshAt(healthPayload.now);
-          if (selectedDevice) bridge.requestRelayInventory(selectedDevice.id);
-          raw.setFeedback("Got the latest from your desktop app.");
+        .then(([localResult, relayResult]) => {
+          if (localResult.status === "success") {
+            raw.setConfigDraft(localResult.configDraft);
+            raw.setLocalInventory(localResult.pinsPayload);
+            raw.setLastLocalRefreshAt(localResult.now);
+          }
+
+          const nextSelectedDevice = selectedDevice
+            ? (relayResult.devices.find(
+                (device) => device.id === selectedDevice.id,
+              ) ?? pickPreferredDevice(relayResult.devices))
+            : pickPreferredDevice(relayResult.devices);
+
+          raw.setSelectedDeviceId(nextSelectedDevice?.id ?? null);
+
+          if (nextSelectedDevice?.connected) {
+            bridge.requestRelayInventory(nextSelectedDevice.id);
+          }
+
+          if (
+            localResult.status !== "success" &&
+            relayResult.status !== "success"
+          ) {
+            throw resolveReloadFailure(localResult, relayResult);
+          }
+
+          raw.setFeedback(
+            resolveReloadFeedback({
+              refreshLocalBridge,
+              reachable: bridge.reachable,
+              selectedDevice: nextSelectedDevice,
+            }),
+          );
         })
         .catch((caughtError: unknown) => {
           raw.setFeedback(
@@ -69,7 +247,8 @@ function useRunRepair({ state }: ActionArgs) {
             raw.setLastLocalRefreshAt(new Date().toISOString());
             const parts: string[] = [];
             if (result.repaired > 0) parts.push(`${result.repaired} re-saved`);
-            if (result.healthy > 0) parts.push(`${result.healthy} already healthy`);
+            if (result.healthy > 0)
+              parts.push(`${result.healthy} already healthy`);
             if (result.failed > 0) parts.push(`${result.failed} still failing`);
             raw.setFeedback(
               `Done. ${parts.length ? parts.join(" · ") : "Nothing needed fixing."}`,
@@ -170,7 +349,8 @@ function useRunSync({ state }: ActionArgs) {
             raw.setLastLocalRefreshAt(new Date().toISOString());
             const parts: string[] = [];
             if (result.synced > 0) parts.push(`${result.synced} copied`);
-            if (result.skipped > 0) parts.push(`${result.skipped} already up to date`);
+            if (result.skipped > 0)
+              parts.push(`${result.skipped} already up to date`);
             if (result.failed > 0) parts.push(`${result.failed} failed`);
             raw.setFeedback(
               `Folder sync done. ${parts.length ? parts.join(" · ") : "Nothing to copy."}`,
@@ -189,30 +369,100 @@ function useRunSync({ state }: ActionArgs) {
   };
 }
 
-function useCreatePair({ state }: ActionArgs) {
+function usePreparePairingLink({ state }: ActionArgs) {
   const { bridge, raw, transitions } = state;
 
-  return () => {
+  return (options?: PreparePairingOptions) => {
+    if (!options?.force && isPairingReady(raw.pairing)) {
+      raw.setDeepLinkStatus("ready");
+      if (!options?.silent) {
+        raw.setFeedback("Desktop app link ready. Click below to open it.");
+      }
+      return;
+    }
+
     transitions.startPairing(() => {
-      raw.setFeedback(null);
+      if (!options?.silent) {
+        raw.setFeedback(null);
+      }
       bridge.clearError();
+      raw.setDeepLinkStatus("preparing");
 
       void bridge
         .createRelayPairing(raw.configDraft.relayDeviceName || null)
         .then((createdPairing: RelayPairing) => {
           raw.setPairing(createdPairing);
-          raw.setFeedback(
-            "Link ready. Click the Open desktop app button below.",
-          );
+          raw.setDeepLinkStatus("ready");
+          if (!options?.silent) {
+            raw.setFeedback("Desktop app link ready. Click below to open it.");
+          }
         })
         .catch((caughtError: unknown) => {
+          raw.setDeepLinkStatus("error");
           raw.setFeedback(
             errorMessage(
               caughtError,
-              "Couldn't create a link. Please try again.",
+              "Couldn't prepare the desktop app link. Please try again.",
             ),
           );
         });
+    });
+  };
+}
+
+function useOpenPreparedPairing({ state }: ActionArgs) {
+  const { bridge, raw } = state;
+
+  return () => {
+    if (!isPairingReady(raw.pairing)) {
+      raw.setDeepLinkStatus("error");
+      raw.setFeedback("The app link expired. Please create a fresh one.");
+      return;
+    }
+
+    raw.setDeepLinkStatus("opening");
+    raw.setFeedback("Opening the desktop app and waiting for it to confirm.");
+
+    void (async () => {
+      await sleep(250);
+      raw.setDeepLinkStatus("waiting");
+
+      const connectedDevice = await waitForConnectedRelayDevice(
+        bridge.refreshRelayDevices,
+      );
+
+      if (!connectedDevice) {
+        raw.setDeepLinkStatus("ready");
+        raw.setFeedback(
+          "Still waiting for the desktop app. Try the link again if nothing opened.",
+        );
+        return;
+      }
+
+      raw.setSelectedDeviceId(connectedDevice.id);
+
+      if (connectedDevice.connected) {
+        raw.setPairing(null);
+        raw.setDeepLinkStatus("idle");
+        raw.setFeedback(
+          "Connected. Archive pages can now send works to this computer.",
+        );
+        bridge.requestRelayInventory(connectedDevice.id);
+        return;
+      }
+
+      raw.setDeepLinkStatus("ready");
+      raw.setFeedback(
+        "The app woke up, but it hasn't confirmed the link yet. You can try the link again below.",
+      );
+    })().catch((caughtError: unknown) => {
+      raw.setDeepLinkStatus("error");
+      raw.setFeedback(
+        errorMessage(
+          caughtError,
+          "Couldn't finish linking with the desktop app. Please try again.",
+        ),
+      );
     });
   };
 }
@@ -234,6 +484,7 @@ function useConnectThisComputer({ state, relayServerUrl }: ActionArgs) {
           const preferred = pickPreferredDevice(devices);
           raw.setSelectedDeviceId(preferred?.id ?? null);
           raw.setPairing(null);
+          raw.setDeepLinkStatus("idle");
           raw.setFeedback(
             "Connected. Archive pages can now send works to this computer.",
           );
@@ -263,14 +514,14 @@ function useDisconnectSelected({ state, selectedDevice }: ActionArgs) {
       void bridge
         .disconnectRelayDevice(selectedDevice.id)
         .then(() => {
-          raw.setFeedback("Disconnected. This site won't send works here anymore.");
+          raw.setDeepLinkStatus("idle");
+          raw.setFeedback(
+            "Disconnected. This site won't send works here anymore.",
+          );
         })
         .catch((caughtError: unknown) => {
           raw.setFeedback(
-            errorMessage(
-              caughtError,
-              "Couldn't disconnect. Please try again.",
-            ),
+            errorMessage(caughtError, "Couldn't disconnect. Please try again."),
           );
         });
     });
@@ -283,7 +534,8 @@ export type DesktopConsoleActions = {
   runVerify: () => void;
   saveConfig: () => void;
   runSync: () => void;
-  createPair: () => void;
+  preparePairingLink: (options?: PreparePairingOptions) => void;
+  openPreparedPairing: () => void;
   connectThisComputer: () => void;
   disconnectSelectedDevice: () => void;
 };
@@ -297,7 +549,8 @@ export function useDesktopConsoleActions(
     runVerify: useRunVerify(args),
     saveConfig: useSaveConfig(args),
     runSync: useRunSync(args),
-    createPair: useCreatePair(args),
+    preparePairingLink: usePreparePairingLink(args),
+    openPreparedPairing: useOpenPreparedPairing(args),
     connectThisComputer: useConnectThisComputer(args),
     disconnectSelectedDevice: useDisconnectSelected(args),
   };

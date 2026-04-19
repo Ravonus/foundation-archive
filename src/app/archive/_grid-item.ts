@@ -1,7 +1,5 @@
 import { type ArtworkGridItem } from "~/app/_components/artwork-grid";
-import {
-  type ProfileArchiveItem,
-} from "~/app/_components/profile/profile-archive-cards";
+import { type ProfileArchiveItem } from "~/app/_components/profile/profile-archive-cards";
 import { buildFoundationProfileUrl } from "~/server/archive/foundation";
 import {
   type FoundationLookupWork,
@@ -40,9 +38,10 @@ function resolveArchivedMediaUrl(
   archiveMediaUrl: string | null,
 ) {
   if (archiveMediaUrl) return archiveMediaUrl;
-  if (artwork.previewUrl) return artwork.previewUrl;
-  if (artwork.mediaKind === "IMAGE") return artwork.sourceUrl;
-  return null;
+  if (artwork.mediaKind === "IMAGE") {
+    return artwork.sourceUrl ?? artwork.previewUrl;
+  }
+  return artwork.sourceUrl ?? artwork.previewUrl;
 }
 
 export function toArchivedGridItem(
@@ -83,9 +82,10 @@ function resolveDiscoveredPosterUrl(work: FoundationLookupWork) {
 }
 
 function resolveDiscoveredMediaUrl(work: FoundationLookupWork) {
-  if (work.previewUrl) return work.previewUrl;
-  if (work.mediaKind === "IMAGE") return work.sourceUrl ?? work.mediaUrl;
-  return work.mediaUrl;
+  if (work.mediaKind === "IMAGE") {
+    return work.sourceUrl ?? work.mediaUrl ?? work.previewUrl;
+  }
+  return work.mediaUrl ?? work.sourceUrl ?? work.previewUrl;
 }
 
 export function toDiscoveredGridItem(
@@ -123,9 +123,7 @@ function profileMatchesWork(
 ) {
   if (work.artistWallet === accountAddress) return true;
   if (!profile.username) return false;
-  return (
-    work.artistUsername?.toLowerCase() === profile.username.toLowerCase()
-  );
+  return work.artistUsername?.toLowerCase() === profile.username.toLowerCase();
 }
 
 function collectArchivedForProfile(
@@ -153,9 +151,7 @@ function toPinnedWork(artwork: ArchivedArtworkRow) {
     id: artwork.id,
     title: artwork.title,
     slug: artwork.slug,
-    archiveUrl: artwork.mediaRoot
-      ? artwork.mediaRoot.gatewayUrl
-      : null,
+    archiveUrl: artwork.mediaRoot ? artwork.mediaRoot.gatewayUrl : null,
     publicGatewayUrl: artwork.mediaRoot?.gatewayUrl ?? null,
   };
 }

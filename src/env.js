@@ -45,7 +45,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SITE_URL: z
       .string()
       .url()
-      .default("http://localhost:3000"),
+      .default("https://foundation.agorix.io"),
     NEXT_PUBLIC_ARCHIVE_SOCKET_URL: z.string().url().optional(),
   },
 

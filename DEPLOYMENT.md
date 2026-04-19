@@ -52,7 +52,7 @@ At minimum, set:
 Current public production values:
 
 - `NEXT_PUBLIC_SITE_URL=https://foundation.agorix.io`
-- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL=https://socket-foundation.agorix.io`
+- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL=https://foundation.agorix.io`
 - `ARCHIVE_SOCKET_INTERNAL_URL=http://socket:43129`
 
 `ETHEREUM_RPC_URL` is still optional.

@@ -12,7 +12,11 @@ import type {
 import { cn } from "~/lib/utils";
 
 import { PinWorkCard, pinHealthFor, type PinHealth } from "./pin-work-card";
-import type { PinMatch } from "../types";
+import {
+  pinMatchesForItem,
+  pinVerificationForItem,
+  type PinMatch,
+} from "../types";
 
 export type DesktopStatusFilter = "all" | "saved" | "unreachable" | "missing";
 
@@ -92,7 +96,7 @@ type FilterArgs = {
 
 function buildFilteredItems(args: FilterArgs) {
   return args.items.filter((item) => {
-    const verification = args.verifications[item.cid] ?? null;
+    const verification = pinVerificationForItem(item, args.verifications);
     const health = pinHealthFor(item, verification, args.verifying);
     return matchesFilter(health, args.filter);
   });
@@ -213,7 +217,7 @@ export function SavedWorksBrowser({
     missing: 0,
   };
   for (const item of items) {
-    const verification = pinVerifications[item.cid] ?? null;
+    const verification = pinVerificationForItem(item, pinVerifications);
     const health = pinHealthFor(item, verification, verifying);
     if (health === "saved") counts.saved += 1;
     else if (health === "unreachable") counts.unreachable += 1;
@@ -292,8 +296,8 @@ export function SavedWorksBrowser({
             <PinWorkCard
               key={item.cid}
               item={item}
-              matches={pinEnrichment[item.cid] ?? []}
-              verification={pinVerifications[item.cid] ?? null}
+              matches={pinMatchesForItem(item, pinEnrichment)}
+              verification={pinVerificationForItem(item, pinVerifications)}
               verifying={verifying}
               largeGrid={largeGrid}
             />

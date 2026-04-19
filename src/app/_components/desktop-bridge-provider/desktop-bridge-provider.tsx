@@ -71,11 +71,16 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
 
   useInitialStorage({ setBridgeUrlState, setSession, setOwnerToken });
 
-  const { networkStatus, retryNow: retryNetwork } = useBridgeHealthProbe(
-    bridgeUrl,
-    session,
-    { setHealth, setConfig, setReachable, setStatus },
-  );
+  const {
+    networkStatus,
+    probeEnabled: localBridgeProbeEnabled,
+    retryNow: retryNetwork,
+  } = useBridgeHealthProbe(bridgeUrl, session, {
+    setHealth,
+    setConfig,
+    setReachable,
+    setStatus,
+  });
 
   useRelaySocket(ownerToken, relaySocketRef, {
     setRelaySocketConnected,
@@ -201,6 +206,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     relayDevices,
     relayInventories,
     relaySocketConnected,
+    localBridgeProbeEnabled,
     pinEnrichment,
     error,
     reachable,

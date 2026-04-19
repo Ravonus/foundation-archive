@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LoaderCircle, RefreshCcw, WifiOff } from "lucide-react";
+import { CheckCircle2, LoaderCircle, RefreshCcw, WifiOff } from "lucide-react";
 
 import type { BridgeNetworkStatus } from "~/app/_components/desktop-bridge-provider";
 
 type NetworkStatusBannerProps = {
   status: BridgeNetworkStatus;
+  relayConnected: boolean;
+  localBridgeProbeEnabled: boolean;
   reachable: boolean;
   retry: () => void;
 };
@@ -53,7 +55,7 @@ function BannerBody({
         )}
         <div className="min-w-0">
           <p className="font-medium text-[var(--color-ink)]">
-            Can’t reach the desktop app
+            The desktop app isn&apos;t open on this computer
           </p>
           <p className="mt-0.5 text-[0.78rem] text-[var(--color-muted)]">
             {subline}
@@ -78,11 +80,59 @@ function BannerBody({
   );
 }
 
+function RelayConnectedBanner({
+  localBridgeProbeEnabled,
+  retry,
+}: {
+  localBridgeProbeEnabled: boolean;
+  retry: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--color-ok)]/30 bg-[var(--tint-ok)] px-4 py-3 text-sm text-[var(--color-body)]">
+      <div className="flex min-w-0 items-start gap-3">
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-ok)]" />
+        <div className="min-w-0">
+          <p className="font-medium text-[var(--color-ink)]">
+            Desktop app connected over the archive relay
+          </p>
+          <p className="mt-0.5 text-[0.78rem] text-[var(--color-muted)]">
+            This page can still send works to your linked desktop app. Open the
+            app on this same computer only if you want local-only settings or a
+            direct localhost view.
+          </p>
+        </div>
+      </div>
+      {localBridgeProbeEnabled ? (
+        <button
+          type="button"
+          onClick={retry}
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-ink)] px-3 py-1.5 text-xs text-[var(--color-bg)]"
+        >
+          <RefreshCcw className="h-3.5 w-3.5" />
+          Check local app
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function NetworkStatusBanner({
   status,
+  relayConnected,
+  localBridgeProbeEnabled,
   reachable,
   retry,
 }: NetworkStatusBannerProps) {
+  if (relayConnected) {
+    return (
+      <RelayConnectedBanner
+        localBridgeProbeEnabled={localBridgeProbeEnabled}
+        retry={retry}
+      />
+    );
+  }
+
+  if (!localBridgeProbeEnabled) return null;
   if (reachable) return null;
   if (status.attempts === 0 && !status.lastError) return null;
   return <BannerBody status={status} retry={retry} />;

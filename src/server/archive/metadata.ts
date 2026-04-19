@@ -27,6 +27,18 @@ const MEDIA_KIND_MARKERS: ReadonlyArray<{
     markers: [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", "image"],
   },
   { kind: MediaKind.HTML, markers: [".html"] },
+  {
+    kind: MediaKind.MODEL,
+    markers: [
+      ".glb",
+      ".gltf",
+      ".usdz",
+      "model",
+      "model/gltf",
+      "model/vnd.usdz",
+      "3d",
+    ],
+  },
 ];
 
 function matchesAnyMarker(value: string, markers: readonly string[]): boolean {

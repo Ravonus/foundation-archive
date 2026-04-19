@@ -10,11 +10,20 @@ import type {
 import { EMPTY_DRAFT } from "./desktop-console-shared";
 import type { ConfigDraft } from "../types";
 
+export type DeepLinkStatus =
+  | "idle"
+  | "preparing"
+  | "ready"
+  | "opening"
+  | "waiting"
+  | "error";
+
 export function useDesktopConsoleRawState() {
   const [localInventory, setLocalInventory] =
     useState<BridgePinsResponse | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pairing, setPairing] = useState<RelayPairing | null>(null);
+  const [deepLinkStatus, setDeepLinkStatus] = useState<DeepLinkStatus>("idle");
   const [lastLocalRefreshAt, setLastLocalRefreshAt] = useState<string | null>(
     null,
   );
@@ -28,6 +37,8 @@ export function useDesktopConsoleRawState() {
     setFeedback,
     pairing,
     setPairing,
+    deepLinkStatus,
+    setDeepLinkStatus,
     lastLocalRefreshAt,
     setLastLocalRefreshAt,
     selectedDeviceId,

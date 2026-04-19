@@ -31,6 +31,7 @@ export type ContextValueInputs = {
   relayDevices: RelayOwnerDevice[];
   relayInventories: Record<string, RelayInventorySnapshot>;
   relaySocketConnected: boolean;
+  localBridgeProbeEnabled: boolean;
   pinEnrichment: Record<string, RelayPinEnrichmentMatch[]>;
   error: string | null;
   reachable: boolean;
@@ -66,6 +67,7 @@ export function buildDesktopBridgeContextValue(
     relayDevices: inputs.relayDevices,
     relayInventories: inputs.relayInventories,
     relaySocketConnected: inputs.relaySocketConnected,
+    localBridgeProbeEnabled: inputs.localBridgeProbeEnabled,
     pinEnrichment: inputs.pinEnrichment,
     error: inputs.error,
     reachable: inputs.reachable,

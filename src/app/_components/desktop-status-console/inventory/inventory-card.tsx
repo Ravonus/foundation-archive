@@ -7,6 +7,7 @@ import { ArrowUpRight } from "lucide-react";
 
 import { formatDate, shortAddress } from "~/lib/utils";
 import type { BridgePinInventoryItem } from "~/app/_components/desktop-bridge-provider";
+import { buildPublicUtilityGatewayUrl } from "~/lib/desktop-relay";
 
 import { InventoryPreview } from "./inventory-preview";
 import { itemContext, itemLabel, type PinMatch } from "../types";
@@ -106,27 +107,41 @@ function CardActions({
   item: BridgePinInventoryItem;
   primaryMatch: PinMatch | null;
 }) {
+  const publicUtilityGatewayUrl = buildPublicUtilityGatewayUrl(item.cid);
+  const actions = [
+    primaryMatch
+      ? { href: `/archive/${primaryMatch.slug}`, label: "Archive entry" }
+      : null,
+    primaryMatch?.foundationUrl
+      ? {
+          href: primaryMatch.foundationUrl,
+          label: "Foundation page",
+          external: true,
+        }
+      : null,
+    item.localGatewayUrl
+      ? { href: item.localGatewayUrl, label: "Desktop IPFS", external: true }
+      : null,
+    item.publicGatewayUrl
+      ? { href: item.publicGatewayUrl, label: "Pinned IPFS", external: true }
+      : null,
+    { href: publicUtilityGatewayUrl, label: "Public IPFS", external: true },
+  ].filter((value): value is NonNullable<typeof value> => Boolean(value));
+
+  const uniqueActions = Array.from(
+    new Map(actions.map((action) => [action.href, action])).values(),
+  );
+
   return (
     <div className="mt-4 flex flex-wrap gap-2 text-xs">
-      {primaryMatch ? (
+      {uniqueActions.map((action) => (
         <PillLink
-          href={`/archive/${primaryMatch.slug}`}
-          label="Archive entry"
+          key={action.href}
+          href={action.href}
+          label={action.label}
+          external={action.external}
         />
-      ) : null}
-      {primaryMatch?.foundationUrl ? (
-        <PillLink
-          href={primaryMatch.foundationUrl}
-          label="Foundation page"
-          external
-        />
-      ) : null}
-      {item.localGatewayUrl ? (
-        <PillLink href={item.localGatewayUrl} label="Desktop IPFS" external />
-      ) : null}
-      {item.publicGatewayUrl ? (
-        <PillLink href={item.publicGatewayUrl} label="Public IPFS" external />
-      ) : null}
+      ))}
     </div>
   );
 }
@@ -147,10 +162,11 @@ function useInventoryCardContent(
             primaryMatch?.posterUrl ?? null,
             item.localGatewayUrl ?? null,
             item.publicGatewayUrl ?? null,
+            buildPublicUtilityGatewayUrl(item.cid),
           ].filter((value): value is string => Boolean(value)),
         ),
       ),
-    [item.localGatewayUrl, item.publicGatewayUrl, primaryMatch?.posterUrl],
+    [item.cid, item.localGatewayUrl, item.publicGatewayUrl, primaryMatch?.posterUrl],
   );
 
   return { title, subtitle, previewCandidates };

@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { motion, useReducedMotion } from "motion/react";
 
 type VirtualizedArtworkGridProps<TItem> = {
   items: TItem[];
@@ -20,7 +21,20 @@ type RowMetric = {
   bottom: number;
 };
 
+type Range = {
+  start: number;
+  end: number;
+};
+
+type ScrollState = {
+  top: number;
+  height: number;
+  containerTop: number;
+};
+
 const GRID_ROW_GAP = 48;
+const RENDER_OVERSCAN_VIEWPORTS = 1.8;
+const MIN_RENDER_OVERSCAN_ROWS = 3;
 
 function columnCountForWidth(width: number) {
   if (width >= 1024) return 3;
@@ -116,15 +130,18 @@ function findLastVisibleRow(metrics: RowMetric[], threshold: number) {
 
 function MeasuredRow({
   children,
+  isActive,
   top,
   rowIndex,
   onHeightChange,
 }: {
   children: ReactNode;
+  isActive: boolean;
   top: number;
   rowIndex: number;
   onHeightChange: (rowIndex: number, height: number) => void;
 }) {
+  const reduce = useReducedMotion();
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -146,22 +163,40 @@ function MeasuredRow({
   }, [onHeightChange, rowIndex]);
 
   return (
-    <div ref={rowRef} className="absolute inset-x-0" style={{ top }}>
+    <motion.div
+      ref={rowRef}
+      className="absolute inset-x-0"
+      style={{
+        top,
+        willChange: reduce ? undefined : "opacity, transform",
+      }}
+      initial={reduce ? false : { opacity: 0, y: 10, scale: 0.995 }}
+      animate={
+        reduce
+          ? false
+          : {
+              opacity: isActive ? 1 : 0.28,
+              y: isActive ? 0 : 8,
+              scale: isActive ? 1 : 0.995,
+            }
+      }
+      transition={{
+        duration: reduce ? 0 : 0.22,
+        ease: [0.22, 1, 0.36, 1],
+      }}
+    >
       {children}
-    </div>
+    </motion.div>
   );
 }
 
-export function VirtualizedArtworkGrid<TItem>({
-  items,
-  renderItem,
-}: VirtualizedArtworkGridProps<TItem>) {
+function useVirtualizedGridLayout(itemCount: number) {
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number | null>(null);
   const previousColumnCountRef = useRef(1);
-  const previousItemCountRef = useRef(items.length);
+  const previousItemCountRef = useRef(itemCount);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [scrollState, setScrollState] = useState({
+  const [scrollState, setScrollState] = useState<ScrollState>({
     top: 0,
     height: 0,
     containerTop: 0,
@@ -169,14 +204,6 @@ export function VirtualizedArtworkGrid<TItem>({
   const [rowHeights, setRowHeights] = useState<Record<number, number>>({});
 
   const columnCount = columnCountForWidth(containerWidth);
-  const rows = useMemo(
-    () => chunkIntoRows(items, columnCount),
-    [columnCount, items],
-  );
-  const { metrics, totalHeight } = useMemo(
-    () => buildRowMetrics(rows.length, rowHeights, columnCount),
-    [columnCount, rowHeights, rows.length],
-  );
 
   const syncLayout = useEffectEvent(() => {
     const node = containerRef.current;
@@ -200,15 +227,15 @@ export function VirtualizedArtworkGrid<TItem>({
 
   useEffect(() => {
     const columnChanged = previousColumnCountRef.current !== columnCount;
-    const itemsShrank = items.length < previousItemCountRef.current;
+    const itemsShrank = itemCount < previousItemCountRef.current;
 
     if (columnChanged || itemsShrank) {
       setRowHeights({});
     }
 
     previousColumnCountRef.current = columnCount;
-    previousItemCountRef.current = items.length;
-  }, [columnCount, items.length]);
+    previousItemCountRef.current = itemCount;
+  }, [columnCount, itemCount]);
 
   useEffect(() => {
     scheduleLayoutSync();
@@ -250,13 +277,34 @@ export function VirtualizedArtworkGrid<TItem>({
     });
   };
 
-  const visibleRange = useMemo(() => {
-    if (rows.length === 0) {
+  return {
+    columnCount,
+    containerRef,
+    rowHeights,
+    scrollState,
+    updateRowHeight,
+  };
+}
+
+function useVirtualizedRanges(args: {
+  columnCount: number;
+  rowHeights: Record<number, number>;
+  rowCount: number;
+  scrollState: ScrollState;
+}) {
+  const { columnCount, rowHeights, rowCount, scrollState } = args;
+  const { metrics, totalHeight } = useMemo(
+    () => buildRowMetrics(rowCount, rowHeights, columnCount),
+    [columnCount, rowCount, rowHeights],
+  );
+
+  const visibleRange = useMemo<Range>(() => {
+    if (rowCount === 0) {
       return { start: 0, end: -1 };
     }
 
     if (scrollState.height === 0) {
-      return { start: 0, end: Math.min(rows.length - 1, 4) };
+      return { start: 0, end: Math.min(rowCount - 1, 4) };
     }
 
     const overscan = Math.max(
@@ -265,28 +313,88 @@ export function VirtualizedArtworkGrid<TItem>({
     );
     const viewportTop = scrollState.top - scrollState.containerTop;
     const viewportBottom = viewportTop + scrollState.height;
-    const start = findFirstVisibleRow(metrics, viewportTop - overscan);
-    const end = findLastVisibleRow(metrics, viewportBottom + overscan);
 
     return {
-      start: Math.max(0, start),
-      end: Math.min(rows.length - 1, end),
+      start: Math.max(0, findFirstVisibleRow(metrics, viewportTop - overscan)),
+      end: Math.min(
+        rowCount - 1,
+        findLastVisibleRow(metrics, viewportBottom + overscan),
+      ),
     };
-  }, [columnCount, metrics, rows.length, scrollState]);
+  }, [columnCount, metrics, rowCount, scrollState]);
+
+  const renderRange = useMemo<Range>(() => {
+    if (rowCount === 0) {
+      return { start: 0, end: -1 };
+    }
+
+    if (scrollState.height === 0) {
+      return { start: 0, end: Math.min(rowCount - 1, 6) };
+    }
+
+    const rowHeight = estimateRowHeight(columnCount);
+    const renderOverscan = Math.max(
+      scrollState.height * RENDER_OVERSCAN_VIEWPORTS,
+      rowHeight * MIN_RENDER_OVERSCAN_ROWS,
+    );
+    const viewportTop = scrollState.top - scrollState.containerTop;
+    const viewportBottom = viewportTop + scrollState.height;
+
+    return {
+      start: Math.max(
+        0,
+        findFirstVisibleRow(metrics, viewportTop - renderOverscan),
+      ),
+      end: Math.min(
+        rowCount - 1,
+        findLastVisibleRow(metrics, viewportBottom + renderOverscan),
+      ),
+    };
+  }, [columnCount, metrics, rowCount, scrollState]);
+
+  return { metrics, renderRange, totalHeight, visibleRange };
+}
+
+export function VirtualizedArtworkGrid<TItem>({
+  items,
+  renderItem,
+}: VirtualizedArtworkGridProps<TItem>) {
+  const reduce = useReducedMotion();
+  const {
+    columnCount,
+    containerRef,
+    rowHeights,
+    scrollState,
+    updateRowHeight,
+  } = useVirtualizedGridLayout(items.length);
+  const rows = useMemo(
+    () => chunkIntoRows(items, columnCount),
+    [columnCount, items],
+  );
+  const { metrics, renderRange, totalHeight, visibleRange } =
+    useVirtualizedRanges({
+      columnCount,
+      rowHeights,
+      rowCount: rows.length,
+      scrollState,
+    });
 
   return (
     <div ref={containerRef} className="relative">
       <div style={{ height: totalHeight }}>
         {rows
-          .slice(visibleRange.start, visibleRange.end + 1)
+          .slice(renderRange.start, renderRange.end + 1)
           .map((row, visibleIndex) => {
-            const rowIndex = visibleRange.start + visibleIndex;
+            const rowIndex = renderRange.start + visibleIndex;
             const metric = metrics[rowIndex];
             if (!metric) return null;
+            const isActive =
+              rowIndex >= visibleRange.start && rowIndex <= visibleRange.end;
 
             return (
               <MeasuredRow
                 key={`${columnCount}:${rowIndex}`}
+                isActive={reduce ? true : isActive}
                 top={metric.top}
                 rowIndex={rowIndex}
                 onHeightChange={updateRowHeight}

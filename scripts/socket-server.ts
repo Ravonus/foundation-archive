@@ -418,6 +418,9 @@ async function main() {
       methods: ["GET", "POST"],
       credentials: true,
     },
+    pingInterval: 25_000,
+    pingTimeout: 60_000,
+    connectTimeout: 45_000,
   });
 
   const relayWss = new WebSocketServer({

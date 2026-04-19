@@ -9,6 +9,23 @@ import type {
 
 import { pickPreferredDevice } from "./desktop-console-shared";
 
+type InventoryCidCarrier = {
+  cid: string;
+  mediaCid?: string | null;
+  metadataCid?: string | null;
+  relatedCids?: string[];
+};
+
+function inventoryItemCids(item: InventoryCidCarrier) {
+  return Array.from(
+    new Set(
+      [item.cid, item.mediaCid, item.metadataCid, ...(item.relatedCids ?? [])]
+        .map((cid) => cid?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
 type PinEnrichmentArgs = {
   localInventory: BridgePinsResponse | null;
   relayInventories: Record<string, { items: { cid: string }[] }>;
@@ -25,9 +42,10 @@ export function useDesktopConsolePinEnrichment({
   });
 
   useEffect(() => {
-    const localCids = localInventory?.items.map((item) => item.cid) ?? [];
+    const localCids =
+      localInventory?.items.flatMap((item) => inventoryItemCids(item)) ?? [];
     const relayCids = Object.values(relayInventories).flatMap((snapshot) =>
-      snapshot.items.map((item) => item.cid),
+      snapshot.items.flatMap((item) => inventoryItemCids(item)),
     );
     const allCids = Array.from(new Set([...localCids, ...relayCids]));
 

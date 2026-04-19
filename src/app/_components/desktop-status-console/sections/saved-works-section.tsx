@@ -9,7 +9,7 @@ import type {
 } from "~/app/_components/desktop-bridge-provider";
 
 import { SavedWorksBrowser } from "../inventory/saved-works-browser";
-import type { PinMatch } from "../types";
+import { pinVerificationForItem, type PinMatch } from "../types";
 
 type SavedWorksProps = {
   visibleItems: BridgePinInventoryItem[];
@@ -130,10 +130,10 @@ export function SavedWorksSection(props: SavedWorksProps) {
       : 0;
 
   const unreachableCount = props.visibleItems.reduce((count, item) => {
-    const verification = props.pinVerifications[item.cid];
+    const verification = pinVerificationForItem(item, props.pinVerifications);
     if (!verification) return count;
     if (!item.pinned) return count;
-    if (verification.reachable && verification.providerCount > 0) return count;
+    if (!verification.hasFailure) return count;
     return count + 1;
   }, 0);
 

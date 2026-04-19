@@ -103,8 +103,10 @@ function SettingsInputs({
         }
       />
       <TextSetting
-        label="Public IPFS address"
-        description="The public fallback used to fetch files. Leave as the default unless you know you need to change it."
+        label="External pinned gateway URL"
+        description={
+          'Used for each item\'s "Pinned" link. Set this to your own hostname, DDNS name, reverse proxy, or direct public IP gateway if you want links to open through your route.'
+        }
         value={configDraft.publicGatewayBaseUrl}
         placeholder="https://ipfs.io"
         wide

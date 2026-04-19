@@ -10,6 +10,7 @@ import {
 } from "motion/react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
+const loadedImageSrcs = new Set<string>();
 
 type FadeUpProps = {
   children: React.ReactNode;
@@ -143,7 +144,8 @@ export function WordReveal({
   const Tag = motion[as] as React.ComponentType<HTMLMotionProps<"h1">>;
   const normalized = highlight?.trim().toLowerCase();
   const isHighlighted = (token: string) =>
-    Boolean(normalized) && token.replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase() === normalized;
+    Boolean(normalized) &&
+    token.replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase() === normalized;
 
   if (reduce) {
     const Plain = as;
@@ -196,7 +198,9 @@ export function WordReveal({
               <motion.span
                 key={`${li}-${i}`}
                 variants={child}
-                className={isHighlighted(token) ? highlightClassName : undefined}
+                className={
+                  isHighlighted(token) ? highlightClassName : undefined
+                }
                 style={{ display: "inline-block" }}
               >
                 {token}
@@ -258,15 +262,16 @@ function BlurImageFrame({
   sizes?: string;
 }) {
   const reduce = useReducedMotion();
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => loadedImageSrcs.has(src));
   const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     if (ref.current?.complete && ref.current.naturalWidth > 0) {
+      loadedImageSrcs.add(src);
       setLoaded(true);
     }
-  }, []);
+  }, [src]);
 
   if (failed) {
     return null;
@@ -282,7 +287,10 @@ function BlurImageFrame({
       fetchPriority={fetchPriority}
       decoding="async"
       sizes={sizes}
-      onLoad={() => setLoaded(true)}
+      onLoad={() => {
+        loadedImageSrcs.add(src);
+        setLoaded(true);
+      }}
       onError={() => {
         setFailed(true);
         setLoaded(true);
@@ -293,7 +301,8 @@ function BlurImageFrame({
         maxWidth: "100%",
         filter: reduce || loaded ? "blur(0px)" : "blur(10px)",
         opacity: reduce || loaded ? 1 : 0.6,
-        transition: "filter 700ms cubic-bezier(0.16, 1, 0.3, 1), opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+        transition:
+          "filter 700ms cubic-bezier(0.16, 1, 0.3, 1), opacity 700ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     />
   );

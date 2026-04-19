@@ -22,12 +22,24 @@ export function pickSelectedDevice(
   );
 }
 
-function resolveInventoryLabel(
-  selectedDevice: RelayOwnerDevice | null,
-  reachable: boolean,
-) {
-  if (selectedDevice?.deviceLabel) return selectedDevice.deviceLabel;
-  return reachable ? "This computer" : "Your computer";
+export function hasConnectedRelayDevice(devices: RelayOwnerDevice[]) {
+  return devices.some((device) => device.connected);
+}
+
+function resolveInventoryLabel(input: {
+  selectedDevice: RelayOwnerDevice | null;
+  reachable: boolean;
+  usingRelaySnapshot: boolean;
+}) {
+  if (input.usingRelaySnapshot && input.selectedDevice?.deviceLabel) {
+    return input.selectedDevice.deviceLabel;
+  }
+
+  if (input.reachable) {
+    return "This computer";
+  }
+
+  return "Your computer";
 }
 
 export function buildVisibleInventory(
@@ -38,17 +50,17 @@ export function buildVisibleInventory(
   const selectedSnapshot = selectedDevice
     ? (bridge.relayInventories[selectedDevice.id] ?? null)
     : null;
-  const visibleInventory =
-    selectedSnapshot ?? (selectedDevice ? null : raw.localInventory);
+  const visibleInventory = selectedSnapshot ?? raw.localInventory;
   const visibleItems = visibleInventory?.items ?? [];
   const pinnedCount = visibleItems.filter((item) => item.pinned).length;
 
   return {
     visibleItems,
-    visibleInventoryLabel: resolveInventoryLabel(
+    visibleInventoryLabel: resolveInventoryLabel({
       selectedDevice,
-      bridge.reachable,
-    ),
+      reachable: bridge.reachable,
+      usingRelaySnapshot: Boolean(selectedSnapshot),
+    }),
     visibleInventoryTime:
       selectedSnapshot?.generatedAt ?? raw.lastLocalRefreshAt ?? null,
     pinnedCount,

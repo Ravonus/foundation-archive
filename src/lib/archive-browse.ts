@@ -131,7 +131,8 @@ export function archiveItemStatus(
   const hasMediaRoot = Boolean(item.mediaCid);
 
   if (!hasMetadataRoot && !hasMediaRoot) return "missing";
-  if (isFailed(item.metadataStatus) || isFailed(item.mediaStatus)) return "failed";
+  if (isFailed(item.metadataStatus) || isFailed(item.mediaStatus))
+    return "failed";
   if (isAllPinned(item)) return "preserved";
   if (isAllDownloaded(item)) return "partial";
   return "pending";

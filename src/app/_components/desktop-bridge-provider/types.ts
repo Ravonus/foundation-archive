@@ -185,6 +185,7 @@ export type DesktopBridgeContextValue = {
   relayDevices: RelayOwnerDevice[];
   relayInventories: Record<string, RelayInventorySnapshot>;
   relaySocketConnected: boolean;
+  localBridgeProbeEnabled: boolean;
   pinEnrichment: Record<string, RelayPinEnrichmentMatch[]>;
   error: string | null;
   reachable: boolean;

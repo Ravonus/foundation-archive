@@ -74,8 +74,8 @@ Useful variables:
 - `ARCHIVE_ARCHIVER_MEMORY_CACHE_ITEMS="512"` to tune the Rust recent-root in-memory cache
 - `ARCHIVE_ARCHIVER_INLINE_MEMORY_MAX_BYTES="8388608"` to control how much a single root can buffer in RAM before it streams into hot storage
 - `INTERNAL_CRON_SECRET="change-me"`
-- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL="http://127.0.0.1:43129"`
-- `NEXT_PUBLIC_SITE_URL="http://localhost:3000"` so the desktop helper's toolbar menu knows which `/desktop` board to open
+- `NEXT_PUBLIC_ARCHIVE_SOCKET_URL="https://foundation.agorix.io"` for the public site, or override it to `http://127.0.0.1:43129` when you want the local dev socket daemon directly
+- `NEXT_PUBLIC_SITE_URL="https://foundation.agorix.io"` so the desktop helper menu knows which `/desktop` board to open by default
 - `ARCHIVE_SOCKET_PORT="43129"`
 - `AUTO_CRAWLER_ENABLED="true"`
 - `AUTO_SCAN_BLOCK_WINDOW="50000"`

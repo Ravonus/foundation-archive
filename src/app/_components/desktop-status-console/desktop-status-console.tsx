@@ -2,6 +2,7 @@
 
 import {
   buildVisibleInventory,
+  hasConnectedRelayDevice,
   pickSelectedDevice,
   resolveRelayServerUrl,
 } from "./selectors";
@@ -18,6 +19,7 @@ export function DesktopStatusConsole() {
   const { bridge, raw, transitions } = state;
 
   const selectedDevice = pickSelectedDevice(state);
+  const relayConnected = hasConnectedRelayDevice(bridge.relayDevices);
   const relayServerUrl = resolveRelayServerUrl(raw.configDraft);
   const pairingUrl = raw.pairing
     ? bridge.buildRelayPairingUrl(
@@ -44,6 +46,8 @@ export function DesktopStatusConsole() {
         feedback={raw.feedback}
         error={bridge.error}
         networkStatus={bridge.networkStatus}
+        relayConnected={relayConnected}
+        localBridgeProbeEnabled={bridge.localBridgeProbeEnabled}
         reachable={bridge.reachable}
         retryNetwork={bridge.retryNetwork}
       />
@@ -51,16 +55,19 @@ export function DesktopStatusConsole() {
       <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
         <ConnectSection
           reachable={bridge.reachable}
-          configDraft={raw.configDraft}
-          setConfigDraft={raw.setConfigDraft}
+          relayConnected={relayConnected}
+          localBridgeProbeEnabled={bridge.localBridgeProbeEnabled}
+          ownerTokenReady={Boolean(bridge.ownerToken)}
           pairing={raw.pairing}
           pairingUrl={pairingUrl}
+          deepLinkStatus={raw.deepLinkStatus}
           selectedDevice={selectedDevice}
           isConnectingLocal={transitions.isConnectingLocal}
           isPairing={transitions.isPairing}
           isDisconnecting={transitions.isDisconnecting}
           connectThisComputer={actions.connectThisComputer}
-          createPair={actions.createPair}
+          preparePairingLink={actions.preparePairingLink}
+          openPreparedPairing={actions.openPreparedPairing}
           disconnectSelectedDevice={actions.disconnectSelectedDevice}
         />
 
