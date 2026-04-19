@@ -9,7 +9,6 @@ import { cn } from "~/lib/utils";
 
 const items = [
   { href: "/archive", label: "Archive" },
-  { href: "/about", label: "About" },
   { href: "/desktop", label: "Desktop" },
 ];
 
