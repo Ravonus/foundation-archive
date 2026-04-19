@@ -127,55 +127,42 @@ function idleRebalanceResult() {
   };
 }
 
-const STALE_INGRESS_LOCK_IDLE_SECONDS = 120;
+const INGRESS_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+const INGRESS_LOCK_MAX_WAIT_MS = 5_000;
 
 async function withArchiveIngressLock<T>(
   client: DatabaseClient,
   callback: () => Promise<T>,
 ): Promise<T | null> {
-  // pg advisory locks are session-scoped, but Prisma pools connections —
-  // lock + unlock can easily land on different backends, orphaning the
-  // lock on the original one forever. Before attempting to acquire, kill
-  // any stale backend that has been holding this specific lock while idle
-  // for more than STALE_INGRESS_LOCK_IDLE_SECONDS. Self-healing, cheap.
-  try {
-    await client.$queryRawUnsafe(
-      `SELECT pg_terminate_backend(l.pid)
-       FROM pg_locks l
-       JOIN pg_stat_activity a ON a.pid = l.pid
-       WHERE l.locktype = 'advisory'
-         AND l.classid = $1
-         AND l.objid = $2
-         AND l.granted = TRUE
-         AND a.state = 'idle'
-         AND a.state_change < NOW() - make_interval(secs => $3)`,
-      ARCHIVE_INGRESS_LOCK_FIRST_KEY,
-      ARCHIVE_INGRESS_LOCK_SECOND_KEY,
-      STALE_INGRESS_LOCK_IDLE_SECONDS,
-    );
-  } catch {
-    // Non-fatal: if we can't sweep stale holders we still try to acquire.
-  }
+  // pg advisory locks are session-scoped. Prisma pools connections, so
+  // running `pg_try_advisory_lock` + work + `pg_advisory_unlock` through
+  // `client` scatters across different backends — the acquire lands on
+  // one pool connection, the unlock on another, and the original session
+  // leaks the lock indefinitely. Fix: use `pg_try_advisory_xact_lock`
+  // inside a Prisma interactive transaction. The lock is pinned to the
+  // transaction's connection and auto-released when the transaction ends
+  // (commit OR rollback) — no way to leak. The callback continues to use
+  // `client` for its own queries; those go through other pool connections
+  // and do not contend for the ingress lock.
+  return client.$transaction(
+    async (tx) => {
+      const result = await tx.$queryRawUnsafe<Array<{ locked: boolean }>>(
+        "SELECT pg_try_advisory_xact_lock($1, $2) AS locked",
+        ARCHIVE_INGRESS_LOCK_FIRST_KEY,
+        ARCHIVE_INGRESS_LOCK_SECOND_KEY,
+      );
 
-  const result: Array<{ locked: boolean }> = await client.$queryRawUnsafe(
-    "SELECT pg_try_advisory_lock($1, $2) AS locked",
-    ARCHIVE_INGRESS_LOCK_FIRST_KEY,
-    ARCHIVE_INGRESS_LOCK_SECOND_KEY,
+      if (!result[0]?.locked) {
+        return null;
+      }
+
+      return callback();
+    },
+    {
+      timeout: INGRESS_LOCK_TIMEOUT_MS,
+      maxWait: INGRESS_LOCK_MAX_WAIT_MS,
+    },
   );
-
-  if (!result[0]?.locked) {
-    return null;
-  }
-
-  try {
-    return await callback();
-  } finally {
-    await client.$queryRawUnsafe(
-      "SELECT pg_advisory_unlock($1, $2)",
-      ARCHIVE_INGRESS_LOCK_FIRST_KEY,
-      ARCHIVE_INGRESS_LOCK_SECOND_KEY,
-    );
-  }
 }
 
 // eslint-disable-next-line complexity

@@ -103,10 +103,6 @@ export function ActivityPanel({
         queuedUpdateCount={queuedUpdateCount}
       />
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3 sm:p-4">
-        <ActivityQueueCard
-          latestEvent={latestEvent}
-          queuedUpdateCount={queuedUpdateCount}
-        />
         <ActivityCarousel
           groups={groups}
           latestEvent={latestEvent}
