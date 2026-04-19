@@ -5,16 +5,18 @@ import {
   resolveSocketUrl,
 } from "./socket-urls";
 
-const RECONNECT_DELAY_MS = 5_000;
-const RECONNECT_DELAY_MAX_MS = 60_000;
+const RECONNECT_DELAY_MS = 3_000;
+const RECONNECT_DELAY_MAX_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 20_000;
 const RATE_LIMIT_COOLDOWN_MS = 120_000;
+const WATCHDOG_INTERVAL_MS = 10_000;
 
 type Listener = () => void;
 
 let sharedSocket: Socket | null = null;
 let subscribers = 0;
 let visibilityHandler: (() => void) | null = null;
+let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 let rateLimitResumeAt = 0;
 let rateLimitTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -76,6 +78,7 @@ function ensureSocket(): Socket {
 
   const socket = io(socketUrl, {
     reconnection: true,
+    reconnectionAttempts: Infinity,
     reconnectionDelay: RECONNECT_DELAY_MS,
     reconnectionDelayMax: RECONNECT_DELAY_MAX_MS,
     randomizationFactor: 0.7,
@@ -103,6 +106,24 @@ function ensureSocket(): Socket {
       }
     };
     document.addEventListener("visibilitychange", visibilityHandler);
+
+    // Watchdog: socket.io's internal reconnection state machine can get
+    // stuck after a burst of connect_error events during a deploy —
+    // manager.reconnection() stays true but no dial actually happens.
+    // Every 10s, if the tab is visible, not rate-limited, and we're not
+    // connected, force a reconnect. Cheap and idempotent.
+    watchdogTimer = setInterval(() => {
+      if (!sharedSocket) return;
+      if (document.hidden) return;
+      if (Date.now() < rateLimitResumeAt) return;
+      if (sharedSocket.connected) return;
+
+      const manager = sharedSocket.io;
+      if (!manager.reconnection()) {
+        manager.reconnection(true);
+      }
+      sharedSocket.connect();
+    }, WATCHDOG_INTERVAL_MS);
   }
 
   return socket;
@@ -124,6 +145,10 @@ export function acquireArchiveSocket(onReady?: Listener): {
       if (subscribers === 0 && sharedSocket) {
         clearRateLimitTimeout();
         rateLimitResumeAt = 0;
+        if (watchdogTimer) {
+          clearInterval(watchdogTimer);
+          watchdogTimer = null;
+        }
         if (
           typeof document !== "undefined" &&
           visibilityHandler

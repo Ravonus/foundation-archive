@@ -70,8 +70,10 @@ export function resolveSocketIoTransportOptions(socketUrl: string) {
       return {
         path: "/socket.io",
         addTrailingSlash: false,
-        // Polling turns a broken upgrade path into an HTTP request storm.
-        transports: ["websocket"],
+        // WebSocket is primary; polling is the fallback when WS handshake
+        // fails (e.g. during a deploy while the socket container is
+        // restarting). upgrade:false keeps us from oscillating.
+        transports: ["websocket", "polling"],
         upgrade: false,
       };
     }
@@ -81,7 +83,7 @@ export function resolveSocketIoTransportOptions(socketUrl: string) {
 
   return {
     path: "/socket.io/",
-    transports: ["websocket"],
+    transports: ["websocket", "polling"],
     upgrade: false,
   };
 }
