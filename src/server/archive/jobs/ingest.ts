@@ -10,7 +10,6 @@ import {
   publicArchiveWorkInputSchema,
 } from "~/server/archive/schemas";
 import {
-  BACKUP_PRIORITY,
   type DatabaseClient,
   isArchived,
   isPinned,
@@ -176,8 +175,8 @@ export async function requestProfileArchive(
     20,
   );
   await persistDiscoveredFoundationWorks(client, works, {
-    backupPriority: BACKUP_PRIORITY,
     indexedFrom: "foundation-profile-search",
+    queueImmediately: false,
   });
 
   const totals: ProfileArchiveTotals = {
@@ -291,4 +290,3 @@ export async function scanContractTokens(
     contractAddress: payload.contractAddress,
   };
 }
-
