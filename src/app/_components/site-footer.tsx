@@ -4,7 +4,6 @@ import { LogoMark } from "~/app/_components/brand";
 
 const nav: { label: string; href: string }[] = [
   { label: "Archive", href: "/archive" },
-  { label: "Decentralization", href: "/decentralization" },
   { label: "Donate", href: "/donate" },
   { label: "About", href: "/about" },
   { label: "Desktop app", href: "/desktop" },

@@ -266,13 +266,6 @@ function FeatureGridSection() {
             More than a service. A community.
           </h2>
         </FadeUp>
-        <Link
-          href="/decentralization"
-          className="group inline-flex items-center gap-1 text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
-        >
-          <span className="link-editorial">See the full plan</span>
-          <ArrowRight aria-hidden className="arrow-slide h-3.5 w-3.5" />
-        </Link>
       </div>
 
       <Stagger className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
