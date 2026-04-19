@@ -55,7 +55,9 @@ Current public production values:
 - `NEXT_PUBLIC_ARCHIVE_SOCKET_URL=https://socket-foundation.agorix.io`
 - `ARCHIVE_SOCKET_INTERNAL_URL=http://socket:43129`
 
-Optional integrations such as `ETHEREUM_RPC_URL`, `KUBO_API_URL`, and `KUBO_API_AUTH_HEADER` can be added later.
+`ETHEREUM_RPC_URL` is still optional.
+
+`KUBO_API_URL` is not optional if you expect works to advance from "Almost saved" to "Saved". The production compose stack includes a `kubo` service, and the production env should point `KUBO_API_URL` at `http://kubo:5001`.
 
 ## Manual deploy
 

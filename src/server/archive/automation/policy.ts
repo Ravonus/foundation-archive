@@ -4,6 +4,7 @@ import {
   QueueJobStatus,
 } from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
+import { archivePinningEnabled } from "~/server/archive/jobs/shared";
 import { getArchivePolicyState } from "~/server/archive/state";
 
 import { type DatabaseClient } from "./types";
@@ -96,7 +97,8 @@ async function hasPendingRootsInCurrentTier(
 
       const alreadySatisfied =
         root.pinStatus === BackupStatus.PINNED ||
-        (root.backupStatus === BackupStatus.DOWNLOADED &&
+        (!archivePinningEnabled() &&
+          root.backupStatus === BackupStatus.DOWNLOADED &&
           Boolean(root.localDirectory));
 
       if (alreadySatisfied) {

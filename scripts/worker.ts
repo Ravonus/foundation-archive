@@ -2,6 +2,7 @@
 
 import "dotenv/config";
 
+import { env } from "~/env";
 import { archivePaceConfigForContractsPerTick } from "~/lib/archive-pace";
 import { updateWorkerHeartbeat, runWorkerCycle } from "~/server/archive/worker";
 import { getArchivePolicyState } from "~/server/archive/state";
@@ -9,7 +10,7 @@ import { db } from "~/server/db";
 
 function readFlag(name: string) {
   const index = process.argv.indexOf(name);
-  return index === -1 ? null : process.argv[index + 1] ?? null;
+  return index === -1 ? null : (process.argv[index + 1] ?? null);
 }
 
 function readBooleanFlag(name: string) {
@@ -18,6 +19,16 @@ function readBooleanFlag(name: string) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assertProductionPinningConfig() {
+  if (env.NODE_ENV !== "production" || env.KUBO_API_URL) {
+    return;
+  }
+
+  throw new Error(
+    "KUBO_API_URL is required in production. Without it the worker downloads roots but never pins them.",
+  );
 }
 
 async function readWorkerLoopConfig(input: {
@@ -45,6 +56,8 @@ async function readWorkerLoopConfig(input: {
 }
 
 async function main() {
+  assertProductionPinningConfig();
+
   const workerKey = readFlag("--worker-key") ?? "default-worker";
   const label = readFlag("--label") ?? "Automatic queue worker";
   const explicitLimitFlag = readFlag("--limit");

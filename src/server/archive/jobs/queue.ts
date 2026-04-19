@@ -2,6 +2,7 @@
 
 import {
   BackupStatus,
+  type Prisma,
   QueueJobKind,
   QueueJobStatus,
   type QueueJob,
@@ -13,6 +14,7 @@ import {
   BACKUP_PRIORITY,
   CONTRACT_TOKEN_PRIORITY,
   FAILED_ROOT_RETRY_COOLDOWN_MS,
+  archivePinningEnabled,
   type DatabaseClient,
   FOUNDATION_URL_PRIORITY,
   normalizeAddress,
@@ -167,10 +169,7 @@ async function handleExistingDedupedJob(args: {
   });
 }
 
-async function createNewQueueJob(
-  client: DatabaseClient,
-  input: QueueJobInput,
-) {
+async function createNewQueueJob(client: DatabaseClient, input: QueueJobInput) {
   const job = await client.queueJob.create({
     data: {
       kind: input.kind,
@@ -186,10 +185,7 @@ async function createNewQueueJob(
   return job;
 }
 
-export async function queueJob(
-  client: DatabaseClient,
-  input: QueueJobInput,
-) {
+export async function queueJob(client: DatabaseClient, input: QueueJobInput) {
   if (input.dedupeKey) {
     const existing = await client.queueJob.findUnique({
       where: {
@@ -359,7 +355,11 @@ async function fetchActiveJobs(client: DatabaseClient) {
       availableAt: true,
       createdAt: true,
     },
-    orderBy: [{ priority: "desc" }, { availableAt: "asc" }, { createdAt: "asc" }],
+    orderBy: [
+      { priority: "desc" },
+      { availableAt: "asc" },
+      { createdAt: "asc" },
+    ],
   });
 }
 
@@ -461,11 +461,13 @@ function analyseRebalance(
 
   const protectedJobs = activeJobs.filter(
     (job) =>
-      job.kind !== QueueJobKind.BACKUP_ARTWORK || job.priority > BACKUP_PRIORITY,
+      job.kind !== QueueJobKind.BACKUP_ARTWORK ||
+      job.priority > BACKUP_PRIORITY,
   );
   const automaticBackupJobs = activeJobs.filter(
     (job) =>
-      job.kind === QueueJobKind.BACKUP_ARTWORK && job.priority <= BACKUP_PRIORITY,
+      job.kind === QueueJobKind.BACKUP_ARTWORK &&
+      job.priority <= BACKUP_PRIORITY,
   );
   const automaticRunningJobs = automaticBackupJobs.filter(
     (job) => job.status === QueueJobStatus.RUNNING,
@@ -489,8 +491,9 @@ function analyseRebalance(
     queueBudget - protectedReadyJobs.length - automaticRunningJobs.length,
     0,
   );
-  const overflowPendingJobs =
-    automaticReadyPendingJobs.slice(automaticPendingTarget);
+  const overflowPendingJobs = automaticReadyPendingJobs.slice(
+    automaticPendingTarget,
+  );
   const readyPendingJobs = activeJobs.filter((job) =>
     isReadyPendingJob(job, now),
   ).length;
@@ -519,6 +522,76 @@ function analyseRebalance(
   };
 }
 
+function refillCandidateOr(failedRetryCutoff: Date) {
+  const candidates: Prisma.ArtworkWhereInput[] = [
+    {
+      metadataRootId: { not: null },
+      metadataStatus: {
+        equals: BackupStatus.PENDING,
+      },
+    },
+    {
+      mediaRootId: { not: null },
+      mediaStatus: {
+        equals: BackupStatus.PENDING,
+      },
+    },
+    {
+      metadataRootId: { not: null },
+      metadataStatus: BackupStatus.FAILED,
+      metadataRoot: {
+        is: {
+          updatedAt: {
+            lte: failedRetryCutoff,
+          },
+        },
+      },
+    },
+    {
+      mediaRootId: { not: null },
+      mediaStatus: BackupStatus.FAILED,
+      mediaRoot: {
+        is: {
+          updatedAt: {
+            lte: failedRetryCutoff,
+          },
+        },
+      },
+    },
+  ];
+
+  if (!archivePinningEnabled()) {
+    return candidates;
+  }
+
+  candidates.push(
+    {
+      metadataRootId: { not: null },
+      metadataStatus: BackupStatus.DOWNLOADED,
+      metadataRoot: {
+        is: {
+          pinStatus: {
+            not: BackupStatus.PINNED,
+          },
+        },
+      },
+    },
+    {
+      mediaRootId: { not: null },
+      mediaStatus: BackupStatus.DOWNLOADED,
+      mediaRoot: {
+        is: {
+          pinStatus: {
+            not: BackupStatus.PINNED,
+          },
+        },
+      },
+    },
+  );
+
+  return candidates;
+}
+
 async function refillAutomaticBackups(args: {
   client: DatabaseClient;
   refillSlots: number;
@@ -533,42 +606,7 @@ async function refillAutomaticBackups(args: {
 
   const candidateArtworks = await client.artwork.findMany({
     where: {
-      OR: [
-        {
-          metadataRootId: { not: null },
-          metadataStatus: {
-            equals: BackupStatus.PENDING,
-          },
-        },
-        {
-          mediaRootId: { not: null },
-          mediaStatus: {
-            equals: BackupStatus.PENDING,
-          },
-        },
-        {
-          metadataRootId: { not: null },
-          metadataStatus: BackupStatus.FAILED,
-          metadataRoot: {
-            is: {
-              updatedAt: {
-                lte: failedRetryCutoff,
-              },
-            },
-          },
-        },
-        {
-          mediaRootId: { not: null },
-          mediaStatus: BackupStatus.FAILED,
-          mediaRoot: {
-            is: {
-              updatedAt: {
-                lte: failedRetryCutoff,
-              },
-            },
-          },
-        },
-      ],
+      OR: refillCandidateOr(failedRetryCutoff),
     },
     select: {
       id: true,
@@ -661,7 +699,10 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     Math.min(automaticReadyPendingJobs.length, automaticPendingTarget);
   const refillSlots =
     readyPendingJobs <= refillResumeThreshold
-      ? Math.max(queueBudget - protectedReadyJobs.length - automaticActiveCount, 0)
+      ? Math.max(
+          queueBudget - protectedReadyJobs.length - automaticActiveCount,
+          0,
+        )
       : 0;
 
   const refilledCount = await refillAutomaticBackups({
@@ -671,15 +712,19 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     smartPinMaxBytes: policy.smartPinMaxBytes,
   });
 
-  if (overflowPendingJobs.length > 0 || refilledCount > 0 || parkedBlockedJobs > 0) {
+  if (
+    overflowPendingJobs.length > 0 ||
+    refilledCount > 0 ||
+    parkedBlockedJobs > 0
+  ) {
     await emitArchiveEvent(client, {
       type: "queue.backlog-rebalanced",
       summary:
         parkedBlockedJobs > 0
           ? `Parked ${parkedBlockedJobs} oversized backup job${parkedBlockedJobs === 1 ? "" : "s"} until a later smart-pin tier opens.`
           : overflowPendingJobs.length > 0
-          ? `Rebalanced the automatic queue: kept ${automaticPendingTarget} active backup jobs and deferred ${overflowPendingJobs.length}.`
-          : `Topped the automatic queue back up with ${refilledCount} backup job${refilledCount === 1 ? "" : "s"}.`,
+            ? `Rebalanced the automatic queue: kept ${automaticPendingTarget} active backup jobs and deferred ${overflowPendingJobs.length}.`
+            : `Topped the automatic queue back up with ${refilledCount} backup job${refilledCount === 1 ? "" : "s"}.`,
       data: {
         queueBudget,
         protectedJobs: protectedReadyJobs.length,

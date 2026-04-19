@@ -60,14 +60,19 @@ type SkippedOutcome = {
 type ProcessedOutcome = {
   status: "processed";
   availableAt: null;
-  root: Awaited<ReturnType<DatabaseClient["ipfsRoot"]["update"]>>;
 };
+
+function hasDownloadedRoot(root: RootRecord) {
+  return (
+    root.backupStatus === BackupStatus.DOWNLOADED &&
+    Boolean(root.localDirectory)
+  );
+}
 
 function isRootAlreadySatisfied(root: RootRecord) {
   return (
     root.pinStatus === BackupStatus.PINNED ||
-    (root.backupStatus === BackupStatus.DOWNLOADED &&
-      Boolean(root.localDirectory))
+    (!env.KUBO_API_URL && hasDownloadedRoot(root))
   );
 }
 
@@ -346,12 +351,19 @@ async function backupSingleRoot(
     const deferred = await evaluateSmartBudget({ client, input, root });
     if (deferred) return deferred;
 
-    const { updatedRoot, downloadResult } = await downloadRootAndRecord({
-      client,
-      input,
-      root,
-      startedAt,
-    });
+    const downloadedRoot = hasDownloadedRoot(root);
+    const { downloadResult } = downloadedRoot
+      ? {
+          downloadResult: {
+            byteSize: root.byteSize ?? root.estimatedByteSize ?? 0,
+          },
+        }
+      : await downloadRootAndRecord({
+          client,
+          input,
+          root,
+          startedAt,
+        });
 
     if (env.KUBO_API_URL) {
       await pinRootWithKubo({
@@ -361,7 +373,7 @@ async function backupSingleRoot(
         sizeBytes: downloadResult.byteSize,
         startedAt,
       });
-    } else {
+    } else if (!downloadedRoot) {
       await markPinSkipped(client, root.id);
     }
 
@@ -370,7 +382,6 @@ async function backupSingleRoot(
     return {
       status: "processed",
       availableAt: null,
-      root: updatedRoot,
     };
   } catch (error) {
     await recordRootFailure({ client, input, root, startedAt, error });

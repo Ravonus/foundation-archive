@@ -44,6 +44,8 @@ services:
       - db:push
     env_file:
       - .env.production
+    environment:
+      KUBO_API_URL: ${KUBO_API_URL:-http://kubo:5001}
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,6 +72,8 @@ services:
       - "3000"
     env_file:
       - .env.production
+    environment:
+      KUBO_API_URL: ${KUBO_API_URL:-http://kubo:5001}
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,10 +102,14 @@ services:
       - worker
     env_file:
       - .env.production
+    environment:
+      KUBO_API_URL: ${KUBO_API_URL:-http://kubo:5001}
     depends_on:
       postgres:
         condition: service_healthy
       archiver:
+        condition: service_started
+      kubo:
         condition: service_started
     restart: unless-stopped
     volumes:
@@ -122,6 +130,8 @@ services:
       - socket
     env_file:
       - .env.production
+    environment:
+      KUBO_API_URL: ${KUBO_API_URL:-http://kubo:5001}
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,6 +154,13 @@ services:
       - cold-storage:/mnt/backups
       - hot-storage:/data/archive-storage-hot
 
+  kubo:
+    image: ipfs/kubo:release
+    restart: unless-stopped
+    volumes:
+      - kubo-staging:/export
+      - kubo-data:/data/ipfs
+
 volumes:
   postgres-data:
     name: foundation-archive-postgres-data
@@ -156,3 +173,7 @@ volumes:
       type: cifs
       device: //${NAS_HOST}/${NAS_SHARE}
       o: addr=${NAS_HOST},username=${NAS_USERNAME},password=${NAS_PASSWORD},vers=${NAS_SMB_VERS:-3.0},uid=1000,gid=1000,file_mode=0664,dir_mode=0775,iocharset=utf8
+  kubo-staging:
+    name: foundation-archive-kubo-staging
+  kubo-data:
+    name: foundation-archive-kubo-data

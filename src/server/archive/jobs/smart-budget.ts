@@ -1,5 +1,7 @@
 import { BackupStatus } from "~/server/prisma-client";
 
+import { archivePinningEnabled } from "./shared";
+
 export type SmartBudgetRootSnapshot = {
   backupStatus: BackupStatus;
   pinStatus: BackupStatus;
@@ -18,7 +20,8 @@ export function rootAlreadySatisfied(root: SmartBudgetRootSnapshot) {
 
   return (
     root.pinStatus === BackupStatus.PINNED ||
-    (root.backupStatus === BackupStatus.DOWNLOADED &&
+    (!archivePinningEnabled() &&
+      root.backupStatus === BackupStatus.DOWNLOADED &&
       Boolean(root.localDirectory))
   );
 }

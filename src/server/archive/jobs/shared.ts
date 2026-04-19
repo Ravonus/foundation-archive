@@ -7,6 +7,7 @@ import {
   QueueJobStatus,
   type RootKind,
 } from "~/server/prisma-client";
+import { env } from "~/env";
 import { slugify } from "~/lib/utils";
 import { toLiveArtworkCard } from "~/server/archive/dashboard";
 import { firstIpfsReference, parseIpfsReference } from "~/server/archive/ipfs";
@@ -20,6 +21,10 @@ export const CONTRACT_TOKEN_PRIORITY = 9;
 export const BACKUP_PRIORITY = 8;
 export const CONTRACT_SCAN_PRIORITY = 5;
 export const FAILED_ROOT_RETRY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+export function archivePinningEnabled() {
+  return Boolean(env.KUBO_API_URL);
+}
 
 export type KnownContractSeed = {
   chainId: number;
@@ -256,13 +261,16 @@ export function artworkNeedsBackup(input: {
     } | null,
   ) => {
     if (!root) return false;
-    return !(
-      root.pinStatus === BackupStatus.PINNED ||
-      root.backupStatus === BackupStatus.DOWNLOADED
-    );
+    if (root.pinStatus === BackupStatus.PINNED) return false;
+    if (root.backupStatus === BackupStatus.DOWNLOADED) {
+      return archivePinningEnabled();
+    }
+    return true;
   };
 
-  return needsRootBackup(input.metadataRoot) || needsRootBackup(input.mediaRoot);
+  return (
+    needsRootBackup(input.metadataRoot) || needsRootBackup(input.mediaRoot)
+  );
 }
 
 export async function dropRootlessArtworkIfPresent(
@@ -338,15 +346,16 @@ function artworkHasSatisfiedRoots(artwork: {
 }) {
   const metadataStatus = deriveArtworkStatusFromRoot(artwork.metadataRoot);
   const mediaStatus = deriveArtworkStatusFromRoot(artwork.mediaRoot);
+  const downloadedCountsAsSatisfied = !archivePinningEnabled();
 
   const metadataSatisfied =
-    metadataStatus === BackupStatus.DOWNLOADED ||
     metadataStatus === BackupStatus.PINNED ||
-    metadataStatus === BackupStatus.SKIPPED;
+    metadataStatus === BackupStatus.SKIPPED ||
+    (downloadedCountsAsSatisfied && metadataStatus === BackupStatus.DOWNLOADED);
   const mediaSatisfied =
-    mediaStatus === BackupStatus.DOWNLOADED ||
     mediaStatus === BackupStatus.PINNED ||
-    mediaStatus === BackupStatus.SKIPPED;
+    mediaStatus === BackupStatus.SKIPPED ||
+    (downloadedCountsAsSatisfied && mediaStatus === BackupStatus.DOWNLOADED);
 
   return {
     metadataStatus,
