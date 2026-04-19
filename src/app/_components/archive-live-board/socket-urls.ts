@@ -2,32 +2,32 @@ function isLoopback(hostname: string) {
   return hostname === "127.0.0.1" || hostname === "localhost";
 }
 
-function resolveLegacySocketMirrorHost(configuredHostname: string) {
-  return configuredHostname.startsWith("socket-")
-    ? configuredHostname.slice("socket-".length)
-    : null;
+const FOUNDATION_SITE_HOSTNAME = "foundation.agorix.io";
+const FOUNDATION_SOCKET_HOSTNAME = "socket-foundation.agorix.io";
+
+function resolveTransportSocketHostname(configuredHostname: string) {
+  if (configuredHostname === FOUNDATION_SITE_HOSTNAME) {
+    return FOUNDATION_SOCKET_HOSTNAME;
+  }
+
+  return configuredHostname;
 }
 
 function rewriteConfiguredSocketUrl(configured: URL) {
   const configuredLoopback = isLoopback(configured.hostname);
   const currentLoopback = isLoopback(window.location.hostname);
-  const mirroredSiteHost = resolveLegacySocketMirrorHost(configured.hostname);
 
   if (configuredLoopback && !currentLoopback) {
     const port = configured.port ? configured.port : "43129";
     return `${window.location.protocol}//${window.location.hostname}:${port}`;
   }
 
-  // Older deployments used a separate socket-* hostname. The current site
-  // expects the live socket and health routes to be proxied on the same
-  // origin as the page itself, which avoids cross-origin polling/health
-  // requests in the browser.
-  if (
-    !currentLoopback &&
-    mirroredSiteHost &&
-    mirroredSiteHost === window.location.hostname
-  ) {
-    return window.location.origin;
+  if (!configuredLoopback && !currentLoopback) {
+    const transportUrl = new URL(configured.toString());
+    transportUrl.hostname = resolveTransportSocketHostname(
+      transportUrl.hostname,
+    );
+    return transportUrl.toString();
   }
 
   return configured.toString();

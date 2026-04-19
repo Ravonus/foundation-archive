@@ -82,9 +82,19 @@ export type RelayOwnerClientMessage =
 
 export const FOUNDATION_SHARE_BRIDGE_SCHEME = "foundationsharebridge";
 export const PUBLIC_UTILITY_GATEWAY_BASE_URL = "https://dweb.link";
+const FOUNDATION_SITE_HOSTNAME = "foundation.agorix.io";
+const FOUNDATION_SOCKET_HOSTNAME = "socket-foundation.agorix.io";
 
 function isLoopback(hostname: string) {
   return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
+function resolveTransportSocketHostname(configuredHostname: string) {
+  if (configuredHostname === FOUNDATION_SITE_HOSTNAME) {
+    return FOUNDATION_SOCKET_HOSTNAME;
+  }
+
+  return configuredHostname;
 }
 
 function rewriteConfiguredSocketUrl(configured: URL) {
@@ -95,6 +105,14 @@ function rewriteConfiguredSocketUrl(configured: URL) {
 
   if (configuredLoopback && !currentLoopback) {
     return window.location.origin;
+  }
+
+  if (!configuredLoopback && !currentLoopback) {
+    const transportUrl = new URL(configured.toString());
+    transportUrl.hostname = resolveTransportSocketHostname(
+      transportUrl.hostname,
+    );
+    return transportUrl.toString();
   }
 
   return configured.toString();
