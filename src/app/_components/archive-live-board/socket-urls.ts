@@ -7,7 +7,8 @@ function rewriteConfiguredSocketUrl(configured: URL) {
   const currentLoopback = isLoopback(window.location.hostname);
 
   if (configuredLoopback && !currentLoopback) {
-    return `${window.location.protocol}//${window.location.hostname}:${configured.port || "43129"}`;
+    const port = configured.port ? configured.port : "43129";
+    return `${window.location.protocol}//${window.location.hostname}:${port}`;
   }
 
   return configured.toString();
@@ -24,8 +25,16 @@ export function resolveSocketUrl() {
     }
   }
 
-  if (typeof window === "undefined") return "http://127.0.0.1:43129";
-  return `${window.location.protocol}//${window.location.hostname}:43129`;
+  if (typeof window === "undefined") {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    return siteUrl?.length ? siteUrl : "https://foundation.agorix.io";
+  }
+
+  if (isLoopback(window.location.hostname)) {
+    return `${window.location.protocol}//${window.location.hostname}:43129`;
+  }
+
+  return window.location.origin;
 }
 
 export function resolveSocketHealthUrl() {

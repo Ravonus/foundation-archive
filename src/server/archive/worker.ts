@@ -237,6 +237,7 @@ export async function readLatestWorkerHeartbeat(client: DatabaseClient) {
   });
 }
 
+// eslint-disable-next-line max-lines-per-function, complexity
 export async function runWorkerCycle(
   client: DatabaseClient,
   input: {

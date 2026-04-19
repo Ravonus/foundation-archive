@@ -1,3 +1,5 @@
+/* eslint-disable max-lines */
+
 "use client";
 
 import Link from "next/link";
@@ -21,6 +23,17 @@ const FRESH_HOLD_MS = 6_400;
 const COMPACT_ROTATE_MS = 7_200;
 const FULL_ROTATE_MS = 9_200;
 
+function sameOrderedKeys(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+
+  return true;
+}
+
+// eslint-disable-next-line max-lines-per-function
 function useActivityCarouselState(
   groups: Array<ActivityGroup>,
   latestEvent: ArchiveLiveEvent | null,
@@ -64,23 +77,26 @@ function useActivityCarouselState(
   );
 
   useEffect(() => {
-    if (groups.length === 0) {
-      setOrderedKeys([]);
-      return;
-    }
+    const frame = window.requestAnimationFrame(() => {
+      setOrderedKeys((current) => {
+        if (groups.length === 0) {
+          return current.length === 0 ? current : [];
+        }
 
-    setOrderedKeys((current) => {
-      const next = current.filter((key) => groupMap.has(key));
-      const seen = new Set(next);
+        const next = current.filter((key) => groupMap.has(key));
+        const seen = new Set(next);
 
-      for (const group of groups) {
-        if (seen.has(group.key)) continue;
-        next.push(group.key);
-        seen.add(group.key);
-      }
+        for (const group of groups) {
+          if (seen.has(group.key)) continue;
+          next.push(group.key);
+          seen.add(group.key);
+        }
 
-      return next;
+        return sameOrderedKeys(current, next) ? current : next;
+      });
     });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [groupMap, groups]);
 
   useEffect(() => {
@@ -110,12 +126,17 @@ function useActivityCarouselState(
     const nextKey = orderedGroups[latestGroupIndex]?.key ?? null;
     if (!nextKey) return;
 
-    setFreshKey(nextKey);
+    const frame = window.requestAnimationFrame(() => {
+      setFreshKey(nextKey);
+    });
     const timeout = window.setTimeout(() => {
       setFreshKey((current) => (current === nextKey ? null : current));
     }, FRESH_HOLD_MS);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
   }, [latestGroupIndex, orderedGroups]);
 
   useEffect(() => {
@@ -443,11 +464,9 @@ function CarouselActiveSlide({
 }
 
 function CarouselNavButtons({
-  total,
   goPrev,
   goNext,
 }: {
-  total: number;
   goPrev: () => void;
   goNext: () => void;
 }) {
@@ -493,7 +512,7 @@ function CarouselStatusRow({
         <span className="truncate">Rotating through recent arrivals</span>
       </div>
       {total > 1 ? (
-        <CarouselNavButtons total={total} goPrev={goPrev} goNext={goNext} />
+        <CarouselNavButtons goPrev={goPrev} goNext={goNext} />
       ) : null}
     </div>
   );

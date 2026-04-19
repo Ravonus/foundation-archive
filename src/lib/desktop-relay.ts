@@ -76,13 +76,47 @@ export type RelayOwnerClientMessage =
 
 export const FOUNDATION_SHARE_BRIDGE_SCHEME = "foundationsharebridge";
 
-export function resolveArchiveSocketUrl() {
-  if (process.env.NEXT_PUBLIC_ARCHIVE_SOCKET_URL) {
-    return process.env.NEXT_PUBLIC_ARCHIVE_SOCKET_URL;
+function isLoopback(hostname: string) {
+  return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
+function rewriteConfiguredSocketUrl(configured: URL) {
+  if (typeof window === "undefined") return configured.toString();
+
+  const configuredLoopback = isLoopback(configured.hostname);
+  const currentLoopback = isLoopback(window.location.hostname);
+
+  if (configuredLoopback && !currentLoopback) {
+    return window.location.origin;
   }
 
-  if (typeof window === "undefined") return "http://127.0.0.1:43129";
-  return `${window.location.protocol}//${window.location.hostname}:43129`;
+  return configured.toString();
+}
+
+export function resolveArchiveSocketUrl() {
+  const envUrl = process.env.NEXT_PUBLIC_ARCHIVE_SOCKET_URL;
+  if (envUrl) {
+    if (typeof window !== "undefined") {
+      try {
+        return rewriteConfiguredSocketUrl(new URL(envUrl));
+      } catch {
+        return envUrl;
+      }
+    }
+
+    return envUrl;
+  }
+
+  if (typeof window === "undefined") {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    return siteUrl?.length ? siteUrl : "https://foundation.agorix.io";
+  }
+
+  if (isLoopback(window.location.hostname)) {
+    return `${window.location.protocol}//${window.location.hostname}:43129`;
+  }
+
+  return window.location.origin;
 }
 
 export function resolveArchiveRelayWebSocketUrl(ownerToken: string) {
