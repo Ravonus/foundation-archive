@@ -109,12 +109,12 @@ function RootCardDetails({
       <div className="flex flex-wrap gap-2 pt-2">
         <SmallPill
           href={localUrl}
-          label="Verify server copy"
+          label="Agorix gateway"
           className={SMALL_PILL_STRONG}
         />
         <SmallPill
           href={root.gatewayUrl}
-          label="Public gateway"
+          label="Public IPFS"
           className={SMALL_PILL_MUTED}
           rel="noreferrer"
         />

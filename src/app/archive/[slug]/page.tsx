@@ -430,14 +430,12 @@ function ActionRow({ artwork, view }: SectionProps) {
           rel="noreferrer"
         />
         <ActionPill
-          href={view.gatewayMetadataUrl}
-          label="View gateway metadata"
-          rel="noreferrer"
+          href={view.localMetadataUrl}
+          label="View Agorix metadata"
         />
         <ActionPill
-          href={view.gatewayMediaUrl}
-          label="View gateway media"
-          rel="noreferrer"
+          href={view.localMediaUrl}
+          label="View Agorix media"
         />
         {slugPath ? (
           <ShareLinkButton title={artwork.title} path={slugPath} />
