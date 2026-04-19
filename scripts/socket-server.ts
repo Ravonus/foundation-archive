@@ -489,8 +489,23 @@ async function main() {
   });
 
   const relayWss = new WebSocketServer({
-    server: httpServer,
+    noServer: true,
     path: "/desktop-relay",
+  });
+
+  httpServer.on("upgrade", (request, socket, head) => {
+    const requestUrl = new URL(
+      request.url ?? "/",
+      `http://${request.headers.host ?? `127.0.0.1:${env.ARCHIVE_SOCKET_PORT}`}`,
+    );
+
+    if (requestUrl.pathname !== "/desktop-relay") {
+      return;
+    }
+
+    relayWss.handleUpgrade(request, socket, head, (ws) => {
+      relayWss.emit("connection", ws, request);
+    });
   });
 
   async function emitSnapshotToClient(socket: Socket) {

@@ -12,8 +12,9 @@ import { base, mainnet } from "wagmi/chains";
 import { env } from "~/env";
 
 const projectId = env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
+const isServer = typeof window === "undefined";
 
-const wcEnabledWallets = projectId
+const wcEnabledWallets = !isServer && projectId
   ? [walletConnectWallet, rainbowWallet, coinbaseWallet]
   : [coinbaseWallet];
 
