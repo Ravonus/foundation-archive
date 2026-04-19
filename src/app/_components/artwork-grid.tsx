@@ -295,6 +295,14 @@ export function ArtworkGrid({
   );
 }
 
+function isVideoItem(item: ArtworkGridItem) {
+  return item.mediaKind.toUpperCase() === "VIDEO";
+}
+
+function isAudioItem(item: ArtworkGridItem) {
+  return item.mediaKind.toUpperCase() === "AUDIO";
+}
+
 function ItemPoster({ item }: { item: ArtworkGridItem }) {
   const posterUrl = resolvePosterUrl(item);
   if (isModelItem(item) && item.mediaUrl) {
@@ -307,6 +315,41 @@ function ItemPoster({ item }: { item: ArtworkGridItem }) {
         allowAnchorFallback={false}
         className="h-full w-full pointer-events-none transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
       />
+    );
+  }
+  if (isVideoItem(item) && item.mediaUrl) {
+    return (
+      <video
+        src={item.mediaUrl}
+        poster={posterUrl ?? undefined}
+        muted
+        autoPlay
+        loop
+        playsInline
+        preload="metadata"
+        aria-label={item.title}
+        className="h-full w-full object-cover transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
+      />
+    );
+  }
+  if (isAudioItem(item) && item.mediaUrl) {
+    return (
+      <div className="relative flex h-full w-full items-center justify-center bg-[var(--color-surface-alt)]">
+        {posterUrl ? (
+          <BlurImage
+            src={posterUrl}
+            alt={item.title}
+            className="absolute inset-0 h-full w-full object-cover opacity-60"
+          />
+        ) : null}
+        <audio
+          src={item.mediaUrl}
+          controls
+          preload="none"
+          aria-label={item.title}
+          className="relative z-10 w-[85%] max-w-xs"
+        />
+      </div>
     );
   }
   if (posterUrl) {

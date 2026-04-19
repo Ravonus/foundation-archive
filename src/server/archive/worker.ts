@@ -127,10 +127,36 @@ function idleRebalanceResult() {
   };
 }
 
+const STALE_INGRESS_LOCK_IDLE_SECONDS = 120;
+
 async function withArchiveIngressLock<T>(
   client: DatabaseClient,
   callback: () => Promise<T>,
 ): Promise<T | null> {
+  // pg advisory locks are session-scoped, but Prisma pools connections —
+  // lock + unlock can easily land on different backends, orphaning the
+  // lock on the original one forever. Before attempting to acquire, kill
+  // any stale backend that has been holding this specific lock while idle
+  // for more than STALE_INGRESS_LOCK_IDLE_SECONDS. Self-healing, cheap.
+  try {
+    await client.$queryRawUnsafe(
+      `SELECT pg_terminate_backend(l.pid)
+       FROM pg_locks l
+       JOIN pg_stat_activity a ON a.pid = l.pid
+       WHERE l.locktype = 'advisory'
+         AND l.classid = $1
+         AND l.objid = $2
+         AND l.granted = TRUE
+         AND a.state = 'idle'
+         AND a.state_change < NOW() - make_interval(secs => $3)`,
+      ARCHIVE_INGRESS_LOCK_FIRST_KEY,
+      ARCHIVE_INGRESS_LOCK_SECOND_KEY,
+      STALE_INGRESS_LOCK_IDLE_SECONDS,
+    );
+  } catch {
+    // Non-fatal: if we can't sweep stale holders we still try to acquire.
+  }
+
   const result: Array<{ locked: boolean }> = await client.$queryRawUnsafe(
     "SELECT pg_try_advisory_lock($1, $2) AS locked",
     ARCHIVE_INGRESS_LOCK_FIRST_KEY,
