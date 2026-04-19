@@ -139,9 +139,6 @@ function BoardPrimaryCard({
         drainDetail={drainCopy.drainDetail}
       />
       <StatsGrid stats={stats} reduce={reduce} />
-      {queueWaitingOnWorker ? (
-        <QueueWaitingBanner pendingJobs={pendingJobs} />
-      ) : null}
     </div>
   );
 }
