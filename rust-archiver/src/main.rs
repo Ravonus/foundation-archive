@@ -590,13 +590,22 @@ async fn archive_root(
                         break 'outer;
                     }
 
-                    let transient = matches!(status.as_u16(), 408 | 425 | 429 | 502 | 503 | 504);
+                    let code = status.as_u16();
+                    // Rate limit / gateway blocked → don't retry this host, jump to next
+                    // gateway in the chain immediately.
+                    let rate_limited = matches!(code, 403 | 429);
+                    // Transient network-ish failures → retry SAME host a couple times with
+                    // backoff before giving up and moving on.
+                    let transient = matches!(code, 408 | 425 | 500 | 502 | 503 | 504);
                     last_error = Some(format!(
                         "Gateway {} returned status {}",
                         candidate, status
                     ));
                     warn!("{}", last_error.as_deref().unwrap_or(""));
 
+                    if rate_limited {
+                        break;
+                    }
                     if transient && attempt < transient_retry_delays.len() {
                         tokio::time::sleep(transient_retry_delays[attempt]).await;
                         attempt += 1;
