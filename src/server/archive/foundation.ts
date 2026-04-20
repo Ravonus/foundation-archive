@@ -126,7 +126,7 @@ export function rewriteFoundationAssetUrl(
 ): string | null {
   if (!url) return null;
   return url.replace(
-    /^https?:\/\/f8n-production\.s3\.amazonaws\.com\//,
+    /^https?:\/\/f8n-production\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com\//,
     "https://f8n-production.imgix.net/",
   );
 }
