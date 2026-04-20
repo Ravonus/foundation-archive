@@ -88,6 +88,7 @@ export function ProfileHeader({
   return (
     <ProfileHero
       name={displayName}
+      seed={username ?? accountAddress}
       eyebrow="Artist profile"
       usernameBadge={username ? `@${username}` : undefined}
       subtitle={shortAddress(accountAddress)}

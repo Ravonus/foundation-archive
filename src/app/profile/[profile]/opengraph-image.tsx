@@ -10,6 +10,11 @@ import {
   loadOgFonts,
   palettesFor,
 } from "~/app/_components/og/helpers";
+import {
+  PLACEHOLDER_BANNER_BRIGHTNESS,
+  placeholderAvatarBackground,
+  placeholderBannerBackground,
+} from "~/lib/profile-placeholder";
 
 export const runtime = "nodejs";
 export const alt = "Agorix artist profile";
@@ -159,6 +164,7 @@ function OgFrame({
   handle,
   subtitle,
   bio,
+  seed,
 }: {
   bannerUrl: string | null;
   bannerBrightness: number;
@@ -168,9 +174,12 @@ function OgFrame({
   handle: string | null;
   subtitle: string | null;
   bio: string | null;
+  seed: string;
 }) {
   const palette = palettesFor(bannerBrightness);
   const logoSrc = palette.isDark ? AGORIX_LOGOS.light : AGORIX_LOGOS.dark;
+  const bannerPlaceholder = placeholderBannerBackground(seed);
+  const avatarPlaceholder = placeholderAvatarBackground(seed);
 
   // Layout geometry — banner shrunk to 240px so the body (390px) has room
   // for heading + handle + bio + CTA without pushing the @handle line up
@@ -201,7 +210,7 @@ function OgFrame({
           position: "relative",
           overflow: "hidden",
           backgroundColor: palette.surfaceAlt,
-          backgroundImage: `linear-gradient(135deg, rgba(198,162,88,0.22), transparent 55%), linear-gradient(180deg, ${palette.surfaceAlt}, ${palette.surface})`,
+          backgroundImage: bannerUrl ? undefined : bannerPlaceholder,
           borderBottom: `1px solid ${palette.line}`,
         }}
       >
@@ -218,14 +227,16 @@ function OgFrame({
             }}
           />
         ) : null}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: palette.scrim,
-            display: "flex",
-          }}
-        />
+        {bannerUrl ? (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: palette.scrim,
+              display: "flex",
+            }}
+          />
+        ) : null}
         {/* Brand */}
         <div
           style={{
@@ -296,6 +307,7 @@ function OgFrame({
             height: 200,
             borderRadius: 999,
             backgroundColor: palette.surfaceAlt,
+            backgroundImage: avatarUrl ? undefined : avatarPlaceholder,
             border: `8px solid ${palette.avatarRing}`,
             display: "flex",
             alignItems: "center",
@@ -323,9 +335,12 @@ function OgFrame({
             <div
               style={{
                 display: "flex",
-                fontSize: 68,
-                fontWeight: 700,
-                color: OG_THEME.gold,
+                fontFamily:
+                  '"Fraunces", "Inter", system-ui, Georgia, serif',
+                fontSize: 82,
+                fontWeight: 600,
+                color: OG_THEME.ink,
+                letterSpacing: "-0.02em",
               }}
             >
               {avatarInitials}
@@ -512,17 +527,23 @@ export default async function ProfileOgImage({
     (font): font is NonNullable<typeof font> => Boolean(font),
   );
 
+  const seed =
+    resolved?.username ?? resolved?.accountAddress ?? displayName;
+
   return new ImageResponse(
     (
       <OgFrame
         bannerUrl={bannerInlined?.dataUrl ?? null}
-        bannerBrightness={bannerInlined?.brightness ?? 255}
+        bannerBrightness={
+          bannerInlined?.brightness ?? PLACEHOLDER_BANNER_BRIGHTNESS
+        }
         avatarUrl={avatarInlined?.dataUrl ?? null}
         avatarInitials={avatarInitials}
         displayName={displayName}
         handle={handle}
         subtitle={subtitle}
         bio={bio}
+        seed={seed}
       />
     ),
     {

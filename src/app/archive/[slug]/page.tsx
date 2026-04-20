@@ -578,6 +578,9 @@ function ArtistHero({
     <ProfileHero
       name={displayName}
       nameHref={archiveHref ?? undefined}
+      seed={
+        profile.username ?? artistUsername ?? artistWallet ?? displayName
+      }
       eyebrow="Artist"
       usernameBadge={usernameBadge}
       subtitle={artistWallet ? shortAddress(artistWallet) : undefined}

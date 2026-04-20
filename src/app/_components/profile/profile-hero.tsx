@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 
 import { ProfileAvatar } from "~/app/_components/profile/profile-avatar";
+import { placeholderBannerBackground } from "~/lib/profile-placeholder";
 
 type ProfileHeroProps = {
   name: string;
@@ -12,6 +13,10 @@ type ProfileHeroProps = {
   subtitle?: string;
   avatarUrl: string | null;
   avatarLabel: string;
+  /// Stable handle/wallet/name used to seed the placeholder banner +
+  /// avatar gradient when Foundation has no cover/avatar on file.
+  /// Falls back to `name`.
+  seed?: string;
   bannerUrl: string | null;
   bio?: string | null;
   foundationUrl?: string;
@@ -35,6 +40,7 @@ export function ProfileHero(props: ProfileHeroProps) {
     subtitle,
     avatarUrl,
     avatarLabel,
+    seed,
     bannerUrl,
     bio,
     foundationUrl,
@@ -43,6 +49,8 @@ export function ProfileHero(props: ProfileHeroProps) {
     aside,
     className,
   } = props;
+
+  const resolvedSeed = seed ?? name;
 
   return (
     <section
@@ -61,9 +69,17 @@ export function ProfileHero(props: ProfileHeroProps) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(198,162,88,0.22),transparent_55%),linear-gradient(180deg,var(--color-surface-alt),var(--color-surface))]" />
+          <div
+            aria-hidden
+            className="h-full w-full"
+            style={{
+              backgroundImage: placeholderBannerBackground(resolvedSeed),
+            }}
+          />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.45)] via-transparent to-transparent" />
+        {bannerUrl ? (
+          <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.45)] via-transparent to-transparent" />
+        ) : null}
       </div>
 
       <div className="relative grid gap-8 px-6 pb-6 sm:px-8 sm:pb-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,360px)]">
@@ -72,6 +88,7 @@ export function ProfileHero(props: ProfileHeroProps) {
             <ProfileAvatar
               imageUrl={avatarUrl}
               label={avatarLabel}
+              seed={resolvedSeed}
               className="-mt-16 h-28 w-28 shrink-0 rounded-full border-4 border-[var(--color-surface)] bg-[var(--color-surface)] shadow-[0_12px_40px_-20px_rgba(17,17,17,0.6)] sm:-mt-20 sm:h-32 sm:w-32"
               textClassName="text-lg"
             />

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { UserRound } from "lucide-react";
 
 import { cn } from "~/lib/utils";
+import { placeholderAvatarBackground } from "~/lib/profile-placeholder";
 
 function avatarInitials(label: string | null | undefined) {
   const cleaned = (label ?? "").trim();
@@ -24,12 +25,17 @@ function avatarInitials(label: string | null | undefined) {
 export function ProfileAvatar({
   imageUrl,
   label,
+  seed,
   className,
   iconClassName,
   textClassName,
 }: {
   imageUrl: string | null;
   label: string | null;
+  /// Deterministic seed for the placeholder gradient. Falls back to the
+  /// label so identically-labelled profiles land on identical gradients
+  /// (and their hero banner, which uses the same seed, stays coherent).
+  seed?: string;
   className?: string;
   iconClassName?: string;
   textClassName?: string;
@@ -61,9 +67,12 @@ export function ProfileAvatar({
     <div
       aria-label={label ?? "Profile avatar"}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-[var(--color-placeholder)] text-[var(--color-muted)]",
+        "flex shrink-0 items-center justify-center rounded-full text-[var(--color-ink)]",
         className,
       )}
+      style={{
+        backgroundImage: placeholderAvatarBackground(seed ?? label ?? ""),
+      }}
     >
       {initials ? (
         <span
