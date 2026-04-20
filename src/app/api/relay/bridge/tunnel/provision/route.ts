@@ -28,6 +28,8 @@ export async function POST(request: Request) {
       subdomain: result.status.subdomain,
       tunnelToken: result.token,
       provisionedAt: result.status.provisionedAt,
+      libp2pHostname: result.status.libp2pHostname,
+      libp2pSubdomain: result.status.libp2pSubdomain,
     });
   } catch (error) {
     return NextResponse.json(

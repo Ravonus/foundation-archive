@@ -85,12 +85,26 @@ export async function createNamedTunnel(name: string): Promise<CreateTunnelResul
   };
 }
 
+export type TunnelIngressRule = {
+  hostname: string;
+  service: string;
+};
+
+/**
+ * Set ingress rules for a cloudflared named tunnel. One tunnel can serve
+ * multiple hostnames by listing multiple ingress entries — used to expose
+ * both the HTTP gateway and the libp2p WSS listener on separate subdomains.
+ * The `http_status:404` catch-all is appended automatically.
+ */
 export async function setTunnelIngress(
   tunnelId: string,
-  hostname: string,
-  localService: string,
+  rules: TunnelIngressRule[],
 ): Promise<void> {
   const { token, accountId } = requireCloudflareConfig();
+
+  if (rules.length === 0) {
+    throw new Error("setTunnelIngress requires at least one rule.");
+  }
 
   await cf(
     token,
@@ -100,7 +114,10 @@ export async function setTunnelIngress(
       body: {
         config: {
           ingress: [
-            { hostname, service: localService },
+            ...rules.map((rule) => ({
+              hostname: rule.hostname,
+              service: rule.service,
+            })),
             { service: "http_status:404" },
           ],
         },

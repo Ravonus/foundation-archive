@@ -438,6 +438,13 @@ model RelayDevice {
   tunnelToken        String?
   tunnelProvisionedAt DateTime?
   tunnelLastError    String?
+  // Second subdomain on the same cloudflared tunnel that proxies WSS to the
+  // bridge's Kubo WebSocket listener. Makes the desktop node publicly
+  // dialable over libp2p/ws so ipfs.io / dweb.link can fetch pinned
+  // content instead of timing out on NAT-bound TCP/UDP 4001 swarm addrs.
+  libp2pHostname     String?
+  libp2pSubdomain    String?
+  libp2pDnsRecordId  String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -445,6 +452,7 @@ model RelayDevice {
   jobs            RelayJob[]
 
   @@unique([tunnelSubdomain])
+  @@unique([libp2pSubdomain])
   @@index([ownerToken, lastSeenAt])
 }
 
