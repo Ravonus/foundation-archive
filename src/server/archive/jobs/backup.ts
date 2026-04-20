@@ -11,7 +11,6 @@ import {
   dependencyManifestIsCurrent,
   verifyArchivedRootDependencies,
 } from "~/server/archive/dependencies";
-import { parseIpfsReference } from "~/server/archive/ipfs";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { getArchivePolicyState } from "~/server/archive/state";
 import {
@@ -289,11 +288,42 @@ async function pinRootWithKubo(args: {
   startedAt: Date;
 }) {
   const { client, input, root, sizeBytes, startedAt } = args;
-  const pinReference = root.originalUrl
-    ? (parseIpfsReference(root.originalUrl, RootKind.UNKNOWN)?.originalCid ??
-      root.cid)
-    : root.cid;
-  const pinResult = await pinCidWithKubo(pinReference);
+  // Use root.cid directly instead of unwrapping originalUrl — filestore
+  // pins need to match the on-disk layout, which is keyed by root.cid.
+  const pinResult = await pinCidWithKubo(root.cid, root.relativePath);
+
+  if (!pinResult.pinned) {
+    // Filestore add reproduced a different CID than the stored one —
+    // typically because the directory we have locally is a partial
+    // subset of the original (e.g. one token's metadata inside a
+    // thousand-token edition directory). Re-fetching every sibling
+    // would undo the point of the dedup migration, so mark the root as
+    // skipped and keep serving the file from our own gateway.
+    await client.ipfsRoot.update({
+      where: { id: root.id },
+      data: {
+        pinStatus: BackupStatus.SKIPPED,
+        pinProvider: PinProvider.NONE,
+        pinReference: pinResult.reference,
+        lastDeferredAt: new Date(),
+        deferredUntilByteSize: null,
+        lastError: `Kubo nocopy produced ${pinResult.reference ?? "?"}, expected ${root.cid}.`,
+      },
+    });
+
+    await recordBackupRun(client, {
+      artworkId: input.artworkId,
+      rootId: root.id,
+      action: "PIN_BY_CID",
+      status: BackupStatus.SKIPPED,
+      provider: PinProvider.NONE,
+      responsePayload: JSON.stringify(pinResult),
+      startedAt,
+      finishedAt: new Date(),
+    });
+
+    return;
+  }
 
   await client.ipfsRoot.update({
     where: { id: root.id },

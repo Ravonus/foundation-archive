@@ -1,14 +1,17 @@
+import { createReadStream } from "node:fs";
 import {
   copyFile,
   link,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import { env } from "~/env";
 import { formatBytes } from "~/lib/utils";
@@ -292,7 +295,145 @@ async function downloadFileToArchiveWithJs(input: {
   };
 }
 
-async function pinCidWithKuboFromNode(cid: string) {
+/// Walks a directory, yielding each child file/dir in a deterministic
+/// depth-first order. Paths are returned relative to `rootDir`. The CID
+/// dir itself is NOT yielded — only its descendants. Callers that need
+/// the CID dir entry must emit it themselves as the top-level directory
+/// part.
+async function* walkArchiveTree(
+  rootDir: string,
+  relativePrefix = "",
+): AsyncGenerator<{
+  absolutePath: string;
+  relativePath: string;
+  isDirectory: boolean;
+}> {
+  const here = relativePrefix
+    ? path.join(rootDir, relativePrefix)
+    : rootDir;
+  const entries = await readdir(here, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const childRelative = relativePrefix
+      ? `${relativePrefix}/${entry.name}`
+      : entry.name;
+    const childAbsolute = path.join(here, entry.name);
+    if (entry.isDirectory()) {
+      yield {
+        absolutePath: childAbsolute,
+        relativePath: childRelative,
+        isDirectory: true,
+      };
+      yield* walkArchiveTree(rootDir, childRelative);
+    } else if (entry.isFile()) {
+      yield {
+        absolutePath: childAbsolute,
+        relativePath: childRelative,
+        isDirectory: false,
+      };
+    }
+  }
+}
+
+/// Streams a kubo-compatible multipart body describing the CID
+/// directory and every file inside it. Each file part carries an
+/// `Abspath` header so kubo's filestore stores a pointer to the on-disk
+/// file instead of copying its bytes — which is what lets us skip the
+/// old pattern of pinning by CID (which re-downloaded every byte through
+/// bitswap and ballooned kubo's blockstore to 38 GB).
+async function* buildNocopyMultipartBody(args: {
+  cidDir: string;
+  cidDirName: string;
+  boundary: string;
+}): AsyncGenerator<Uint8Array> {
+  const { cidDir, cidDirName, boundary } = args;
+  const encoder = new TextEncoder();
+
+  const emit = (chunk: string) => encoder.encode(chunk);
+
+  let index = 0;
+  const partHeader = (
+    name: string,
+    filename: string,
+    contentType: string,
+    abspath: string | null,
+  ) => {
+    const prefix = index === 0 ? "" : "\r\n";
+    const suffix = index === 0 ? "" : `-${index}`;
+    index += 1;
+    return (
+      `${prefix}--${boundary}\r\n` +
+      (abspath ? `Abspath: ${abspath}\r\n` : "") +
+      `Content-Disposition: form-data; name="${name}${suffix}"; ` +
+      `filename="${encodeURIComponent(filename)}"\r\n` +
+      `Content-Type: ${contentType}\r\n\r\n`
+    );
+  };
+
+  // Root (CID) directory entry first, then its contents.
+  yield emit(
+    partHeader("file", cidDirName, "application/x-directory", null),
+  );
+
+  for await (const entry of walkArchiveTree(cidDir)) {
+    const relativeToParent = `${cidDirName}/${entry.relativePath}`;
+    if (entry.isDirectory) {
+      yield emit(
+        partHeader("file", relativeToParent, "application/x-directory", null),
+      );
+      continue;
+    }
+
+    yield emit(
+      partHeader(
+        "file",
+        relativeToParent,
+        "application/octet-stream",
+        entry.absolutePath,
+      ),
+    );
+
+    const fileStream = createReadStream(entry.absolutePath);
+    for await (const chunk of fileStream) {
+      yield chunk instanceof Uint8Array
+        ? chunk
+        : new Uint8Array(chunk as Buffer);
+    }
+  }
+
+  yield emit(`\r\n--${boundary}--\r\n`);
+}
+
+async function kuboPinRemove(rawCid: string) {
+  if (!env.KUBO_API_URL) return;
+  try {
+    const url = new URL("/api/v0/pin/rm", env.KUBO_API_URL);
+    url.searchParams.set("arg", rawCid);
+    await fetch(url, {
+      method: "POST",
+      headers: env.KUBO_API_AUTH_HEADER
+        ? { Authorization: env.KUBO_API_AUTH_HEADER }
+        : undefined,
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    console.warn(
+      `[archive] Kubo unpin for mismatched ${rawCid} failed:`,
+      formatErrorMessage(error),
+    );
+  }
+}
+
+/// Re-adds the local archive directory for `cid` via kubo's filestore,
+/// storing only on-disk pointers (no re-fetch, no duplicated bytes). The
+/// resulting CID must match the stored one — otherwise our local layout
+/// doesn't reproduce Foundation's original upload (e.g. we only pulled
+/// one file from a large edition-metadata directory) and we skip the pin
+/// rather than wastefully re-fetching siblings we don't need.
+async function pinCidWithKuboFromNode(
+  cid: string,
+  relativePath: string | null | undefined,
+) {
   if (!env.KUBO_API_URL) {
     return {
       pinned: false,
@@ -301,32 +442,98 @@ async function pinCidWithKuboFromNode(cid: string) {
     };
   }
 
-  const endpoint = new URL("/api/v0/pin/add", env.KUBO_API_URL);
-  endpoint.searchParams.set("arg", cid);
+  // relativePath isn't strictly required for the filestore call — the
+  // whole CID directory is walked either way. It's accepted so callers
+  // keep passing what they know, and so future probes can validate the
+  // exact file we downloaded still lives on disk before adding.
+  const _ = relativePath;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: env.KUBO_API_AUTH_HEADER
-      ? {
-          Authorization: env.KUBO_API_AUTH_HEADER,
-        }
-      : undefined,
-    signal: AbortSignal.timeout(ARCHIVE_PIN_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Kubo pin failed for ${cid}: ${response.status}`);
+  const cidDir = getCidDirectory(cid);
+  let cidStats;
+  try {
+    cidStats = await stat(cidDir);
+  } catch {
+    throw new Error(
+      `Kubo pin skipped for ${cid}: local archive directory ${cidDir} is missing.`,
+    );
+  }
+  if (!cidStats.isDirectory()) {
+    throw new Error(
+      `Kubo pin skipped for ${cid}: ${cidDir} is not a directory.`,
+    );
   }
 
-  const result = (await response.json()) as {
-    Pins?: string[];
-    Pinned?: string;
-  };
+  const cidDirName = path.basename(cidDir);
+  const boundary = `----agorix-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+
+  const bodyStream = Readable.toWeb(
+    Readable.from(buildNocopyMultipartBody({ cidDir, cidDirName, boundary })),
+  ) as ReadableStream<Uint8Array>;
+
+  const url = new URL("/api/v0/add", env.KUBO_API_URL);
+  url.searchParams.set("nocopy", "true");
+  url.searchParams.set("pin", "true");
+  url.searchParams.set("cid-version", "0");
+  url.searchParams.set("quieter", "true");
+  url.searchParams.set("stream-channels", "true");
+  url.searchParams.set("wrap-with-directory", "false");
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      ...(env.KUBO_API_AUTH_HEADER
+        ? { Authorization: env.KUBO_API_AUTH_HEADER }
+        : {}),
+    },
+    body: bodyStream,
+    // Required by undici for streaming request bodies.
+    duplex: "half",
+    signal: AbortSignal.timeout(ARCHIVE_PIN_TIMEOUT_MS),
+  } as RequestInit & { duplex: "half" });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `Kubo filestore add failed for ${cid}: ${response.status} ${detail.slice(0, 400)}`,
+    );
+  }
+
+  const rawBody = await response.text();
+  let rootHash: string | null = null;
+  for (const line of rawBody.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const obj = JSON.parse(trimmed) as { Name?: string; Hash?: string };
+    if (obj.Name === cidDirName && obj.Hash) {
+      rootHash = obj.Hash;
+    }
+  }
+
+  if (!rootHash) {
+    throw new Error(
+      `Kubo filestore add for ${cid} returned no entry named "${cidDirName}".`,
+    );
+  }
+
+  if (rootHash !== cid) {
+    console.warn(
+      `[archive] Kubo nocopy produced ${rootHash} for ${cid}; local dir does not reproduce the original CID (likely a partial directory). Skipping pin.`,
+    );
+    await kuboPinRemove(rootHash);
+    return {
+      pinned: false,
+      provider: "skipped-cid-mismatch",
+      reference: rootHash,
+    };
+  }
 
   return {
     pinned: true,
     provider: "kubo",
-    reference: result.Pinned ?? result.Pins?.[0] ?? cid,
+    reference: cid,
   };
 }
 
@@ -669,30 +876,14 @@ export async function ensureArchiveRoot() {
   });
 }
 
-export async function pinCidWithKubo(cid: string) {
-  if (
-    env.ARCHIVE_ARCHIVER_URL &&
-    env.KUBO_API_URL &&
-    shouldAttemptRustArchiver()
-  ) {
-    try {
-      const response = await requestRustArchiver<RustArchiverPinResponse>(
-        "/pin/cid",
-        {
-          cid,
-          kubo_api_url: env.KUBO_API_URL,
-          kubo_api_auth_header: env.KUBO_API_AUTH_HEADER ?? null,
-        },
-      );
-
-      if (response) {
-        clearRustArchiverCooldown();
-        return response;
-      }
-    } catch (error) {
-      warnRustArchiverFallback("pin", "Node Kubo path", error);
-    }
-  }
-
-  return pinCidWithKuboFromNode(cid);
+export async function pinCidWithKubo(
+  cid: string,
+  relativePath: string | null | undefined,
+) {
+  // The rust-archiver used to proxy pins via kubo's /api/v0/pin/add,
+  // which re-fetched every CID's bytes through bitswap and duplicated
+  // them into kubo's blockstore. We now do filestore (--nocopy) adds
+  // directly against on-disk cold-storage, so the archiver is bypassed
+  // for pins — kept only for downloads.
+  return pinCidWithKuboFromNode(cid, relativePath);
 }
