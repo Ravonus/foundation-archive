@@ -11,7 +11,6 @@ import {
   dependencyManifestIsCurrent,
   verifyArchivedRootDependencies,
 } from "~/server/archive/dependencies";
-import { parseIpfsReference } from "~/server/archive/ipfs";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { getArchivePolicyState } from "~/server/archive/state";
 import {
@@ -289,11 +288,31 @@ async function pinRootWithKubo(args: {
   startedAt: Date;
 }) {
   const { client, input, root, sizeBytes, startedAt } = args;
-  const pinReference = root.originalUrl
-    ? (parseIpfsReference(root.originalUrl, RootKind.UNKNOWN)?.originalCid ??
-      root.cid)
-    : root.cid;
-  const pinResult = await pinCidWithKubo(pinReference);
+  // Pin by root.cid — the local-add path reads the cold-storage dir
+  // laid out at ipfs/<root.cid>/<relativePath>. The earlier
+  // parseIpfsReference(originalUrl) swap targeted the bitswap /pin/add
+  // flow, which the local-add path doesn't need.
+  const pinResult = await pinCidWithKubo(root.cid);
+
+  if (!pinResult.pinned) {
+    // Partial directory — local add produced a different CID. Keep the
+    // file-tree copy on disk (hydration will fill in siblings on a
+    // later worker pass), leave the row's pinStatus alone, and record
+    // the skip so we have a breadcrumb in backup_runs. We deliberately
+    // don't emit a live event here — it would just add noise while the
+    // normal hydration path catches up.
+    await recordBackupRun(client, {
+      artworkId: input.artworkId,
+      rootId: root.id,
+      action: "PIN_BY_CID",
+      status: BackupStatus.SKIPPED,
+      provider: PinProvider.NONE,
+      responsePayload: JSON.stringify(pinResult),
+      startedAt,
+      finishedAt: new Date(),
+    });
+    return;
+  }
 
   await client.ipfsRoot.update({
     where: { id: root.id },
@@ -305,6 +324,11 @@ async function pinRootWithKubo(args: {
       lastDeferredAt: null,
       deferredUntilByteSize: null,
       lastError: null,
+      // The file-tree copy was just deleted by the pin step, so the
+      // hot-and-cold bookkeeping no longer points at a live directory.
+      // Null the localDirectory so anything that reads this row later
+      // knows the authoritative copy lives in kubo's blockstore.
+      localDirectory: null,
     },
   });
 

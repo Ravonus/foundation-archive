@@ -124,6 +124,11 @@ async function main() {
         label,
         limit: currentConfig.limit,
         mode: once ? "manual" : "daemon",
+        // ARCHIVE_INGRESS_PAUSED stops automatic discovery / crawl /
+        // market indexer / rebalance during the cold-storage -> kubo
+        // migration but keeps the user-initiated queue drain running,
+        // so search + "save this" flows still resolve in real time.
+        allowIngress: !env.ARCHIVE_INGRESS_PAUSED,
       });
       const completed = result.results.filter(
         (item) => item.status === "completed",
