@@ -126,12 +126,9 @@ export async function generateMetadata(
   const collection = artwork.collectionName ? ` from ${artwork.collectionName}` : "";
   const ogTitle = `${artwork.title} by ${artistLabel}${collection} — preserved on Agorix`;
   const rawDescription = metadataDescription(artwork);
-  const description = [
-    rawDescription,
-    ` · Preserved by Agorix, a public Foundation archive with IPFS-pinned, verifiable roots for every work.`,
-  ]
-    .join("")
-    .slice(0, 300);
+  const extended = `${rawDescription} · Preserved on Agorix, a public Foundation archive.`;
+  const description =
+    extended.length > 155 ? `${extended.slice(0, 154).trimEnd()}…` : extended;
 
   // og:image / twitter:image come from `opengraph-image.tsx` — a
   // dynamically generated PNG composed server-side + cached.

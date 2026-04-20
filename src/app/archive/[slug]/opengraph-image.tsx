@@ -5,6 +5,7 @@ import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
 import { resolveArchivedLocalUrl } from "~/server/archive/dependencies";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import {
+  AGORIX_LOGOS,
   OG_THEME,
   inlineImage,
   loadOgFonts,
@@ -113,6 +114,8 @@ function ArchiveOgFrame({
   collectionName: string | null;
   description: string | null;
 }) {
+  const logoSrc = AGORIX_LOGOS.dark;
+
   return (
     <div
       style={{
@@ -120,7 +123,8 @@ function ArchiveOgFrame({
         height: "100%",
         display: "flex",
         flexDirection: "row",
-        fontFamily: '"Noto Sans", system-ui, -apple-system, sans-serif',
+        fontFamily:
+          '"Inter", "Noto Sans Symbols 2", system-ui, -apple-system, sans-serif',
         backgroundColor: OG_THEME.background,
         color: OG_THEME.ink,
       }}
@@ -182,30 +186,41 @@ function ArchiveOgFrame({
         <div
           style={{
             position: "absolute",
-            top: 28,
-            right: 40,
+            top: 24,
+            right: 32,
             display: "flex",
             alignItems: "center",
             gap: 12,
             backgroundColor: OG_THEME.surface,
             border: `1px solid ${OG_THEME.line}`,
             color: OG_THEME.ink,
-            letterSpacing: "0.32em",
+            letterSpacing: "0.3em",
             fontSize: 16,
             textTransform: "uppercase",
-            padding: "8px 18px",
+            fontWeight: 600,
+            padding: "8px 18px 8px 12px",
             borderRadius: 999,
           }}
         >
-          <div
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 999,
-              backgroundColor: OG_THEME.gold,
-              display: "flex",
-            }}
-          />
+          {logoSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+            <img
+              src={logoSrc}
+              width={28}
+              height={28}
+              style={{ width: 28, height: 28, display: "flex" }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                backgroundColor: OG_THEME.gold,
+                display: "flex",
+              }}
+            />
+          )}
           Agorix
         </div>
 
@@ -225,10 +240,12 @@ function ArchiveOgFrame({
 
         <div
           style={{
-            fontSize: 62,
-            fontWeight: 700,
-            marginTop: 16,
-            lineHeight: 1.05,
+            fontFamily:
+              '"Fraunces", "Inter", system-ui, Georgia, serif',
+            fontSize: 58,
+            fontWeight: 600,
+            marginTop: 12,
+            lineHeight: 1.02,
             color: OG_THEME.ink,
             display: "flex",
           }}
@@ -437,21 +454,29 @@ export default async function ArchiveOgImage({
     .join("")
     .toUpperCase();
 
-  const [notoRegular, notoBold, notoSymbols] = await loadOgFonts();
+  const [inter, interSemibold, fraunces, notoSymbols] = await loadOgFonts();
   const fonts = [
-    notoRegular
+    inter
       ? {
-          name: "Noto Sans",
-          data: notoRegular,
+          name: "Inter",
+          data: inter,
           weight: 400 as const,
           style: "normal" as const,
         }
       : null,
-    notoBold
+    interSemibold
       ? {
-          name: "Noto Sans",
-          data: notoBold,
-          weight: 700 as const,
+          name: "Inter",
+          data: interSemibold,
+          weight: 600 as const,
+          style: "normal" as const,
+        }
+      : null,
+    fraunces
+      ? {
+          name: "Fraunces",
+          data: fraunces,
+          weight: 600 as const,
           style: "normal" as const,
         }
       : null,

@@ -41,12 +41,12 @@ export async function generateMetadata({
     const handle = resolved.username ? `@${resolved.username}` : null;
     const title = `${displayName}${handle ? ` (${handle})` : ""} on Agorix · Foundation archive`;
     const bioPart = resolved.bio?.trim();
-    const description = [
-      `Explore works by ${displayName}${handle ? ` (${handle})` : ""} preserved in Agorix — a public, IPFS-backed archive of Foundation art that keeps every root pinned and verifiable.`,
-      bioPart ? ` ${bioPart}` : "",
-    ]
-      .join("")
-      .slice(0, 300);
+    const baseDescription = bioPart
+      ? `${bioPart} · Preserved in Agorix, a public Foundation archive.`
+      : `Works by ${displayName}${handle ? ` (${handle})` : ""} preserved in Agorix — a public, IPFS-backed Foundation archive.`;
+    const description = baseDescription.length > 155
+      ? `${baseDescription.slice(0, 154).trimEnd()}…`
+      : baseDescription;
 
     // og:image / twitter:image come from `opengraph-image.tsx` — a
     // dynamically generated PNG composed server-side + cached.

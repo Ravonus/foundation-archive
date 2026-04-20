@@ -1,8 +1,33 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import sharp from "sharp";
 
 const IMAGE_FETCH_TIMEOUT_MS = 2_500;
 const IMAGE_MAX_BYTES = 6 * 1024 * 1024; // 6 MB raw
 const MAX_IMAGE_DIMENSION = 1024;
+
+/// Read a public asset at build/cold-start time and return it as a
+/// data: URI so we don't make an HTTP round-trip back to ourselves mid-
+/// render. Returns null if the file is missing.
+function readPublicAsDataUrl(relativePath: string, mime: string) {
+  try {
+    const filePath = path.join(
+      process.cwd(),
+      "public",
+      relativePath,
+    );
+    const buffer = fs.readFileSync(filePath);
+    return `data:${mime};base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+export const AGORIX_LOGOS = {
+  dark: readPublicAsDataUrl("logo-dark.png", "image/png"),
+  light: readPublicAsDataUrl("logo-light.png", "image/png"),
+};
 
 /// Shared visual language for Agorix OG cards — light theme matching the
 /// site's cream/paper surfaces so /profile/* and /archive/* cards read as
@@ -60,22 +85,34 @@ async function fetchFont(cssUrl: string): Promise<ArrayBuffer | null> {
   }
 }
 
+let cachedInter: Promise<ArrayBuffer | null> | null = null;
+let cachedInterBold: Promise<ArrayBuffer | null> | null = null;
+let cachedFraunces: Promise<ArrayBuffer | null> | null = null;
+
+/// Match the site's typography: Inter for body (layout.tsx/globals.css
+/// ships Inter via next/font), Fraunces for the serif headings, and
+/// Noto Sans Symbols 2 as a fallback so Misc Symbols like "☆" still
+/// render. The old Noto Sans cache keys are kept as compatibility
+/// stubs in case anything else imports them.
 export function loadOgFonts() {
-  cachedNotoSans ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400&display=swap",
+  cachedInter ??= fetchFont(
+    "https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap",
   );
-  cachedNotoSansBold ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@700&display=swap",
+  cachedInterBold ??= fetchFont(
+    "https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap",
   );
-  // Noto Sans Symbols 2 carries Misc Symbols / dingbats / arrows /
-  // geometric shapes so Satori can render ☆★♥♦♣♠→←↑↓ and similar
-  // characters that the Latin-only Noto Sans file doesn't ship.
+  cachedFraunces ??= fetchFont(
+    "https://fonts.googleapis.com/css2?family=Fraunces:wght@600&display=swap",
+  );
+  cachedNotoSans ??= cachedInter;
+  cachedNotoSansBold ??= cachedInterBold;
   cachedNotoSymbols ??= fetchFont(
     "https://fonts.googleapis.com/css2?family=Noto+Sans+Symbols+2&display=swap",
   );
   return Promise.all([
-    cachedNotoSans,
-    cachedNotoSansBold,
+    cachedInter,
+    cachedInterBold,
+    cachedFraunces,
     cachedNotoSymbols,
   ]);
 }
@@ -86,6 +123,58 @@ export type InlinedImage = {
   /// text palette on top of the banner.
   brightness: number;
 };
+
+export type AnimatedSource = {
+  buffer: Buffer;
+  width: number;
+  height: number;
+  frameCount: number;
+};
+
+/// Fetch an image and, if it's an animated GIF (or WebP with >1 page),
+/// return its raw bytes + metadata. Used by OG routes that want to
+/// preserve animation on Discord/iMessage instead of flattening to a
+/// first-frame PNG. Returns null for static images or failures so the
+/// caller can drop to the PNG path.
+export async function fetchAnimatedSource(
+  url: string | null | undefined,
+): Promise<AnimatedSource | null> {
+  if (!url) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      IMAGE_FETCH_TIMEOUT_MS,
+    );
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "user-agent": "Agorix OG Bot/1.0" },
+    });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+
+    const lengthHeader = response.headers.get("content-length");
+    if (lengthHeader && Number(lengthHeader) > IMAGE_MAX_BYTES) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength === 0 || buffer.byteLength > IMAGE_MAX_BYTES) {
+      return null;
+    }
+
+    const metadata = await sharp(buffer, { animated: true }).metadata();
+    const pages = metadata.pages ?? 1;
+    if (pages <= 1) return null;
+
+    return {
+      buffer,
+      width: metadata.width ?? 0,
+      height: metadata.pageHeight ?? metadata.height ?? 0,
+      frameCount: pages,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /// Fetch a remote image and normalize it to PNG via sharp. Handles GIF
 /// (takes the first frame), WebP, and oversized images. Satori only

@@ -4,6 +4,7 @@ import { getAddress } from "viem";
 import { db } from "~/server/db";
 import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
 import {
+  AGORIX_LOGOS,
   OG_THEME,
   inlineImage,
   loadOgFonts,
@@ -169,6 +170,13 @@ function OgFrame({
   bio: string | null;
 }) {
   const palette = palettesFor(bannerBrightness);
+  const logoSrc = palette.isDark ? AGORIX_LOGOS.light : AGORIX_LOGOS.dark;
+
+  // Layout geometry — banner shrunk to 240px so the body (390px) has room
+  // for heading + handle + bio + CTA without pushing the @handle line up
+  // into the banner. Avatar overlaps the seam by 80px.
+  const BANNER_H = 240;
+  const AVATAR_OVERLAP = 80;
 
   return (
     <div
@@ -177,7 +185,8 @@ function OgFrame({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        fontFamily: '"Noto Sans", system-ui, -apple-system, sans-serif',
+        fontFamily:
+          '"Inter", "Noto Sans Symbols 2", system-ui, -apple-system, sans-serif',
         backgroundColor: palette.surface,
         color: palette.heading,
         position: "relative",
@@ -187,7 +196,7 @@ function OgFrame({
       <div
         style={{
           width: "100%",
-          height: "345px",
+          height: `${BANNER_H}px`,
           display: "flex",
           position: "relative",
           overflow: "hidden",
@@ -201,7 +210,7 @@ function OgFrame({
           <img
             src={bannerUrl}
             width={1200}
-            height={345}
+            height={BANNER_H}
             style={{
               width: "100%",
               height: "100%",
@@ -209,7 +218,6 @@ function OgFrame({
             }}
           />
         ) : null}
-        {/* Scrim picked to match banner brightness so text below stays legible */}
         <div
           style={{
             position: "absolute",
@@ -222,30 +230,41 @@ function OgFrame({
         <div
           style={{
             position: "absolute",
-            top: 28,
-            right: 40,
+            top: 24,
+            right: 32,
             display: "flex",
             alignItems: "center",
             gap: 12,
             backgroundColor: palette.brandBg,
             border: `1px solid ${palette.brandBorder}`,
             color: palette.heading,
-            letterSpacing: "0.32em",
+            letterSpacing: "0.3em",
             fontSize: 16,
             textTransform: "uppercase",
-            padding: "8px 18px",
+            fontWeight: 600,
+            padding: "8px 18px 8px 12px",
             borderRadius: 999,
           }}
         >
-          <div
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 999,
-              backgroundColor: OG_THEME.gold,
-              display: "flex",
-            }}
-          />
+          {logoSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+            <img
+              src={logoSrc}
+              width={28}
+              height={28}
+              style={{ width: 28, height: 28, display: "flex" }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                backgroundColor: OG_THEME.gold,
+                display: "flex",
+              }}
+            />
+          )}
           Agorix
         </div>
       </div>
@@ -256,26 +275,26 @@ function OgFrame({
           flex: 1,
           display: "flex",
           flexDirection: "row",
-          alignItems: "flex-end",
-          padding: "0 72px 56px",
+          alignItems: "flex-start",
+          padding: "36px 72px 48px",
           gap: 40,
           position: "relative",
           backgroundColor: palette.surface,
         }}
       >
-        {/* Avatar — overlaps banner */}
+        {/* Avatar — overlaps banner seam by AVATAR_OVERLAP */}
         <div
           style={{
-            width: 220,
-            height: 220,
+            width: 200,
+            height: 200,
             borderRadius: 999,
             backgroundColor: palette.surfaceAlt,
-            border: `10px solid ${palette.avatarRing}`,
+            border: `8px solid ${palette.avatarRing}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             overflow: "hidden",
-            marginTop: -140,
+            marginTop: -AVATAR_OVERLAP,
             flexShrink: 0,
             boxShadow: "0 24px 60px rgba(17,17,17,0.15)",
           }}
@@ -284,11 +303,11 @@ function OgFrame({
             // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
             <img
               src={avatarUrl}
-              width={200}
-              height={200}
+              width={184}
+              height={184}
               style={{
-                width: "200px",
-                height: "200px",
+                width: "184px",
+                height: "184px",
                 borderRadius: 999,
                 objectFit: "cover",
               }}
@@ -297,7 +316,7 @@ function OgFrame({
             <div
               style={{
                 display: "flex",
-                fontSize: 72,
+                fontSize: 68,
                 fontWeight: 700,
                 color: OG_THEME.gold,
               }}
@@ -317,9 +336,10 @@ function OgFrame({
         >
           <div
             style={{
-              fontSize: 18,
+              fontSize: 16,
               textTransform: "uppercase",
               letterSpacing: "0.22em",
+              fontWeight: 600,
               color: palette.eyebrow,
               display: "flex",
             }}
@@ -328,10 +348,12 @@ function OgFrame({
           </div>
           <div
             style={{
-              fontSize: 72,
-              fontWeight: 700,
-              marginTop: 10,
-              lineHeight: 1.05,
+              fontFamily:
+                '"Fraunces", "Inter", system-ui, Georgia, serif',
+              fontSize: 64,
+              fontWeight: 600,
+              marginTop: 8,
+              lineHeight: 1.02,
               color: palette.heading,
               display: "flex",
             }}
@@ -340,12 +362,12 @@ function OgFrame({
           </div>
           <div
             style={{
-              marginTop: 12,
+              marginTop: 10,
               display: "flex",
               flexDirection: "row",
-              gap: 16,
+              gap: 14,
               color: palette.muted,
-              fontSize: 26,
+              fontSize: 24,
             }}
           >
             {handle ? <span>{handle}</span> : null}
@@ -355,8 +377,8 @@ function OgFrame({
           {bio ? (
             <div
               style={{
-                marginTop: 20,
-                fontSize: 24,
+                marginTop: 16,
+                fontSize: 22,
                 lineHeight: 1.4,
                 color: palette.body,
                 display: "flex",
@@ -369,7 +391,7 @@ function OgFrame({
           {/* CTA row */}
           <div
             style={{
-              marginTop: 26,
+              marginTop: 20,
               display: "flex",
               flexDirection: "row",
               alignItems: "center",
@@ -383,10 +405,10 @@ function OgFrame({
                 gap: 10,
                 backgroundColor: palette.ctaBg,
                 color: palette.ctaText,
-                padding: "14px 24px",
+                padding: "12px 22px",
                 borderRadius: 999,
-                fontSize: 22,
-                fontWeight: 700,
+                fontSize: 20,
+                fontWeight: 600,
               }}
             >
               Explore the archive
@@ -395,7 +417,7 @@ function OgFrame({
             <div
               style={{
                 display: "flex",
-                fontSize: 18,
+                fontSize: 16,
                 color: palette.muted,
                 letterSpacing: "0.04em",
               }}
@@ -445,21 +467,29 @@ export default async function ProfileOgImage({
     .join("")
     .toUpperCase();
 
-  const [notoRegular, notoBold, notoSymbols] = await loadOgFonts();
+  const [inter, interSemibold, fraunces, notoSymbols] = await loadOgFonts();
   const fonts = [
-    notoRegular
+    inter
       ? {
-          name: "Noto Sans",
-          data: notoRegular,
+          name: "Inter",
+          data: inter,
           weight: 400 as const,
           style: "normal" as const,
         }
       : null,
-    notoBold
+    interSemibold
       ? {
-          name: "Noto Sans",
-          data: notoBold,
-          weight: 700 as const,
+          name: "Inter",
+          data: interSemibold,
+          weight: 600 as const,
+          style: "normal" as const,
+        }
+      : null,
+    fraunces
+      ? {
+          name: "Fraunces",
+          data: fraunces,
+          weight: 600 as const,
           style: "normal" as const,
         }
       : null,
