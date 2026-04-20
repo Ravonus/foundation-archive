@@ -80,18 +80,38 @@ export function toArchivedGridItem(
   } satisfies ArtworkGridItem;
 }
 
+// Foundation returns truncated `data:image/gif;base64` strings for inline
+// works — with no actual payload. Treat those as unusable so we fall through
+// to a real URL (their imgix CDN) instead of rendering a blank tile.
+function isUsableUrl(url: string | null | undefined): url is string {
+  if (!url) return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  if (/^data:[^;,]*(;[^,]*)?$/i.test(trimmed)) return false; // data: with no payload
+  return true;
+}
+
+function pickFirstUsable(
+  ...candidates: Array<string | null | undefined>
+): string | null {
+  for (const candidate of candidates) {
+    if (isUsableUrl(candidate)) return candidate;
+  }
+  return null;
+}
+
 function resolveDiscoveredPosterUrl(work: FoundationLookupWork) {
-  const base = work.staticPreviewUrl ?? work.previewUrl;
+  const base = pickFirstUsable(work.staticPreviewUrl, work.previewUrl);
   if (base) return base;
   if (work.mediaKind !== "IMAGE") return null;
-  return work.sourceUrl ?? work.mediaUrl;
+  return pickFirstUsable(work.sourceUrl, work.mediaUrl);
 }
 
 function resolveDiscoveredMediaUrl(work: FoundationLookupWork) {
   if (work.mediaKind === "IMAGE") {
-    return work.sourceUrl ?? work.mediaUrl ?? work.previewUrl;
+    return pickFirstUsable(work.sourceUrl, work.mediaUrl, work.previewUrl);
   }
-  return work.mediaUrl ?? work.sourceUrl ?? work.previewUrl;
+  return pickFirstUsable(work.mediaUrl, work.sourceUrl, work.previewUrl);
 }
 
 export function toDiscoveredGridItem(
@@ -183,8 +203,12 @@ function buildProfileItem(
   const worksForProfile = works.filter((work) =>
     profileMatchesWork(profile, work, accountAddress),
   );
+  const archivableWorks = worksForProfile.filter(
+    (work) => work.storageProtocol === "ipfs",
+  );
+  const offChainCount = worksForProfile.length - archivableWorks.length;
   const { archivedWithRoots, pinnedWorks } = collectArchivedForProfile(
-    worksForProfile,
+    archivableWorks,
     archivedByKey,
   );
 
@@ -194,9 +218,10 @@ function buildProfileItem(
     name: profile.name,
     profileImageUrl: profile.profileImageUrl,
     username: profile.username,
-    discoveredCount: worksForProfile.length,
+    discoveredCount: archivableWorks.length,
     archivedCount: archivedWithRoots.length,
     pinnedCount: pinnedWorks.length,
+    offChainCount,
     pinnedWorks: pinnedWorks.slice(0, 3).map(toPinnedWork),
   } satisfies ProfileArchiveItem;
 }

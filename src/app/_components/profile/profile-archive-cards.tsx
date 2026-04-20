@@ -27,6 +27,7 @@ export interface ProfileArchiveItem {
   discoveredCount: number;
   archivedCount: number;
   pinnedCount: number;
+  offChainCount: number;
   pinnedWorks: ProfileArchivePinnedWork[];
 }
 
@@ -182,6 +183,12 @@ function ProfileCard({
           ) : null}
           <p className="mt-2 text-sm text-[var(--color-body)]">
             {profile.archivedCount} of {profile.discoveredCount} saved
+            {profile.offChainCount > 0 ? (
+              <span className="text-[var(--color-muted)]">
+                {" "}
+                · {profile.offChainCount} off-chain
+              </span>
+            ) : null}
           </p>
           <div className="mt-3 flex items-center gap-3 text-xs text-[var(--color-muted)]">
             <Link
