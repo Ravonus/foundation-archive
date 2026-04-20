@@ -437,7 +437,7 @@ export default async function ArchiveOgImage({
     .join("")
     .toUpperCase();
 
-  const [notoRegular, notoBold] = await loadOgFonts();
+  const [notoRegular, notoBold, notoSymbols] = await loadOgFonts();
   const fonts = [
     notoRegular
       ? {
@@ -452,6 +452,14 @@ export default async function ArchiveOgImage({
           name: "Noto Sans",
           data: notoBold,
           weight: 700 as const,
+          style: "normal" as const,
+        }
+      : null,
+    notoSymbols
+      ? {
+          name: "Noto Sans Symbols 2",
+          data: notoSymbols,
+          weight: 400 as const,
           style: "normal" as const,
         }
       : null,

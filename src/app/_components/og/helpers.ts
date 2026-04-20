@@ -21,12 +21,15 @@ export const OG_THEME = {
   green: "#2d704a",
 } as const;
 
-/// Fetch a font once per cold start. Latin-extended + a Symbol 2 subset is
-/// enough to cover usernames like "☆Chris☆" without bloating the font
-/// download. Falls back to undefined (system font) if fonts.googleapis.com
-/// is unavailable.
+/// Fetch a font once per cold start. Noto Sans (Latin) + Noto Sans
+/// Symbols 2 covers the vast majority of display names and artist bios
+/// including things like "☆Chris☆" — Latin doesn't carry U+2606 etc.,
+/// so Symbols 2 is registered as a fallback font and Satori swaps in
+/// the correct file per codepoint. Falls back to undefined (system
+/// font) if fonts.googleapis.com is unavailable.
 let cachedNotoSans: Promise<ArrayBuffer | null> | null = null;
 let cachedNotoSansBold: Promise<ArrayBuffer | null> | null = null;
+let cachedNotoSymbols: Promise<ArrayBuffer | null> | null = null;
 
 async function fetchFont(cssUrl: string): Promise<ArrayBuffer | null> {
   try {
@@ -59,18 +62,22 @@ async function fetchFont(cssUrl: string): Promise<ArrayBuffer | null> {
 
 export function loadOgFonts() {
   cachedNotoSans ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400&text=" +
-      encodeURIComponent(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?@#$%&*()-_+=:;'\"/\\|<>{}[]☆★✦✧✶✹●◆◇◯◎▲△▼▽♥♡♣♤♪♫→←↑↓⇒·…–—",
-      ),
+    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400&display=swap",
   );
   cachedNotoSansBold ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@700&text=" +
-      encodeURIComponent(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?@#$%&*()-_+=:;'\"/\\|<>{}[]☆★✦✧✶✹●◆◇◯◎▲△▼▽♥♡♣♤♪♫→←↑↓⇒·…–—",
-      ),
+    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@700&display=swap",
   );
-  return Promise.all([cachedNotoSans, cachedNotoSansBold]);
+  // Noto Sans Symbols 2 carries Misc Symbols / dingbats / arrows /
+  // geometric shapes so Satori can render ☆★♥♦♣♠→←↑↓ and similar
+  // characters that the Latin-only Noto Sans file doesn't ship.
+  cachedNotoSymbols ??= fetchFont(
+    "https://fonts.googleapis.com/css2?family=Noto+Sans+Symbols+2&display=swap",
+  );
+  return Promise.all([
+    cachedNotoSans,
+    cachedNotoSansBold,
+    cachedNotoSymbols,
+  ]);
 }
 
 export type InlinedImage = {
