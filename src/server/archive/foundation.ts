@@ -131,36 +131,6 @@ export function rewriteFoundationAssetUrl(
   );
 }
 
-/// Rewrites an imgix-hosted Foundation asset URL to request a bounded,
-/// auto-compressed variant — indispensable for the OG pipeline, whose
-/// 6 MB fetch cap rejects the full-res originals artists upload (multi-
-/// megabyte GIF avatars, oversized banner PNGs, etc). Non-imgix URLs
-/// pass through unchanged; null/empty stays null.
-export function foundationImgixVariant(
-  url: string | null | undefined,
-  opts: { width: number; height?: number; format?: "png" | "jpg" },
-): string | null {
-  if (!url) return null;
-  if (!/^https?:\/\/f8n-production\.imgix\.net\//.test(url)) return url;
-
-  const params = new URLSearchParams();
-  params.set("w", String(opts.width));
-  if (opts.height) {
-    params.set("h", String(opts.height));
-    params.set("fit", "crop");
-  }
-  // Force a static single-frame format so imgix flattens animated GIFs
-  // (otherwise it resizes every frame and the file stays huge — we've
-  // measured 8 MB inputs ballooning to 12 MB with `auto=format`). Also
-  // ask for compression.
-  params.set("fm", opts.format ?? "png");
-  params.set("auto", "compress");
-
-  const queryIndex = url.indexOf("?");
-  const base = queryIndex >= 0 ? url.slice(0, queryIndex) : url;
-  return `${base}?${params.toString()}`;
-}
-
 const FOUNDATION_USER_AGENT =
   "foundation-archive/0.1 (+https://foundation.app)";
 const NEXT_DATA_PATTERN =
