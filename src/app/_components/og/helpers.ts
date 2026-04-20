@@ -73,11 +73,22 @@ export function loadOgFonts() {
   return Promise.all([cachedNotoSans, cachedNotoSansBold]);
 }
 
+export type InlinedImage = {
+  dataUrl: string;
+  /// Mean luma 0..255 of the resized PNG. Used to pick a contrasting
+  /// text palette on top of the banner.
+  brightness: number;
+};
+
 /// Fetch a remote image and normalize it to PNG via sharp. Handles GIF
 /// (takes the first frame), WebP, and oversized images. Satori only
 /// reliably renders PNG and JPEG, so every foreign image goes through
 /// this bottleneck. Bounded timeout + size cap keep the OG response fast.
-export async function inlineImage(url: string | null | undefined) {
+/// Also returns the mean luma so the caller can pick readable text colors
+/// over the image.
+export async function inlineImage(
+  url: string | null | undefined,
+): Promise<InlinedImage | null> {
   if (!url) return null;
   try {
     const controller = new AbortController();
@@ -100,18 +111,68 @@ export async function inlineImage(url: string | null | undefined) {
       return null;
     }
 
-    const normalized = await sharp(rawBuffer, { pages: 1, animated: false })
-      .resize({
-        width: MAX_IMAGE_DIMENSION,
-        height: MAX_IMAGE_DIMENSION,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
+    const pipeline = sharp(rawBuffer, {
+      pages: 1,
+      animated: false,
+    }).resize({
+      width: MAX_IMAGE_DIMENSION,
+      height: MAX_IMAGE_DIMENSION,
+      fit: "inside",
+      withoutEnlargement: true,
+    });
+
+    const normalized = await pipeline
+      .clone()
       .png({ compressionLevel: 9, effort: 7 })
       .toBuffer();
 
-    return `data:image/png;base64,${normalized.toString("base64")}`;
+    let brightness = 128;
+    try {
+      const stats = await pipeline
+        .clone()
+        .removeAlpha()
+        .greyscale()
+        .stats();
+      const channel = stats.channels[0];
+      if (channel) brightness = Math.round(channel.mean);
+    } catch {
+      // Fall back to the neutral default; the card picks a safe palette.
+    }
+
+    return {
+      dataUrl: `data:image/png;base64,${normalized.toString("base64")}`,
+      brightness,
+    };
   } catch {
     return null;
   }
+}
+
+/// Pick a contrasting text/overlay palette for a banner based on its
+/// mean luma. Brightness in the 80..175 mid-band gets a stronger
+/// scrim so mixed-contrast banners stay readable.
+export function palettesFor(brightness: number) {
+  const isDark = brightness < 128;
+  return {
+    isDark,
+    eyebrow: isDark ? "#f5d48a" : OG_THEME.gold,
+    heading: isDark ? "#ffffff" : OG_THEME.ink,
+    body: isDark ? "rgba(255,255,255,0.92)" : OG_THEME.body,
+    muted: isDark ? "rgba(255,255,255,0.76)" : OG_THEME.muted,
+    /// Scrim gradient overlayed on the banner so the text sitting on
+    /// top of it stays readable even when the banner is loud.
+    scrim: isDark
+      ? "linear-gradient(180deg, rgba(0,0,0,0) 25%, rgba(0,0,0,0.55) 100%)"
+      : "linear-gradient(180deg, rgba(250,250,247,0) 40%, rgba(250,250,247,0.75) 100%)",
+    surface: isDark ? "#131210" : OG_THEME.background,
+    surfaceAlt: isDark ? "#1b1a16" : OG_THEME.surfaceAlt,
+    avatarRing: isDark ? "#131210" : OG_THEME.background,
+    ctaBg: isDark ? OG_THEME.gold : OG_THEME.ink,
+    ctaText: isDark ? OG_THEME.ink : OG_THEME.background,
+    brandBg: isDark ? "rgba(19,18,16,0.78)" : OG_THEME.surface,
+    brandBorder: isDark
+      ? "rgba(255,255,255,0.18)"
+      : OG_THEME.line,
+    line: isDark ? "rgba(255,255,255,0.18)" : OG_THEME.line,
+  };
 }

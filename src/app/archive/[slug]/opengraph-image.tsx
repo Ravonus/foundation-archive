@@ -303,9 +303,14 @@ function ArchiveOgFrame({
               // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
               <img
                 src={artistAvatarUrl}
-                width={76}
-                height={76}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                width={70}
+                height={70}
+                style={{
+                  width: "70px",
+                  height: "70px",
+                  borderRadius: 999,
+                  objectFit: "cover",
+                }}
               />
             ) : (
               <div
@@ -402,7 +407,7 @@ export default async function ArchiveOgImage({
 
   const { artwork, previewCandidate, artistProfile } = data;
 
-  const [previewDataUrl, avatarDataUrl] = await Promise.all([
+  const [previewInlined, avatarInlined] = await Promise.all([
     inlineImage(absoluteUrl(previewCandidate)),
     inlineImage(artistProfile?.profileImageUrl),
   ]);
@@ -457,11 +462,11 @@ export default async function ArchiveOgImage({
   return new ImageResponse(
     (
       <ArchiveOgFrame
-        previewUrl={previewDataUrl}
+        previewUrl={previewInlined?.dataUrl ?? null}
         title={title}
         artistLabel={artistLabel}
         artistHandle={artistHandle}
-        artistAvatarUrl={avatarDataUrl}
+        artistAvatarUrl={avatarInlined?.dataUrl ?? null}
         artistInitials={artistInitials}
         collectionName={collectionName}
         description={description}

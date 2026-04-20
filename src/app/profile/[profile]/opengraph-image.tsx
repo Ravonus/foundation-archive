@@ -7,6 +7,7 @@ import {
   OG_THEME,
   inlineImage,
   loadOgFonts,
+  palettesFor,
 } from "~/app/_components/og/helpers";
 
 export const runtime = "nodejs";
@@ -150,6 +151,7 @@ function firstLine(text: string | null | undefined, max: number) {
 
 function OgFrame({
   bannerUrl,
+  bannerBrightness,
   avatarUrl,
   avatarInitials,
   displayName,
@@ -158,6 +160,7 @@ function OgFrame({
   bio,
 }: {
   bannerUrl: string | null;
+  bannerBrightness: number;
   avatarUrl: string | null;
   avatarInitials: string;
   displayName: string;
@@ -165,6 +168,8 @@ function OgFrame({
   subtitle: string | null;
   bio: string | null;
 }) {
+  const palette = palettesFor(bannerBrightness);
+
   return (
     <div
       style={{
@@ -173,12 +178,12 @@ function OgFrame({
         display: "flex",
         flexDirection: "column",
         fontFamily: '"Noto Sans", system-ui, -apple-system, sans-serif',
-        backgroundColor: OG_THEME.background,
-        color: OG_THEME.ink,
+        backgroundColor: palette.surface,
+        color: palette.heading,
         position: "relative",
       }}
     >
-      {/* Banner area (top 55%) */}
+      {/* Banner area */}
       <div
         style={{
           width: "100%",
@@ -186,9 +191,9 @@ function OgFrame({
           display: "flex",
           position: "relative",
           overflow: "hidden",
-          backgroundColor: OG_THEME.surfaceAlt,
-          backgroundImage: `linear-gradient(135deg, rgba(198,162,88,0.22), transparent 55%), linear-gradient(180deg, ${OG_THEME.surfaceAlt}, ${OG_THEME.placeholder})`,
-          borderBottom: `1px solid ${OG_THEME.line}`,
+          backgroundColor: palette.surfaceAlt,
+          backgroundImage: `linear-gradient(135deg, rgba(198,162,88,0.22), transparent 55%), linear-gradient(180deg, ${palette.surfaceAlt}, ${palette.surface})`,
+          borderBottom: `1px solid ${palette.line}`,
         }}
       >
         {bannerUrl ? (
@@ -204,13 +209,12 @@ function OgFrame({
             }}
           />
         ) : null}
-        {/* Subtle light vignette so the banner sits under the content */}
+        {/* Scrim picked to match banner brightness so text below stays legible */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            backgroundImage:
-              "linear-gradient(180deg, rgba(250,250,247,0) 55%, rgba(250,250,247,0.55) 100%)",
+            backgroundImage: palette.scrim,
             display: "flex",
           }}
         />
@@ -223,9 +227,9 @@ function OgFrame({
             display: "flex",
             alignItems: "center",
             gap: 12,
-            backgroundColor: OG_THEME.surface,
-            border: `1px solid ${OG_THEME.line}`,
-            color: OG_THEME.ink,
+            backgroundColor: palette.brandBg,
+            border: `1px solid ${palette.brandBorder}`,
+            color: palette.heading,
             letterSpacing: "0.32em",
             fontSize: 16,
             textTransform: "uppercase",
@@ -256,7 +260,7 @@ function OgFrame({
           padding: "0 72px 56px",
           gap: 40,
           position: "relative",
-          backgroundColor: OG_THEME.background,
+          backgroundColor: palette.surface,
         }}
       >
         {/* Avatar — overlaps banner */}
@@ -265,8 +269,8 @@ function OgFrame({
             width: 220,
             height: 220,
             borderRadius: 999,
-            backgroundColor: OG_THEME.surfaceAlt,
-            border: `10px solid ${OG_THEME.background}`,
+            backgroundColor: palette.surfaceAlt,
+            border: `10px solid ${palette.avatarRing}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -280,11 +284,12 @@ function OgFrame({
             // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
             <img
               src={avatarUrl}
-              width={220}
-              height={220}
+              width={200}
+              height={200}
               style={{
-                width: "100%",
-                height: "100%",
+                width: "200px",
+                height: "200px",
+                borderRadius: 999,
                 objectFit: "cover",
               }}
             />
@@ -315,7 +320,7 @@ function OgFrame({
               fontSize: 18,
               textTransform: "uppercase",
               letterSpacing: "0.22em",
-              color: OG_THEME.gold,
+              color: palette.eyebrow,
               display: "flex",
             }}
           >
@@ -327,7 +332,7 @@ function OgFrame({
               fontWeight: 700,
               marginTop: 10,
               lineHeight: 1.05,
-              color: OG_THEME.ink,
+              color: palette.heading,
               display: "flex",
             }}
           >
@@ -339,7 +344,7 @@ function OgFrame({
               display: "flex",
               flexDirection: "row",
               gap: 16,
-              color: OG_THEME.muted,
+              color: palette.muted,
               fontSize: 26,
             }}
           >
@@ -353,7 +358,7 @@ function OgFrame({
                 marginTop: 20,
                 fontSize: 24,
                 lineHeight: 1.4,
-                color: OG_THEME.body,
+                color: palette.body,
                 display: "flex",
               }}
             >
@@ -376,8 +381,8 @@ function OgFrame({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                backgroundColor: OG_THEME.ink,
-                color: OG_THEME.background,
+                backgroundColor: palette.ctaBg,
+                color: palette.ctaText,
                 padding: "14px 24px",
                 borderRadius: 999,
                 fontSize: 22,
@@ -391,7 +396,7 @@ function OgFrame({
               style={{
                 display: "flex",
                 fontSize: 18,
-                color: OG_THEME.muted,
+                color: palette.muted,
                 letterSpacing: "0.04em",
               }}
             >
@@ -412,7 +417,7 @@ export default async function ProfileOgImage({
   const { profile } = await params;
   const resolved = await resolveOgProfile(profile);
 
-  const [bannerDataUrl, avatarDataUrl] = await Promise.all([
+  const [bannerInlined, avatarInlined] = await Promise.all([
     inlineImage(resolved?.coverImageUrl),
     inlineImage(resolved?.profileImageUrl),
   ]);
@@ -465,8 +470,9 @@ export default async function ProfileOgImage({
   return new ImageResponse(
     (
       <OgFrame
-        bannerUrl={bannerDataUrl}
-        avatarUrl={avatarDataUrl}
+        bannerUrl={bannerInlined?.dataUrl ?? null}
+        bannerBrightness={bannerInlined?.brightness ?? 255}
+        avatarUrl={avatarInlined?.dataUrl ?? null}
         avatarInitials={avatarInitials}
         displayName={displayName}
         handle={handle}
