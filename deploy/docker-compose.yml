@@ -185,17 +185,15 @@ services:
   kubo:
     image: ipfs/kubo:release
     restart: unless-stopped
+    environment:
+      # Put kubo's blockstore on the same NAS share cold-storage lives
+      # on, but in a sibling subdirectory so the file-tree archive and
+      # the kubo repo don't stomp each other. Kubo initializes this path
+      # on first boot and keeps using it afterwards.
+      IPFS_PATH: /mnt/backups/kubo-data
     volumes:
       - kubo-staging:/export
-      - kubo-data:/data/ipfs
-      # Kubo's filestore refuses any absolute path that isn't under its
-      # IPFS root (`/data`), so cold-storage is bind-mounted inside that
-      # tree instead of the `/mnt/backups` the worker uses. The worker
-      # translates paths via KUBO_ARCHIVE_STORAGE_DIR before setting the
-      # `Abspath` header.
-      - cold-storage:/data/cold-storage:ro
-      - hot-storage:/data/archive-storage-hot:ro
-      - ./kubo-init:/container-init.d:ro
+      - cold-storage:/mnt/backups
 
 volumes:
   postgres-data:
@@ -211,8 +209,6 @@ volumes:
       o: addr=${NAS_HOST},username=${NAS_USERNAME},password=${NAS_PASSWORD},vers=${NAS_SMB_VERS:-3.0},uid=1000,gid=1000,file_mode=0664,dir_mode=0775,iocharset=utf8
   kubo-staging:
     name: foundation-archive-kubo-staging
-  kubo-data:
-    name: foundation-archive-kubo-data
 
 networks:
   umami_default:

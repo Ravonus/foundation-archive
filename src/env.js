@@ -9,14 +9,6 @@ export const env = createEnv({
       .default("development"),
     ARCHIVE_STORAGE_DIR: z.string().min(1).default("./archive-storage"),
     ARCHIVE_HOT_STORAGE_DIR: z.string().min(1).default("./archive-storage-hot"),
-    // Absolute path at which kubo sees the same cold-storage tree the
-    // worker writes to ARCHIVE_STORAGE_DIR. Filestore refuses paths
-    // outside kubo's IPFS root, so in production kubo mounts the cold
-    // volume inside /data (see deploy/docker-compose.yml) while the
-    // worker keeps writing to /mnt/backups, and we translate the prefix
-    // before emitting the `Abspath` multipart header. Falls back to
-    // ARCHIVE_STORAGE_DIR when both containers see the same path (dev).
-    KUBO_ARCHIVE_STORAGE_DIR: z.string().min(1).optional(),
     ARCHIVE_ARCHIVER_URL: z.string().url().optional(),
     FOUNDATION_BASE_URL: z
       .string()
@@ -77,7 +69,6 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     ARCHIVE_STORAGE_DIR: process.env.ARCHIVE_STORAGE_DIR,
     ARCHIVE_HOT_STORAGE_DIR: process.env.ARCHIVE_HOT_STORAGE_DIR,
-    KUBO_ARCHIVE_STORAGE_DIR: process.env.KUBO_ARCHIVE_STORAGE_DIR,
     ARCHIVE_ARCHIVER_URL: process.env.ARCHIVE_ARCHIVER_URL,
     FOUNDATION_BASE_URL: process.env.FOUNDATION_BASE_URL,
     FOUNDATION_GRAPHQL_API_URL: process.env.FOUNDATION_GRAPHQL_API_URL,
