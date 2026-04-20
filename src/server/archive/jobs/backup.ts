@@ -263,6 +263,10 @@ async function downloadRootAndRecord(args: {
     finishedAt: new Date(),
   });
 
+  // Flip artwork-level status to DOWNLOADED now so the UI shows "Almost saved"
+  // immediately, even if the pin step below takes a while (or fails).
+  await syncArtworksForRoot(client, root.id);
+
   await emitArchiveEvent(client, {
     type: "root.downloaded",
     summary: `Downloaded ${root.cid} into the server archive.`,
@@ -421,13 +425,42 @@ async function backupSingleRoot(
     }
 
     if (env.KUBO_API_URL) {
-      await pinRootWithKubo({
-        client,
-        input,
-        root,
-        sizeBytes: downloadResult.byteSize,
-        startedAt,
-      });
+      try {
+        await pinRootWithKubo({
+          client,
+          input,
+          root,
+          sizeBytes: downloadResult.byteSize,
+          startedAt,
+        });
+      } catch (pinError) {
+        // The file is already on disk. A pin failure shouldn't undo that or
+        // flip the artwork back to "Retrying" — just record the pin as failed
+        // so it gets retried, and let the root stay DOWNLOADED.
+        const message =
+          pinError instanceof Error ? pinError.message : "Unknown pin failure";
+        console.warn(
+          `[archive] Pin failed for ${root.cid}, leaving as DOWNLOADED:`,
+          message,
+        );
+        await client.ipfsRoot.update({
+          where: { id: root.id },
+          data: {
+            pinStatus: BackupStatus.FAILED,
+            lastError: message,
+          },
+        });
+        await recordBackupRun(client, {
+          artworkId: input.artworkId,
+          rootId: root.id,
+          action: "PIN_BY_CID",
+          status: BackupStatus.FAILED,
+          provider: PinProvider.KUBO,
+          errorMessage: message,
+          startedAt,
+          finishedAt: new Date(),
+        });
+      }
     } else if (!downloadedRoot) {
       await markPinSkipped(client, root.id);
     }
