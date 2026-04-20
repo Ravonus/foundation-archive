@@ -204,6 +204,14 @@ function artistDisplay(artwork: ArtworkWithRelations): string {
   return "Unknown artist";
 }
 
+function artistProfileHref(artwork: ArtworkWithRelations): string | null {
+  if (artwork.artistUsername)
+    return `/profile/${encodeURIComponent(artwork.artistUsername)}`;
+  if (artwork.artistWallet)
+    return `/profile/${encodeURIComponent(artwork.artistWallet)}`;
+  return null;
+}
+
 function healthOf(input: {
   hasMetadataRoot: boolean;
   hasMediaRoot: boolean;
@@ -569,6 +577,7 @@ function ArtistHero({
   return (
     <ProfileHero
       name={displayName}
+      nameHref={archiveHref ?? undefined}
       eyebrow="Artist"
       usernameBadge={usernameBadge}
       subtitle={artistWallet ? shortAddress(artistWallet) : undefined}
@@ -660,11 +669,22 @@ function ArtworkHeader({ artwork, view }: SectionProps) {
   const { copy, health } = view;
   const canRetry =
     health === "failed" || health === "missing" || health === "pending";
+  const profileHref = artistProfileHref(artwork);
+  const artistLabel = artistDisplay(artwork);
   return (
     <>
       <FadeUp delay={0.2} duration={0.6}>
         <p className="font-mono text-[0.65rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
-          {artistDisplay(artwork)}
+          {profileHref ? (
+            <Link
+              href={profileHref}
+              className="link-editorial text-[var(--color-ink)]"
+            >
+              {artistLabel}
+            </Link>
+          ) : (
+            artistLabel
+          )}
           {artwork.collectionName ? ` · ${artwork.collectionName}` : ""}
         </p>
       </FadeUp>

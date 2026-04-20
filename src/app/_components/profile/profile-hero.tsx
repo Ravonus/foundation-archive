@@ -6,6 +6,7 @@ import { ProfileAvatar } from "~/app/_components/profile/profile-avatar";
 
 type ProfileHeroProps = {
   name: string;
+  nameHref?: string;
   eyebrow?: string;
   usernameBadge?: string;
   subtitle?: string;
@@ -28,6 +29,7 @@ type ProfileHeroProps = {
 export function ProfileHero(props: ProfileHeroProps) {
   const {
     name,
+    nameHref,
     eyebrow,
     usernameBadge,
     subtitle,
@@ -90,7 +92,16 @@ export function ProfileHero(props: ProfileHeroProps) {
               </div>
 
               <h1 className="mt-2 font-serif text-3xl leading-tight text-[var(--color-ink)] sm:text-4xl">
-                {name}
+                {nameHref ? (
+                  <Link
+                    href={nameHref}
+                    className="transition hover:text-[var(--color-accent)]"
+                  >
+                    {name}
+                  </Link>
+                ) : (
+                  name
+                )}
               </h1>
 
               {(usernameBadge || subtitle) && (
