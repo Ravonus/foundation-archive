@@ -216,9 +216,18 @@ function InlineModelViewer({
           reveal: "auto",
         },
         poster ? (
-          <PosterImage src={poster} alt={alt} />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            slot="poster"
+            src={poster}
+            alt={alt}
+            className="pointer-events-none h-full w-full object-contain"
+          />
         ) : (
-          <div className="flex h-full w-full items-center justify-center p-8 text-center text-sm text-[var(--color-subtle)]">
+          <div
+            slot="poster"
+            className="pointer-events-none flex h-full w-full items-center justify-center bg-[var(--color-placeholder)] p-8 text-center text-sm text-[var(--color-subtle)]"
+          >
             Loading 3D preview…
           </div>
         ),
