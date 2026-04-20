@@ -188,6 +188,14 @@ services:
     volumes:
       - kubo-staging:/export
       - kubo-data:/data/ipfs
+      # Read-only mounts of our file-backed archive at the SAME paths the
+      # rust-archiver uses, so an `ipfs add --nocopy` on one of those paths
+      # stores a filestore reference that kubo can read back by the exact
+      # abspath. This is what lets us skip re-downloading a second copy of
+      # every pinned CID into kubo's blockstore.
+      - cold-storage:/mnt/backups:ro
+      - hot-storage:/data/archive-storage-hot:ro
+      - ./kubo-init:/container-init.d:ro
 
 volumes:
   postgres-data:
