@@ -76,6 +76,7 @@ type DeviceSocketClient = {
 };
 
 const ARCHIVE_EVENT_RETRY_MS = 5_000;
+const ARCHIVE_SNAPSHOT_HEARTBEAT_MS = 15_000;
 
 function safeSend(socket: WebSocket, payload: unknown) {
   if (socket.readyState !== WebSocket.OPEN) return;
@@ -532,6 +533,24 @@ async function main() {
     }
   }
 
+  async function broadcastSnapshotHeartbeat() {
+    if (io.engine.clientsCount === 0) return;
+    try {
+      const snapshot = await getArchiveLiveSnapshot(db);
+      io.emit("archive:snapshot", snapshot);
+    } catch (error) {
+      logSocketError("Unable to broadcast snapshot heartbeat.", error);
+    }
+  }
+
+  function startSnapshotHeartbeat() {
+    const interval = setInterval(() => {
+      void broadcastSnapshotHeartbeat();
+    }, ARCHIVE_SNAPSHOT_HEARTBEAT_MS);
+
+    return () => clearInterval(interval);
+  }
+
   function startArchiveEventListener() {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let connecting = false;
@@ -719,6 +738,7 @@ async function main() {
   });
 
   const stopArchiveEventListener = startArchiveEventListener();
+  const stopSnapshotHeartbeat = startSnapshotHeartbeat();
 
   const workerLoop = (async () => {
     for (;;) {
@@ -784,6 +804,7 @@ async function main() {
     const shutdown = () => {
       void (async () => {
         stopping = true;
+        stopSnapshotHeartbeat();
         await stopArchiveEventListener();
         await workerLoop.catch(() => null);
         await new Promise<void>((resolveIo) => {

@@ -182,14 +182,18 @@ export async function maybeAdvanceSmartPinBudget(
     };
   }
 
-  const [hasCurrentTierWork, scanCompleted, hasAutomationBacklog] =
-    await Promise.all([
-      hasPendingRootsInCurrentTier(client, policy.smartPinMaxBytes),
-      automaticCrawlerScanCompleted(client),
-      hasActiveAutomationBacklog(client),
-    ]);
+  const [hasCurrentTierWork, hasAutomationBacklog] = await Promise.all([
+    hasPendingRootsInCurrentTier(client, policy.smartPinMaxBytes),
+    hasActiveAutomationBacklog(client),
+  ]);
 
-  if (hasCurrentTierWork || !scanCompleted || hasAutomationBacklog) {
+  // We used to additionally require the full Foundation contract scan to be
+  // complete before advancing the smart-pin tier. In practice the crawler has
+  // 100k+ contracts to go through and takes months, which stalls every
+  // deferred large root indefinitely. Now we only wait for the current tier's
+  // work to drain and for the automation backlog to be clear, so the system
+  // can steadily unlock bigger files while discovery continues in parallel.
+  if (hasCurrentTierWork || hasAutomationBacklog) {
     return {
       advanced: false,
       policy,
