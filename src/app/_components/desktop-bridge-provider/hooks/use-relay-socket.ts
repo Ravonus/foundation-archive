@@ -12,6 +12,7 @@ import {
   isTerminalJobStatus,
   publishJobUpdate,
 } from "../lib/job-subscriptions";
+import { normalizeBridgeConfig, normalizeBridgeHealth } from "../lib/wire";
 import type {
   RelayDeviceStateSnapshot,
   RelayInventorySnapshot,
@@ -95,8 +96,8 @@ function handleRelayMessage(
       [payload.deviceId]: {
         deviceId: payload.deviceId,
         generatedAt: payload.generatedAt,
-        health: payload.health as RelayDeviceStateSnapshot["health"],
-        config: payload.config as RelayDeviceStateSnapshot["config"],
+        health: normalizeBridgeHealth(payload.health),
+        config: normalizeBridgeConfig(payload.config),
       },
     }));
     return;

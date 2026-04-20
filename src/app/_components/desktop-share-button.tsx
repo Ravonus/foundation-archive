@@ -13,7 +13,7 @@ import {
   type DesktopShareableWork,
 } from "~/app/_components/desktop-bridge-provider";
 
-type FeedbackState = { tone: "success" | "error"; message: string };
+type FeedbackState = { tone: "success" | "error" | "pending"; message: string };
 type ShareOutcome = {
   message: string;
   notificationTitle: string;
@@ -113,9 +113,25 @@ type RunSaveParams = {
   setFeedback: (value: FeedbackState | null) => void;
 };
 
+function pendingMessage(params: {
+  canPinDirectly: boolean;
+  hasConnectedRelayHelper: boolean;
+}) {
+  if (!params.canPinDirectly || params.hasConnectedRelayHelper) {
+    return "Sending to your desktop app\u2026";
+  }
+  return "Saving to this computer\u2026";
+}
+
 function runSaveClick(params: RunSaveParams) {
   params.setIsWorking(true);
-  params.setFeedback(null);
+  params.setFeedback({
+    tone: "pending",
+    message: pendingMessage({
+      canPinDirectly: params.canPinDirectly,
+      hasConnectedRelayHelper: params.hasConnectedRelayHelper,
+    }),
+  });
   const notificationPermissionPromise = ensureNotificationPermission();
 
   const action = runShareAction({
@@ -147,6 +163,21 @@ function runSaveClick(params: RunSaveParams) {
 
 function ShareFeedback({ feedback }: { feedback: FeedbackState | null }) {
   if (!feedback) return null;
+
+  if (feedback.tone === "pending") {
+    return (
+      <div
+        role="status"
+        className="inline-flex items-start gap-1.5 rounded-md border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-body)]"
+      >
+        <LoaderCircle
+          aria-hidden
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin"
+        />
+        <span>{feedback.message}</span>
+      </div>
+    );
+  }
 
   const isError = feedback.tone === "error";
 
@@ -218,6 +249,7 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
 
   useEffect(() => {
     if (!feedback) return;
+    if (feedback.tone === "pending") return;
     const id = window.setTimeout(() => setFeedback(null), 6000);
     return () => window.clearTimeout(id);
   }, [feedback]);
@@ -229,7 +261,10 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
   const canSave = canPinDirectly || hasConnectedRelayHelper;
 
   if (!shareable) return null;
-  if (!canSave) return null;
+  // Keep the button mounted while a save is in flight or its result toast is
+  // still on screen, even if reachability flickered off. Unmounting mid-save
+  // used to hide the feedback entirely.
+  if (!canSave && !isWorking && !feedback) return null;
 
   const handleSave = () =>
     runSaveClick({

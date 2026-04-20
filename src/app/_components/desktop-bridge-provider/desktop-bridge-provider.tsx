@@ -79,7 +79,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     networkStatus,
     probeEnabled: localBridgeProbeEnabled,
     retryNow: retryNetwork,
-  } = useBridgeHealthProbe(bridgeUrl, session, {
+  } = useBridgeHealthProbe(bridgeUrl, session, config, {
     setHealth,
     setConfig,
     setReachable,

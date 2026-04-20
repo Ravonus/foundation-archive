@@ -5,6 +5,7 @@ import {
   withJsonHeaders,
 } from "../lib/bridge-api";
 import { resolveLinkRelayServerUrl } from "../lib/builders";
+import { normalizeBridgeConfig, normalizeBridgeHealth } from "../lib/wire";
 import type {
   BridgeConfig,
   BridgeHealth,
@@ -33,7 +34,10 @@ export type LocalBridgeDeps = {
   setStatus: (status: "checking" | "disconnected" | "connected") => void;
   setError: (message: string | null) => void;
   persistSession: (session: BridgeSession | null) => void;
-  bridgeConfigFromHealth: (payload: BridgeHealth) => BridgeConfig;
+  bridgeConfigFromHealth: (
+    payload: BridgeHealth,
+    previous: BridgeConfig | null,
+  ) => BridgeConfig;
   createRelayPairing: (label?: string | null) => Promise<RelayPairing>;
   refreshRelayDevices: () => Promise<RelayOwnerDevice[]>;
 };
@@ -60,15 +64,16 @@ export type LocalBridgeActions = {
 
 function createRefreshHealth(deps: LocalBridgeDeps) {
   return async () => {
-    const payload = await requestBridgeJson<BridgeHealth>({
+    const raw = await requestBridgeJson<unknown>({
       bridgeUrl: deps.bridgeUrl,
       path: "/health",
       init: { method: "GET" },
       fallback: `Unable to reach the desktop app at ${deps.bridgeUrl}.`,
     });
+    const payload = normalizeBridgeHealth(raw);
 
     deps.setHealth(payload);
-    deps.setConfig(deps.bridgeConfigFromHealth(payload));
+    deps.setConfig(deps.bridgeConfigFromHealth(payload, deps.config));
     deps.setReachable(true);
     deps.setStatus(deps.session ? "connected" : "disconnected");
     deps.setError(null);
@@ -153,12 +158,13 @@ function createListPins(deps: LocalBridgeDeps) {
 
 function createFetchConfig(deps: LocalBridgeDeps) {
   return async () => {
-    const payload = await requestBridgeJson<BridgeConfig>({
+    const raw = await requestBridgeJson<unknown>({
       bridgeUrl: deps.bridgeUrl,
       path: "/config",
       init: { method: "GET" },
       fallback: "Unable to load the local desktop app settings.",
     });
+    const payload = normalizeBridgeConfig(raw);
 
     deps.setConfig(payload);
     deps.setError(null);
@@ -171,12 +177,13 @@ function createUpdateConfig(
   refreshHealth: () => Promise<BridgeHealth>,
 ) {
   return async (input: Partial<BridgeConfig>) => {
-    const payload = await requestBridgeJson<BridgeConfig>({
+    const raw = await requestBridgeJson<unknown>({
       bridgeUrl: deps.bridgeUrl,
       path: "/config",
       init: withJsonHeaders(input),
       fallback: "Unable to save the local desktop app settings.",
     });
+    const payload = normalizeBridgeConfig(raw);
 
     deps.setConfig(payload);
     await refreshHealth().catch(() => null);

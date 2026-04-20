@@ -12,6 +12,7 @@ import {
 
 import { requestBridgeJson } from "../lib/bridge-api";
 import { bridgeConfigFromHealth } from "../lib/derive-config";
+import { normalizeBridgeHealth } from "../lib/wire";
 import type {
   BridgeConfig,
   BridgeHealth,
@@ -82,11 +83,12 @@ function setBridgeConnected(input: {
   setters: HealthProbeSetters;
   payload: BridgeHealth;
   session: BridgeSession | null;
+  previousConfig: BridgeConfig | null;
 }) {
-  const { setters, payload, session } = input;
+  const { setters, payload, session, previousConfig } = input;
 
   setters.setHealth(payload);
-  setters.setConfig(bridgeConfigFromHealth(payload));
+  setters.setConfig(bridgeConfigFromHealth(payload, previousConfig));
   setters.setReachable(true);
   setters.setStatus(session ? "connected" : "disconnected");
 }
@@ -117,6 +119,7 @@ function useBridgeProbeLoop(input: {
   probeEnabled: boolean;
   retryTick: number;
   session: BridgeSession | null;
+  configRef: MutableRefObject<BridgeConfig | null>;
   setters: HealthProbeSetters;
   setNetworkStatus: Dispatch<SetStateAction<BridgeNetworkStatus>>;
   timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
@@ -126,6 +129,7 @@ function useBridgeProbeLoop(input: {
     probeEnabled,
     retryTick,
     session,
+    configRef,
     setters,
     setNetworkStatus,
     timerRef,
@@ -160,15 +164,21 @@ function useBridgeProbeLoop(input: {
       setStatus("checking");
 
       try {
-        const payload = await requestBridgeJson<BridgeHealth>({
+        const raw = await requestBridgeJson<unknown>({
           bridgeUrl,
           path: "/health",
           init: { method: "GET" },
           fallback: `Unable to reach the desktop app at ${bridgeUrl}.`,
         });
         if (isCancelled()) return;
+        const payload = normalizeBridgeHealth(raw);
 
-        setBridgeConnected({ setters: bridgeSetters, payload, session });
+        setBridgeConnected({
+          setters: bridgeSetters,
+          payload,
+          session,
+          previousConfig: configRef.current,
+        });
         setNetworkStatus(INITIAL_NETWORK_STATUS);
         currentBackoff = INITIAL_BACKOFF_MS;
 
@@ -208,6 +218,7 @@ function useBridgeProbeLoop(input: {
     probeEnabled,
     retryTick,
     session,
+    configRef,
     setConfig,
     setHealth,
     setNetworkStatus,
@@ -220,6 +231,7 @@ function useBridgeProbeLoop(input: {
 export function useBridgeHealthProbe(
   bridgeUrl: string,
   session: BridgeSession | null,
+  config: BridgeConfig | null,
   setters: HealthProbeSetters,
 ) {
   const [networkStatus, setNetworkStatus] = useState<BridgeNetworkStatus>(
@@ -228,12 +240,15 @@ export function useBridgeHealthProbe(
   const [retryTick, setRetryTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const probeEnabled = shouldProbeBridge(bridgeUrl);
+  const configRef = useRef<BridgeConfig | null>(config);
+  configRef.current = config;
 
   useBridgeProbeLoop({
     bridgeUrl,
     probeEnabled,
     retryTick,
     session,
+    configRef,
     setters,
     setNetworkStatus,
     timerRef,
