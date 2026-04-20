@@ -194,6 +194,7 @@ services:
     volumes:
       - kubo-staging:/export
       - cold-storage:/mnt/backups
+      - ./kubo-init:/container-init.d:ro
 
 volumes:
   postgres-data:
