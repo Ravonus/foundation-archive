@@ -370,16 +370,18 @@ function buildGatewayFallbackUrls(
   const pathSuffix = relativePath
     ? `/${relativePath.replace(/^\/+/, "")}`
     : "";
+  const urls: string[] = [];
   const seen = new Set<string>();
   const push = (url: string | null | undefined) => {
     if (!url) return;
     const trimmed = url.trim();
     if (!trimmed) return;
-    if (!seen.has(trimmed)) {
-      seen.add(trimmed);
-    }
+    if (seen.has(trimmed)) return;
+    seen.add(trimmed);
+    urls.push(trimmed);
   };
 
+  push(`https://ipfs.foundation.app/ipfs/${cid}${pathSuffix}`);
   push(primaryGatewayUrl);
 
   if (env.KUBO_API_URL) {
@@ -403,7 +405,7 @@ function buildGatewayFallbackUrls(
     push(`${host}/ipfs/${cid}${pathSuffix}`);
   }
 
-  return Array.from(seen);
+  return urls;
 }
 
 export async function downloadFileToArchive(input: {
