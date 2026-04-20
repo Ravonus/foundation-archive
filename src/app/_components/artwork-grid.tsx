@@ -430,20 +430,34 @@ function AutoplayVideo({
   alt: string;
   className?: string;
 }) {
-  const [ref, inView] = useInView<HTMLVideoElement>("200px");
+  const [ref, inView] = useInView<HTMLVideoElement>("100px");
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
     if (inView) {
-      // play() returns a promise that rejects if autoplay is denied.
-      // Swallow — the video just stays paused, poster shows, user
-      // navigates into the detail page on tap.
-      void node.play().catch(() => undefined);
+      // iOS Safari requires the video to be muted + playsinline and
+      // honors the declarative `autoplay` attribute. We still call
+      // .play() imperatively when the element scrolls back into view
+      // after we paused it — the browser treats that as a continuation
+      // of the same session, not a denied autoplay.
+      const promise = node.play();
+      if (promise && typeof promise.catch === "function") {
+        promise.catch((error: unknown) => {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[AutoplayVideo] play() rejected", {
+              src,
+              readyState: node.readyState,
+              networkState: node.networkState,
+              error,
+            });
+          }
+        });
+      }
     } else {
       node.pause();
     }
-  }, [inView, ref]);
+  }, [inView, ref, src]);
 
   return (
     <video
@@ -451,12 +465,13 @@ function AutoplayVideo({
       src={src}
       poster={poster ?? undefined}
       muted
+      autoPlay
       loop
       playsInline
-      preload="metadata"
-      // `disableRemotePlayback` + `controls={false}` keep iOS from
-      // rendering its AirPlay / PiP menus on long-press, which would
-      // otherwise appear over the tile.
+      // Full preload so Safari has the bytes staged when the tile
+      // scrolls in and .play() fires — metadata-only was causing
+      // some clips to stay on the poster frame until a user gesture.
+      preload="auto"
       disableRemotePlayback
       aria-label={alt}
       className={className}
