@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowRight,
@@ -381,29 +381,143 @@ function isAudioItem(item: ArtworkGridItem) {
   return item.mediaKind.toUpperCase() === "AUDIO";
 }
 
-/// Touch-primary browsers (iOS Safari, mobile Chrome) refuse to
-/// autoplay videos in a grid of 18 tiles — Safari caps how many muted
-/// loops it will start. The browser falls back to its own play-button
-/// overlay, but the whole tile is wrapped in a <Link>, so tapping that
-/// overlay just navigates to the detail page instead of starting
-/// playback. Skip the <video> / <model-viewer> render entirely on
-/// those devices and let the poster do the work — the detail page has
-/// real controls. Detection uses the `hover: none` media query, which
-/// is a reliable proxy for "no precise pointer, no hover UX".
-function useTouchPrimaryDevice(): boolean {
-  const [touch, setTouch] = useState(false);
+/// Observes whether a ref'd element is within the viewport (plus a
+/// rootMargin buffer so things animate in slightly before they cross
+/// the edge). Used to smart-cull grid media: videos play only when
+/// visible and <model-viewer> only mounts when visible so we don't
+/// stream thousands of MBs of off-screen GLBs at scroll time.
+function useInView<T extends Element>(
+  rootMargin = "200px",
+): [React.RefObject<T | null>, boolean] {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(hover: none)");
-    const update = () => setTouch(mq.matches);
-    update();
-    if (mq.addEventListener) {
-      mq.addEventListener("change", update);
-      return () => mq.removeEventListener("change", update);
+    const node = ref.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
     }
-    return undefined;
-  }, []);
-  return touch;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          setInView(entry.isIntersecting);
+        }
+      },
+      { rootMargin, threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [rootMargin]);
+
+  return [ref, inView];
+}
+
+/// Muted-autoplay video that pauses itself as it scrolls out of view
+/// and resumes when it comes back. iOS Safari enforces an "N concurrent
+/// playing videos" quota for autoplay; the culling keeps us under that
+/// quota so the browser never falls back to the native play-button
+/// overlay (which would be tap-swallowed by the tile's parent <Link>).
+function AutoplayVideo({
+  src,
+  poster,
+  alt,
+  className,
+}: {
+  src: string;
+  poster: string | null;
+  alt: string;
+  className?: string;
+}) {
+  const [ref, inView] = useInView<HTMLVideoElement>("200px");
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (inView) {
+      // play() returns a promise that rejects if autoplay is denied.
+      // Swallow — the video just stays paused, poster shows, user
+      // navigates into the detail page on tap.
+      void node.play().catch(() => undefined);
+    } else {
+      node.pause();
+    }
+  }, [inView, ref]);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      poster={poster ?? undefined}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      // `disableRemotePlayback` + `controls={false}` keep iOS from
+      // rendering its AirPlay / PiP menus on long-press, which would
+      // otherwise appear over the tile.
+      disableRemotePlayback
+      aria-label={alt}
+      className={className}
+    />
+  );
+}
+
+/// Lazy-mounts the <model-viewer> element only when the tile is within
+/// the viewport. Until then it renders the poster so the tile reads as
+/// an image placeholder — no GLB fetch, no WebGL context, no idle GPU
+/// cost for off-screen cards. Once visible, model-viewer takes over and
+/// its own internal `slot="poster"` cross-fades to the loaded model.
+function LazyModelPreview({
+  src,
+  poster,
+  alt,
+  className,
+}: {
+  src: string;
+  poster: string | null;
+  alt: string;
+  className?: string;
+}) {
+  const [ref, inView] = useInView<HTMLDivElement>("200px");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (inView && !mounted) setMounted(true);
+  }, [inView, mounted]);
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "relative h-full w-full pointer-events-none overflow-hidden",
+        className,
+      )}
+    >
+      {mounted ? (
+        <ModelMediaPreview
+          src={src}
+          poster={poster}
+          alt={alt}
+          autoRotate
+          allowAnchorFallback={false}
+          className="h-full w-full transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
+        />
+      ) : poster ? (
+        <BlurImage
+          src={poster}
+          alt={alt}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-sm text-[var(--color-subtle)]">
+          3D model
+        </div>
+      )}
+      <MediaKindBadge kind="model" />
+    </div>
+  );
 }
 
 function MediaKindBadge({
@@ -432,52 +546,27 @@ function MediaKindBadge({
 
 function ItemPoster({ item }: { item: ArtworkGridItem }) {
   const posterUrl = resolvePosterUrl(item);
-  const isTouch = useTouchPrimaryDevice();
-  const isModel = isModelItem(item);
-  const isVideo = isVideoItem(item);
 
-  // Touch devices short-circuit to the still poster (see hook comment).
-  // A small badge keeps the visual cue that it's a video or model; the
-  // tile-wide <Link> handles navigation to the detail page where real
-  // controls live.
-  if (isTouch && (isModel || isVideo) && posterUrl) {
+  if (isModelItem(item) && item.mediaUrl) {
     return (
-      <>
-        <BlurImage
-          src={posterUrl}
-          alt={item.title}
-          className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
-        />
-        <MediaKindBadge kind={isVideo ? "video" : "model"} />
-      </>
-    );
-  }
-
-  if (isModel && item.mediaUrl) {
-    return (
-      <ModelMediaPreview
+      <LazyModelPreview
         src={item.mediaUrl}
         poster={posterUrl}
         alt={item.title}
-        autoRotate
-        allowAnchorFallback={false}
-        className="h-full w-full pointer-events-none transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
       />
     );
   }
-  if (isVideo && item.mediaUrl) {
+  if (isVideoItem(item) && item.mediaUrl) {
     return (
-      <video
-        src={item.mediaUrl}
-        poster={posterUrl ?? undefined}
-        muted
-        autoPlay
-        loop
-        playsInline
-        preload="metadata"
-        aria-label={item.title}
-        className="h-full w-full object-cover transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
-      />
+      <>
+        <AutoplayVideo
+          src={item.mediaUrl}
+          poster={posterUrl}
+          alt={item.title}
+          className="h-full w-full object-cover transition-[filter] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
+        />
+        <MediaKindBadge kind="video" />
+      </>
     );
   }
   if (isAudioItem(item) && item.mediaUrl) {
