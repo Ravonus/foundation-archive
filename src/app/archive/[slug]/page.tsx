@@ -138,7 +138,9 @@ export async function generateMetadata(
     openGraph: {
       title: ogTitle,
       description,
+      siteName: "Agorix",
       type: "article",
+      url: `/archive/${slug}`,
     },
     twitter: {
       card: "summary_large_image",

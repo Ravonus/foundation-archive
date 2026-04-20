@@ -56,7 +56,12 @@ export async function generateMetadata({
       openGraph: {
         title,
         description,
+        // Next's route-level `openGraph` replaces the layout block
+        // entirely, so re-declare `siteName` here — otherwise Discord
+        // drops the "Agorix" label above the unfurled card.
+        siteName: "Agorix",
         type: "profile",
+        url: `/profile/${encodeURIComponent(key)}`,
       },
       twitter: {
         card: "summary_large_image",
