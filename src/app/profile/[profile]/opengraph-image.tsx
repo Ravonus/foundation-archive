@@ -14,11 +14,20 @@ export const contentType = "image/png";
 export const revalidate = 3600;
 
 const IMAGE_FETCH_TIMEOUT_MS = 2_500;
+const IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+]);
 
 /// Inline a remote image as a data: URI so Satori doesn't have to dial
-/// the origin mid-render. Bounded timeout keeps the OG response fast
-/// even when Foundation's CDN is slow — on timeout/failure we fall back
-/// to the initials + gradient frame.
+/// the origin mid-render. Strict allowlist (raster only — Satori chokes
+/// on oversized SVGs with "Buffer size limit exceeded") and a 2 MB cap.
+/// Bounded timeout keeps the OG response fast even when Foundation's
+/// CDN is slow — on any failure we fall back to the initials frame.
 async function inlineImage(url: string | null | undefined) {
   if (!url) return null;
   try {
@@ -33,10 +42,23 @@ async function inlineImage(url: string | null | undefined) {
     });
     clearTimeout(timer);
     if (!response.ok) return null;
-    const contentType = response.headers.get("content-type") ?? "image/png";
+
+    const rawContentType = (response.headers.get("content-type") ?? "")
+      .split(";")[0]
+      ?.trim()
+      .toLowerCase();
+    if (!rawContentType || !ALLOWED_IMAGE_TYPES.has(rawContentType)) {
+      return null;
+    }
+
+    const lengthHeader = response.headers.get("content-length");
+    if (lengthHeader && Number(lengthHeader) > IMAGE_MAX_BYTES) return null;
+
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength === 0) return null;
-    return `data:${contentType};base64,${buffer.toString("base64")}`;
+    if (buffer.byteLength === 0 || buffer.byteLength > IMAGE_MAX_BYTES) {
+      return null;
+    }
+    return `data:${rawContentType};base64,${buffer.toString("base64")}`;
   } catch {
     return null;
   }
