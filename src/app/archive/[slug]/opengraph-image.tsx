@@ -190,15 +190,11 @@ function ArchiveOgFrame({
             right: 32,
             display: "flex",
             alignItems: "center",
-            gap: 12,
+            gap: 14,
             backgroundColor: OG_THEME.surface,
             border: `1px solid ${OG_THEME.line}`,
             color: OG_THEME.ink,
-            letterSpacing: "0.3em",
-            fontSize: 16,
-            textTransform: "uppercase",
-            fontWeight: 600,
-            padding: "8px 18px 8px 12px",
+            padding: "10px 22px 10px 14px",
             borderRadius: 999,
           }}
         >
@@ -206,22 +202,33 @@ function ArchiveOgFrame({
             // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
             <img
               src={logoSrc}
-              width={28}
-              height={28}
-              style={{ width: 28, height: 28, display: "flex" }}
+              width={44}
+              height={44}
+              style={{ width: 44, height: 44, display: "flex" }}
             />
           ) : (
             <div
               style={{
-                width: 14,
-                height: 14,
+                width: 20,
+                height: 20,
                 borderRadius: 999,
                 backgroundColor: OG_THEME.gold,
                 display: "flex",
               }}
             />
           )}
-          Agorix
+          <div
+            style={{
+              fontFamily: '"Fraunces", "Inter", system-ui, Georgia, serif',
+              fontSize: 30,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              lineHeight: 1.08,
+              display: "flex",
+            }}
+          >
+            Agorix
+          </div>
         </div>
 
         {collectionName ? (
