@@ -3,8 +3,12 @@ import path from "node:path";
 
 import sharp from "sharp";
 
-const IMAGE_FETCH_TIMEOUT_MS = 2_500;
-const IMAGE_MAX_BYTES = 6 * 1024 * 1024; // 6 MB raw
+const IMAGE_FETCH_TIMEOUT_MS = 4_000;
+// Artists routinely ship multi-MB banner PNGs and animated GIF avatars
+// straight off imgix. Sharp downscales to MAX_IMAGE_DIMENSION anyway, so
+// the cap here is really just a ceiling against pathological inputs —
+// keep it generous enough to pass through realistic profile assets.
+const IMAGE_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 1024;
 
 /// Read a public asset at build/cold-start time and return it as a
