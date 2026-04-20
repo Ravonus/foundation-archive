@@ -30,6 +30,7 @@ import { db } from "~/server/db";
 import { type Prisma } from "~/server/prisma-client";
 
 import { MarketHistoryList } from "./_market-history";
+import { RetrySaveButton } from "./_retry-save-button";
 import {
   TechnicalDetails,
   type DependencyFlowCard,
@@ -660,6 +661,8 @@ function MediaPreview(props: SectionProps) {
 
 function ArtworkHeader({ artwork, view }: SectionProps) {
   const { copy, health } = view;
+  const canRetry =
+    health === "failed" || health === "missing" || health === "pending";
   return (
     <>
       <FadeUp delay={0.2} duration={0.6}>
@@ -687,6 +690,16 @@ function ArtworkHeader({ artwork, view }: SectionProps) {
           {copy.label}
         </div>
         <p className="mt-3 max-w-md text-[var(--color-body)]">{copy.body}</p>
+        {canRetry ? (
+          <div className="mt-4">
+            <RetrySaveButton
+              chainId={artwork.chainId}
+              contractAddress={artwork.contractAddress}
+              tokenId={artwork.tokenId}
+              foundationUrl={artwork.foundationUrl}
+            />
+          </div>
+        ) : null}
       </FadeUp>
       {artwork.description ? (
         <FadeUp delay={0.55} duration={0.6}>
