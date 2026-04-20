@@ -6,7 +6,7 @@ import { db } from "~/server/db";
 type ArchiveRouteProps = {
   params: Promise<{
     cid: string;
-    assetPath: string[];
+    assetPath?: string[];
   }>;
 };
 
@@ -64,6 +64,7 @@ function contentDispositionValue(fileName: string) {
 
 export async function GET(_request: Request, props: ArchiveRouteProps) {
   const { cid, assetPath } = await props.params;
+  const requestedSegments = assetPath ?? [];
 
   try {
     const root = await db.ipfsRoot.findUnique({
@@ -76,14 +77,14 @@ export async function GET(_request: Request, props: ArchiveRouteProps) {
     });
 
     const resolvedAssetPath =
-      assetPath.length > 0
-        ? assetPath
+      requestedSegments.length > 0
+        ? requestedSegments
         : (root?.relativePath?.split("/").filter(Boolean) ?? []);
 
     const asset = await readArchivedAsset(cid, resolvedAssetPath);
     const extension = path.extname(asset.absolutePath).toLowerCase();
     const fileName =
-      assetPath.length > 0
+      requestedSegments.length > 0
         ? path.basename(asset.absolutePath)
         : (root?.fileName ?? path.basename(asset.absolutePath));
 
