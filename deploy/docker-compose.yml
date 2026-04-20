@@ -188,12 +188,12 @@ services:
     volumes:
       - kubo-staging:/export
       - kubo-data:/data/ipfs
-      # Read-only mounts of our file-backed archive at the SAME paths the
-      # rust-archiver uses, so an `ipfs add --nocopy` on one of those paths
-      # stores a filestore reference that kubo can read back by the exact
-      # abspath. This is what lets us skip re-downloading a second copy of
-      # every pinned CID into kubo's blockstore.
-      - cold-storage:/mnt/backups:ro
+      # Kubo's filestore refuses any absolute path that isn't under its
+      # IPFS root (`/data`), so cold-storage is bind-mounted inside that
+      # tree instead of the `/mnt/backups` the worker uses. The worker
+      # translates paths via KUBO_ARCHIVE_STORAGE_DIR before setting the
+      # `Abspath` header.
+      - cold-storage:/data/cold-storage:ro
       - hot-storage:/data/archive-storage-hot:ro
       - ./kubo-init:/container-init.d:ro
 

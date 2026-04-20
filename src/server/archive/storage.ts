@@ -335,6 +335,21 @@ async function* walkArchiveTree(
   }
 }
 
+/// Rewrites a worker-visible archive path (under ARCHIVE_STORAGE_DIR)
+/// into the equivalent path as kubo's container sees it. Kubo's
+/// filestore rejects any `Abspath` that isn't under its IPFS root
+/// (`/data`), so in production the cold volume is mounted at
+/// /data/cold-storage inside kubo while the worker keeps writing to
+/// /mnt/backups. Returns the input unchanged when both ends agree
+/// (dev/local).
+function translateToKuboPath(workerAbsolutePath: string) {
+  const workerRoot = toAbsoluteStorageRoot();
+  const kuboRoot = env.KUBO_ARCHIVE_STORAGE_DIR ?? workerRoot;
+  if (kuboRoot === workerRoot) return workerAbsolutePath;
+  if (!workerAbsolutePath.startsWith(workerRoot)) return workerAbsolutePath;
+  return `${kuboRoot}${workerAbsolutePath.slice(workerRoot.length)}`;
+}
+
 /// Streams a kubo-compatible multipart body describing the CID
 /// directory and every file inside it. Each file part carries an
 /// `Abspath` header so kubo's filestore stores a pointer to the on-disk
@@ -389,7 +404,7 @@ async function* buildNocopyMultipartBody(args: {
         "file",
         relativeToParent,
         "application/octet-stream",
-        entry.absolutePath,
+        translateToKuboPath(entry.absolutePath),
       ),
     );
 

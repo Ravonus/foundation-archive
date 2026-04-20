@@ -61,6 +61,8 @@ Use a real websocket-capable public socket host for `NEXT_PUBLIC_ARCHIVE_SOCKET_
 
 `KUBO_API_URL` is not optional if you expect works to advance from "Almost saved" to "Saved". The production compose stack includes a `kubo` service, and the production env should point `KUBO_API_URL` at `http://kubo:5001`.
 
+`KUBO_ARCHIVE_STORAGE_DIR` is the absolute path at which the kubo container sees the same cold-storage tree the worker writes to `ARCHIVE_STORAGE_DIR`. In our compose that's `/data/cold-storage/foundation` (cold-storage has to live under kubo's IPFS root `/data` for filestore/`--nocopy` adds to be accepted). Leave it unset when both ends see the same path (e.g. local dev).
+
 ## Manual deploy
 
 Run this on the node after the repo has been cloned:
