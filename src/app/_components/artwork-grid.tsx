@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowRight, Check, LoaderCircle, Plus, X } from "lucide-react";
+import {
+  ArrowRight,
+  Box,
+  Check,
+  LoaderCircle,
+  Play,
+  Plus,
+  X,
+} from "lucide-react";
 
 import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { BlurImage } from "~/app/_components/motion";
@@ -373,9 +381,79 @@ function isAudioItem(item: ArtworkGridItem) {
   return item.mediaKind.toUpperCase() === "AUDIO";
 }
 
+/// Touch-primary browsers (iOS Safari, mobile Chrome) refuse to
+/// autoplay videos in a grid of 18 tiles — Safari caps how many muted
+/// loops it will start. The browser falls back to its own play-button
+/// overlay, but the whole tile is wrapped in a <Link>, so tapping that
+/// overlay just navigates to the detail page instead of starting
+/// playback. Skip the <video> / <model-viewer> render entirely on
+/// those devices and let the poster do the work — the detail page has
+/// real controls. Detection uses the `hover: none` media query, which
+/// is a reliable proxy for "no precise pointer, no hover UX".
+function useTouchPrimaryDevice(): boolean {
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(hover: none)");
+    const update = () => setTouch(mq.matches);
+    update();
+    if (mq.addEventListener) {
+      mq.addEventListener("change", update);
+      return () => mq.removeEventListener("change", update);
+    }
+    return undefined;
+  }, []);
+  return touch;
+}
+
+function MediaKindBadge({
+  kind,
+  className,
+}: {
+  kind: "video" | "model";
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute right-3 bottom-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(17,17,17,0.72)] text-[var(--color-bg)] shadow-[0_8px_24px_-12px_rgba(17,17,17,0.6)] backdrop-blur",
+        className,
+      )}
+    >
+      {kind === "video" ? (
+        <Play className="h-4 w-4 fill-current" strokeWidth={0} />
+      ) : (
+        <Box className="h-4 w-4" strokeWidth={1.75} />
+      )}
+    </span>
+  );
+}
+
 function ItemPoster({ item }: { item: ArtworkGridItem }) {
   const posterUrl = resolvePosterUrl(item);
-  if (isModelItem(item) && item.mediaUrl) {
+  const isTouch = useTouchPrimaryDevice();
+  const isModel = isModelItem(item);
+  const isVideo = isVideoItem(item);
+
+  // Touch devices short-circuit to the still poster (see hook comment).
+  // A small badge keeps the visual cue that it's a video or model; the
+  // tile-wide <Link> handles navigation to the detail page where real
+  // controls live.
+  if (isTouch && (isModel || isVideo) && posterUrl) {
+    return (
+      <>
+        <BlurImage
+          src={posterUrl}
+          alt={item.title}
+          className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        />
+        <MediaKindBadge kind={isVideo ? "video" : "model"} />
+      </>
+    );
+  }
+
+  if (isModel && item.mediaUrl) {
     return (
       <ModelMediaPreview
         src={item.mediaUrl}
@@ -387,7 +465,7 @@ function ItemPoster({ item }: { item: ArtworkGridItem }) {
       />
     );
   }
-  if (isVideoItem(item) && item.mediaUrl) {
+  if (isVideo && item.mediaUrl) {
     return (
       <video
         src={item.mediaUrl}
