@@ -21,7 +21,7 @@ import {
 import { CountUp, FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
 import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
-import { buildArchivePublicPath } from "~/server/archive/ipfs";
+import { toArchivedGridItem } from "~/app/archive/_grid-item";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { db } from "~/server/db";
 
@@ -95,27 +95,6 @@ function isTransientDatabaseError(error: unknown): boolean {
   return isTransientDatabaseError(candidate.cause);
 }
 
-function archiveMediaUrlOf(artwork: HomeArtwork) {
-  const isCaptured =
-    artwork.mediaStatus === "DOWNLOADED" || artwork.mediaStatus === "PINNED";
-  if (!artwork.mediaRoot || !isCaptured) return null;
-  return buildArchivePublicPath(
-    artwork.mediaRoot.cid,
-    artwork.mediaRoot.relativePath,
-  );
-}
-
-function posterUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {
-  if (artwork.mediaKind !== "IMAGE") return null;
-  return archiveMediaUrl ?? artwork.sourceUrl;
-}
-
-function mediaUrlOf(artwork: HomeArtwork, archiveMediaUrl: string | null) {
-  const imageFallback =
-    artwork.mediaKind === "IMAGE" ? artwork.sourceUrl : null;
-  return archiveMediaUrl ?? imageFallback;
-}
-
 /// Pick N recent artworks with visual variety — dedupes by
 /// (contract, artist) in order, filling from the remaining pool
 /// afterward if the deduped set is too small. Fixes the "same image
@@ -153,34 +132,6 @@ function pickDiverseRecent<
   return chosen;
 }
 
-function toGridItem(artwork: HomeArtwork) {
-  const archiveMediaUrl = archiveMediaUrlOf(artwork);
-  return {
-    id: artwork.id,
-    slug: artwork.slug,
-    chainId: artwork.chainId,
-    title: artwork.title,
-    artistName: artwork.artistName,
-    artistUsername: artwork.artistUsername,
-    artistWallet: artwork.artistWallet,
-    collectionName: artwork.collectionName,
-    tokenId: artwork.tokenId,
-    contractAddress: artwork.contractAddress,
-    foundationContractType: artwork.foundationContractType,
-    mediaKind: artwork.mediaKind,
-    metadataStatus: artwork.metadataStatus,
-    mediaStatus: artwork.mediaStatus,
-    posterUrl: posterUrlOf(artwork, archiveMediaUrl),
-    mediaUrl: mediaUrlOf(artwork, archiveMediaUrl),
-    foundationUrl: artwork.foundationUrl,
-    archiveMediaUrl,
-    publicGatewayUrl: artwork.mediaRoot?.gatewayUrl ?? null,
-    metadataCid: artwork.metadataRoot?.cid ?? null,
-    mediaCid: artwork.mediaRoot?.cid ?? null,
-    lookupSource: "ARCHIVED",
-    storageProtocol: "ipfs" as const,
-  } satisfies ArtworkGridItem;
-}
 
 function HeroIntro() {
   return (
@@ -560,7 +511,7 @@ export default async function HomePage() {
       </section>
 
       <RecentSection
-        items={pickDiverseRecent(recentArtworks, 12).map(toGridItem)}
+        items={pickDiverseRecent(recentArtworks, 12).map(toArchivedGridItem)}
       />
     </main>
   );
