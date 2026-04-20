@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { RelayOwnerClientMessage } from "~/lib/desktop-relay";
 import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
@@ -26,6 +26,7 @@ import {
   BRIDGE_SESSION_KEY,
   BRIDGE_URL_KEY,
   DEFAULT_BRIDGE_URL,
+  RELAY_DEVICES_CACHE_KEY,
 } from "./constants";
 import { DesktopBridgeContext } from "./context";
 import { bridgeConfigFromHealth } from "./lib/derive-config";
@@ -48,6 +49,22 @@ import { useOwnerRefresh } from "./hooks/use-owner-refresh";
 import { usePinVerificationLoop } from "./hooks/use-pin-verification-loop";
 import { useRelaySocket } from "./hooks/use-relay-socket";
 
+/// Read the cached relay devices snapshot once at mount so the Save-to-
+/// computer button can render instantly on page refresh instead of waiting
+/// a second or two for the owner socket to handshake. The cache is treated
+/// as an optimistic bootstrap only; fresh snapshots replace it.
+function readCachedRelayDevices(): RelayOwnerDevice[] {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(RELAY_DEVICES_CACHE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as RelayOwnerDevice[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
   const [bridgeUrl, setBridgeUrlState] = useState(DEFAULT_BRIDGE_URL);
   const [session, setSession] = useState<BridgeSession | null>(null);
@@ -55,7 +72,9 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
   const [health, setHealth] = useState<BridgeHealth | null>(null);
   const [config, setConfig] = useState<BridgeConfig | null>(null);
   const [ownerToken, setOwnerToken] = useState<string | null>(null);
-  const [relayDevices, setRelayDevices] = useState<RelayOwnerDevice[]>([]);
+  const [relayDevices, setRelayDevices] = useState<RelayOwnerDevice[]>(() =>
+    readCachedRelayDevices(),
+  );
   const [relayInventories, setRelayInventories] = useState<
     Record<string, RelayInventorySnapshot>
   >({});
@@ -74,6 +93,24 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
   const relaySocketRef = useRef<WebSocket | null>(null);
 
   useInitialStorage({ setBridgeUrlState, setSession, setOwnerToken });
+
+  // Persist the relay device snapshot so the next page load can bootstrap
+  // from it immediately instead of flickering through a disconnected state.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (relayDevices.length === 0) {
+      window.localStorage.removeItem(RELAY_DEVICES_CACHE_KEY);
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        RELAY_DEVICES_CACHE_KEY,
+        JSON.stringify(relayDevices),
+      );
+    } catch {
+      // Quota / disabled storage — best effort.
+    }
+  }, [relayDevices]);
 
   const {
     networkStatus,

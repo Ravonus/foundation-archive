@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   DesktopBridgeProvider,
@@ -21,29 +21,38 @@ function DesktopSharePanelBody({
   hasShareableRoots,
   work,
 }: DesktopSharePanelProps) {
-  const { reachable, relayDevices, relaySocketConnected, refreshRelayDevices } =
-    useDesktopBridge();
+  const { reachable, relayDevices, refreshRelayDevices } = useDesktopBridge();
 
-  const hasConnectedRelayHelper =
-    relaySocketConnected && relayDevices.some((device) => device.connected);
-  const canSave = reachable || hasConnectedRelayHelper;
+  // Visibility is intentionally loose: once we've *ever* seen a paired device
+  // (either from live socket or the localStorage bootstrap cache), keep the
+  // panel mounted. Relay flickers — socket reconnects, snapshot updates —
+  // used to make the button vanish mid-save and swallow the result toast.
+  const hasPairedDevice = relayDevices.length > 0;
+  const hasConnectedDevice = relayDevices.some((device) => device.connected);
+  const canSave = reachable || hasConnectedDevice;
 
-  // Auto-poll the bridge status so the panel appears/disappears as the user
-  // opens or closes the desktop app — no manual "Check desktop connection"
-  // needed. Only polls while a previous pairing exists so we don't spam the
-  // backend for every visitor.
-  const hasPairingHistory = relayDevices.length > 0;
+  // Once shown, stay shown for the lifetime of this component. The button
+  // itself surfaces connection errors on click, so hiding it transiently
+  // just confuses the user.
+  const everVisibleRef = useRef(false);
+  if (hasPairedDevice || canSave) {
+    everVisibleRef.current = true;
+  }
+
+  // Gently re-poll when we know there's a saved pairing but the live socket
+  // hasn't confirmed it yet — covers the "bridge restarted, tab refreshed"
+  // case without spamming anonymous visitors.
   useEffect(() => {
-    if (!hasPairingHistory) return;
+    if (!hasPairedDevice) return;
     if (canSave) return;
     const id = window.setInterval(() => {
       void refreshRelayDevices().catch(() => undefined);
     }, AUTO_POLL_MS);
     return () => window.clearInterval(id);
-  }, [hasPairingHistory, canSave, refreshRelayDevices]);
+  }, [hasPairedDevice, canSave, refreshRelayDevices]);
 
   if (!hasShareableRoots) return null;
-  if (!canSave) return null;
+  if (!everVisibleRef.current) return null;
 
   return (
     <FadeUp delay={0.85} duration={0.6} className="block">

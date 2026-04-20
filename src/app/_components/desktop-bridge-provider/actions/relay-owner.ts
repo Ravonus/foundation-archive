@@ -62,7 +62,7 @@ export type RelayOwnerBaseActions = Omit<
   "requestRelayInventory" | "queueWorkToRelay"
 >;
 
-const RELAY_JOB_TIMEOUT_MS = 120_000;
+const RELAY_JOB_TIMEOUT_MS = 45_000;
 
 function requireOwnerToken(token: string | null): string {
   if (!token) {

@@ -78,6 +78,12 @@ async function runShareAction({
   shareWork: (work: DesktopShareableWork) => Promise<{ pins: unknown[] }>;
   work: DesktopShareableWork;
 }): Promise<ShareOutcome> {
+  if (!canPinDirectly && !hasConnectedRelayHelper) {
+    throw new Error(
+      "Desktop app isn't reachable. Make sure it's running on your computer, then try again.",
+    );
+  }
+
   if (!canPinDirectly || hasConnectedRelayHelper) {
     await queueWorkToRelay(work);
     return {
@@ -258,13 +264,12 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
   const canPinDirectly = reachable;
   const hasConnectedRelayHelper =
     relaySocketConnected && relayDevices.some((device) => device.connected);
-  const canSave = canPinDirectly || hasConnectedRelayHelper;
 
+  // The panel already gates visibility based on whether a pairing exists
+  // at all. Once the button is rendered, keep it rendered — click handling
+  // decides whether the save actually works and surfaces a clear error
+  // toast if the bridge is offline.
   if (!shareable) return null;
-  // Keep the button mounted while a save is in flight or its result toast is
-  // still on screen, even if reachability flickered off. Unmounting mid-save
-  // used to hide the feedback entirely.
-  if (!canSave && !isWorking && !feedback) return null;
 
   const handleSave = () =>
     runSaveClick({
