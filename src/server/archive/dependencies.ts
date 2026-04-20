@@ -593,7 +593,10 @@ async function archiveDependencyTree(args: {
       node.status = "FAILED";
       node.lastError =
         error instanceof Error ? error.message : "Unknown dependency failure";
-      throw error;
+      console.warn(
+        `[archive] Dependency ${reference.cid}${reference.relativePath ? "/" + reference.relativePath : ""} failed:`,
+        node.lastError,
+      );
     }
   }
 }
@@ -684,22 +687,17 @@ export async function verifyArchivedRootDependencies(args: {
   const seeds = artworkSeedReferences({ artwork, root });
   const visited = new Set<string>([rootKey]);
 
-  try {
-    await archiveDependencyTree({
-      root,
-      manifest,
-      references: [...seeds, ...discoveredFromRoot],
-      parentKey: rootKey,
-      depth: 0,
-      visited,
-    });
-    manifest.verifiedAt = new Date().toISOString();
-    await writeDependencyManifest(root, manifest);
-    return manifest;
-  } catch (error) {
-    await writeDependencyManifest(root, manifest);
-    throw error;
-  }
+  await archiveDependencyTree({
+    root,
+    manifest,
+    references: [...seeds, ...discoveredFromRoot],
+    parentKey: rootKey,
+    depth: 0,
+    visited,
+  });
+  manifest.verifiedAt = new Date().toISOString();
+  await writeDependencyManifest(root, manifest);
+  return manifest;
 }
 
 export async function resolveArchivedLocalUrl(

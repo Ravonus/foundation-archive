@@ -169,6 +169,8 @@ function cardVariants(largeGrid: boolean, offset: number) {
   };
 }
 
+type OptimisticStatus = "pending";
+
 export function ArtworkGrid({
   items,
   emptyTitle,
@@ -188,6 +190,9 @@ export function ArtworkGrid({
     message: string;
   } | null>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [optimisticStatus, setOptimisticStatus] = useState<
+    Record<string, OptimisticStatus>
+  >({});
 
   useEffect(() => {
     if (!feedback) return;
@@ -201,7 +206,7 @@ export function ArtworkGrid({
     });
 
   const archiveMutation = api.archive.requestArtworkArchive.useMutation({
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       if (result.state === "already-pinned") {
         setFeedback({
           tone: "success",
@@ -216,6 +221,16 @@ export function ArtworkGrid({
             result.jobsAhead === 0 ? "next up" : `#${result.jobsAhead + 1}`
           }.`,
         });
+        const matchingId = items.find(
+          (candidate) =>
+            candidate.contractAddress.toLowerCase() ===
+              variables.contractAddress.toLowerCase() &&
+            candidate.tokenId === variables.tokenId &&
+            candidate.chainId === variables.chainId,
+        )?.id;
+        if (matchingId) {
+          setOptimisticStatus((prev) => ({ ...prev, [matchingId]: "pending" }));
+        }
       }
       setActiveItemId(null);
       refresh();
@@ -251,6 +266,12 @@ export function ArtworkGrid({
   const isItemSubmitting = (itemId: string) =>
     activeItemId === itemId && (archiveMutation.isPending || isRefreshing);
 
+  const overrideFor = (item: ArtworkGridItem): ArtworkGridItem => {
+    const override = optimisticStatus[item.id];
+    if (!override) return item;
+    return { ...item, metadataStatus: "PENDING", mediaStatus: "PENDING" };
+  };
+
   return (
     <div className="space-y-6">
       <div aria-live="polite" aria-atomic="true" className="sr-only">
@@ -264,7 +285,7 @@ export function ArtworkGrid({
           renderItem={(item, index) => (
             <ItemCard
               key={item.id}
-              item={item}
+              item={overrideFor(item)}
               index={index}
               largeGrid
               offset={0}
@@ -292,7 +313,7 @@ export function ArtworkGrid({
           {items.map((item, index) => (
             <ItemCard
               key={item.id}
-              item={item}
+              item={overrideFor(item)}
               index={index}
               largeGrid={largeGrid}
               offset={offset}

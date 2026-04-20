@@ -408,10 +408,17 @@ async function backupSingleRoot(
       startedAt,
     });
 
-    await verifyArchivedRootDependencies({
-      root,
-      artwork: input.artwork,
-    });
+    try {
+      await verifyArchivedRootDependencies({
+        root,
+        artwork: input.artwork,
+      });
+    } catch (error) {
+      console.warn(
+        `[archive] Dependency verification partial for ${root.cid}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
 
     if (env.KUBO_API_URL) {
       await pinRootWithKubo({
