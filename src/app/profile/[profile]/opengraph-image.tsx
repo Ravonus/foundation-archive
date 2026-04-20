@@ -3,6 +3,11 @@ import { getAddress } from "viem";
 
 import { db } from "~/server/db";
 import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
+import {
+  OG_THEME,
+  inlineImage,
+  loadOgFonts,
+} from "~/app/_components/og/helpers";
 
 export const runtime = "nodejs";
 export const alt = "Agorix artist profile";
@@ -13,56 +18,6 @@ export const contentType = "image/png";
 // through without a redeploy.
 export const revalidate = 3600;
 
-const IMAGE_FETCH_TIMEOUT_MS = 2_500;
-const IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
-const ALLOWED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-  "image/gif",
-]);
-
-/// Inline a remote image as a data: URI so Satori doesn't have to dial
-/// the origin mid-render. Strict allowlist (raster only — Satori chokes
-/// on oversized SVGs with "Buffer size limit exceeded") and a 2 MB cap.
-/// Bounded timeout keeps the OG response fast even when Foundation's
-/// CDN is slow — on any failure we fall back to the initials frame.
-async function inlineImage(url: string | null | undefined) {
-  if (!url) return null;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      IMAGE_FETCH_TIMEOUT_MS,
-    );
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { "user-agent": "Agorix OG Bot/1.0" },
-    });
-    clearTimeout(timer);
-    if (!response.ok) return null;
-
-    const rawContentType = (response.headers.get("content-type") ?? "")
-      .split(";")[0]
-      ?.trim()
-      .toLowerCase();
-    if (!rawContentType || !ALLOWED_IMAGE_TYPES.has(rawContentType)) {
-      return null;
-    }
-
-    const lengthHeader = response.headers.get("content-length");
-    if (lengthHeader && Number(lengthHeader) > IMAGE_MAX_BYTES) return null;
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength === 0 || buffer.byteLength > IMAGE_MAX_BYTES) {
-      return null;
-    }
-    return `data:${rawContentType};base64,${buffer.toString("base64")}`;
-  } catch {
-    return null;
-  }
-}
 
 type OgProfile = {
   username: string | null;
@@ -217,9 +172,9 @@ function OgFrame({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        backgroundColor: "#0b0b0b",
-        color: "#f5f2ea",
+        fontFamily: '"Noto Sans", system-ui, -apple-system, sans-serif',
+        backgroundColor: OG_THEME.background,
+        color: OG_THEME.ink,
         position: "relative",
       }}
     >
@@ -231,9 +186,9 @@ function OgFrame({
           display: "flex",
           position: "relative",
           overflow: "hidden",
-          backgroundColor: "#161414",
-          backgroundImage:
-            "linear-gradient(135deg, rgba(198,162,88,0.28), transparent 55%), radial-gradient(circle at 30% 10%, rgba(255,255,255,0.08), transparent 60%)",
+          backgroundColor: OG_THEME.surfaceAlt,
+          backgroundImage: `linear-gradient(135deg, rgba(198,162,88,0.22), transparent 55%), linear-gradient(180deg, ${OG_THEME.surfaceAlt}, ${OG_THEME.placeholder})`,
+          borderBottom: `1px solid ${OG_THEME.line}`,
         }}
       >
         {bannerUrl ? (
@@ -249,13 +204,13 @@ function OgFrame({
             }}
           />
         ) : null}
-        {/* Vignette so avatar + text stay readable */}
+        {/* Subtle light vignette so the banner sits under the content */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             backgroundImage:
-              "linear-gradient(180deg, rgba(11,11,11,0) 40%, rgba(11,11,11,0.7) 100%)",
+              "linear-gradient(180deg, rgba(250,250,247,0) 55%, rgba(250,250,247,0.55) 100%)",
             display: "flex",
           }}
         />
@@ -263,24 +218,27 @@ function OgFrame({
         <div
           style={{
             position: "absolute",
-            top: 32,
+            top: 28,
             right: 40,
             display: "flex",
             alignItems: "center",
             gap: 12,
-            color: "#f5f2ea",
+            backgroundColor: OG_THEME.surface,
+            border: `1px solid ${OG_THEME.line}`,
+            color: OG_THEME.ink,
             letterSpacing: "0.32em",
-            fontSize: 18,
+            fontSize: 16,
             textTransform: "uppercase",
-            opacity: 0.92,
+            padding: "8px 18px",
+            borderRadius: 999,
           }}
         >
           <div
             style={{
-              width: 18,
-              height: 18,
+              width: 14,
+              height: 14,
               borderRadius: 999,
-              backgroundColor: "#c6a258",
+              backgroundColor: OG_THEME.gold,
               display: "flex",
             }}
           />
@@ -298,6 +256,7 @@ function OgFrame({
           padding: "0 72px 56px",
           gap: 40,
           position: "relative",
+          backgroundColor: OG_THEME.background,
         }}
       >
         {/* Avatar — overlaps banner */}
@@ -306,15 +265,15 @@ function OgFrame({
             width: 220,
             height: 220,
             borderRadius: 999,
-            backgroundColor: "#1b1b1b",
-            border: "10px solid #0b0b0b",
+            backgroundColor: OG_THEME.surfaceAlt,
+            border: `10px solid ${OG_THEME.background}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             overflow: "hidden",
             marginTop: -140,
             flexShrink: 0,
-            boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
+            boxShadow: "0 24px 60px rgba(17,17,17,0.15)",
           }}
         >
           {avatarUrl ? (
@@ -334,8 +293,8 @@ function OgFrame({
               style={{
                 display: "flex",
                 fontSize: 72,
-                fontWeight: 600,
-                color: "#c6a258",
+                fontWeight: 700,
+                color: OG_THEME.gold,
               }}
             >
               {avatarInitials}
@@ -356,7 +315,7 @@ function OgFrame({
               fontSize: 18,
               textTransform: "uppercase",
               letterSpacing: "0.22em",
-              color: "#c6a258",
+              color: OG_THEME.gold,
               display: "flex",
             }}
           >
@@ -365,9 +324,10 @@ function OgFrame({
           <div
             style={{
               fontSize: 72,
-              fontWeight: 600,
+              fontWeight: 700,
               marginTop: 10,
               lineHeight: 1.05,
+              color: OG_THEME.ink,
               display: "flex",
             }}
           >
@@ -379,8 +339,8 @@ function OgFrame({
               display: "flex",
               flexDirection: "row",
               gap: 16,
-              color: "rgba(245,242,234,0.72)",
-              fontSize: 28,
+              color: OG_THEME.muted,
+              fontSize: 26,
             }}
           >
             {handle ? <span>{handle}</span> : null}
@@ -390,10 +350,10 @@ function OgFrame({
           {bio ? (
             <div
               style={{
-                marginTop: 22,
-                fontSize: 26,
+                marginTop: 20,
+                fontSize: 24,
                 lineHeight: 1.4,
-                color: "rgba(245,242,234,0.88)",
+                color: OG_THEME.body,
                 display: "flex",
               }}
             >
@@ -404,7 +364,7 @@ function OgFrame({
           {/* CTA row */}
           <div
             style={{
-              marginTop: 28,
+              marginTop: 26,
               display: "flex",
               flexDirection: "row",
               alignItems: "center",
@@ -416,12 +376,12 @@ function OgFrame({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                backgroundColor: "#c6a258",
-                color: "#0b0b0b",
-                padding: "14px 22px",
+                backgroundColor: OG_THEME.ink,
+                color: OG_THEME.background,
+                padding: "14px 24px",
                 borderRadius: 999,
                 fontSize: 22,
-                fontWeight: 600,
+                fontWeight: 700,
               }}
             >
               Explore the archive
@@ -431,7 +391,7 @@ function OgFrame({
               style={{
                 display: "flex",
                 fontSize: 18,
-                color: "rgba(245,242,234,0.6)",
+                color: OG_THEME.muted,
                 letterSpacing: "0.04em",
               }}
             >
@@ -480,6 +440,28 @@ export default async function ProfileOgImage({
     .join("")
     .toUpperCase();
 
+  const [notoRegular, notoBold] = await loadOgFonts();
+  const fonts = [
+    notoRegular
+      ? {
+          name: "Noto Sans",
+          data: notoRegular,
+          weight: 400 as const,
+          style: "normal" as const,
+        }
+      : null,
+    notoBold
+      ? {
+          name: "Noto Sans",
+          data: notoBold,
+          weight: 700 as const,
+          style: "normal" as const,
+        }
+      : null,
+  ].filter(
+    (font): font is NonNullable<typeof font> => Boolean(font),
+  );
+
   return new ImageResponse(
     (
       <OgFrame
@@ -494,6 +476,7 @@ export default async function ProfileOgImage({
     ),
     {
       ...size,
+      fonts: fonts.length > 0 ? fonts : undefined,
       headers: {
         "cache-control":
           "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
