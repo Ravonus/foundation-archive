@@ -15,6 +15,7 @@ import {
   isPinned,
   normalizeAddress,
   PUBLIC_QUEUE_PRIORITY,
+  syncArtworkStatuses,
 } from "./shared";
 import {
   countJobsAhead,
@@ -59,6 +60,35 @@ function isArtworkFullyPinned(artwork: {
   );
 }
 
+async function resetRootsForManualRetry(
+  client: DatabaseClient,
+  artwork: {
+    id: string;
+    metadataRootId: string | null;
+    mediaRootId: string | null;
+    metadataStatus: BackupStatus;
+    mediaStatus: BackupStatus;
+  },
+) {
+  const rootIds = [artwork.metadataRootId, artwork.mediaRootId].filter(
+    (id): id is string => Boolean(id),
+  );
+  if (rootIds.length === 0) return;
+
+  await client.ipfsRoot.updateMany({
+    where: { id: { in: rootIds } },
+    data: {
+      backupStatus: BackupStatus.PENDING,
+      pinStatus: BackupStatus.PENDING,
+      lastError: null,
+      lastDeferredAt: null,
+      deferredUntilByteSize: null,
+    },
+  });
+
+  await syncArtworkStatuses(client, artwork.id);
+}
+
 export async function requestArtworkArchive(
   client: DatabaseClient,
   rawInput: unknown,
@@ -88,6 +118,10 @@ export async function requestArtworkArchive(
       jobsAhead: 0,
       title: artwork.title,
     };
+  }
+
+  if (artwork) {
+    await resetRootsForManualRetry(client, artwork);
   }
 
   const canBackupDirectly = Boolean(artwork && canBackupArtworkDirectly(artwork));

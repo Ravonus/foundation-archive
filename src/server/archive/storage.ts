@@ -15,7 +15,7 @@ import { formatBytes } from "~/lib/utils";
 import { buildGatewayUrl } from "~/server/archive/ipfs";
 
 const ROOT_FILE_SENTINEL = "__root__";
-const ARCHIVE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const ARCHIVE_DOWNLOAD_TIMEOUT_MS = 60 * 60 * 1000;
 const ARCHIVE_PIN_TIMEOUT_MS = 20_000;
 
 type RustArchiverDownloadResponse = {

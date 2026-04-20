@@ -29,9 +29,10 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use tokio::{
     fs,
-    io::AsyncWriteExt,
+    io::{AsyncWriteExt, BufWriter},
     net::TcpListener,
     sync::{oneshot, Mutex},
+    time::timeout,
 };
 use tracing::{info, warn};
 use tray_menu::{
@@ -40,6 +41,9 @@ use tray_menu::{
 };
 
 const ROOT_FILE_SENTINEL: &str = "__root__";
+const STREAM_WRITE_BUFFER_BYTES: usize = 1024 * 1024;
+const STREAM_PROGRESS_INTERVAL_BYTES: u64 = 32 * 1024 * 1024;
+const STREAM_CHUNK_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Clone)]
 struct AppState {
@@ -266,44 +270,102 @@ async fn write_small_response_to_hot(hot_path: &Path, bytes: &[u8]) -> Result<()
 async fn stream_response_to_hot(
     hot_path: &Path,
     response: reqwest::Response,
+    expected_bytes: Option<u64>,
 ) -> Result<u64, AppError> {
     ensure_parent_directory(hot_path).await?;
     let temp_path = unique_temp_path(hot_path);
-    let mut file = fs::File::create(&temp_path).await.map_err(|error| {
+
+    match stream_response_body(&temp_path, response, expected_bytes).await {
+        Ok(written) => {
+            match fs::rename(&temp_path, hot_path).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                    let _ = fs::remove_file(&temp_path).await;
+                }
+                Err(error) => {
+                    let _ = fs::remove_file(&temp_path).await;
+                    return Err(AppError::internal(format!(
+                        "Unable to finalize the hot cache file: {error}"
+                    )));
+                }
+            }
+            Ok(written)
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&temp_path).await;
+            Err(error)
+        }
+    }
+}
+
+async fn stream_response_body(
+    temp_path: &Path,
+    response: reqwest::Response,
+    expected_bytes: Option<u64>,
+) -> Result<u64, AppError> {
+    let file = fs::File::create(temp_path).await.map_err(|error| {
         AppError::internal(format!("Unable to create the hot cache file: {error}"))
     })?;
+    let mut writer = BufWriter::with_capacity(STREAM_WRITE_BUFFER_BYTES, file);
 
     let mut written = 0_u64;
+    let mut next_progress_at = STREAM_PROGRESS_INTERVAL_BYTES;
+    let chunk_timeout = Duration::from_secs(STREAM_CHUNK_TIMEOUT_SECS);
     let mut stream = response.bytes_stream();
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk
-            .map_err(|error| AppError::internal(format!("Streaming download failed: {error}")))?;
-        written += chunk.len() as u64;
-        file.write_all(&chunk).await.map_err(|error| {
+    loop {
+        let next_chunk = match timeout(chunk_timeout, stream.next()).await {
+            Ok(value) => value,
+            Err(_) => {
+                return Err(AppError::internal(format!(
+                    "Streaming download stalled after {} bytes with no data for {STREAM_CHUNK_TIMEOUT_SECS}s",
+                    written
+                )));
+            }
+        };
+
+        let Some(chunk) = next_chunk else {
+            break;
+        };
+
+        let chunk = chunk.map_err(|error| {
+            AppError::internal(format!(
+                "Streaming download failed after {written} bytes: {error}"
+            ))
+        })?;
+
+        if chunk.is_empty() {
+            continue;
+        }
+
+        writer.write_all(&chunk).await.map_err(|error| {
             AppError::internal(format!("Unable to write archive bytes: {error}"))
         })?;
+        written += chunk.len() as u64;
+
+        if written >= next_progress_at {
+            match expected_bytes {
+                Some(total) if total > 0 => {
+                    info!(
+                        "Archiving stream progress: {written}/{total} bytes ({:.1}%)",
+                        (written as f64 / total as f64) * 100.0
+                    );
+                }
+                _ => info!("Archiving stream progress: {written} bytes"),
+            }
+            next_progress_at = next_progress_at.saturating_add(STREAM_PROGRESS_INTERVAL_BYTES);
+        }
     }
 
-    file.flush()
+    writer
+        .flush()
         .await
         .map_err(|error| AppError::internal(format!("Unable to flush archive bytes: {error}")))?;
+    let file = writer.into_inner();
     file.sync_all()
         .await
         .map_err(|error| AppError::internal(format!("Unable to sync archive bytes: {error}")))?;
     drop(file);
-
-    match fs::rename(&temp_path, hot_path).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-            let _ = fs::remove_file(&temp_path).await;
-        }
-        Err(error) => {
-            return Err(AppError::internal(format!(
-                "Unable to finalize the hot cache file: {error}"
-            )));
-        }
-    }
 
     Ok(written)
 }
@@ -505,10 +567,19 @@ async fn archive_root(
             write_small_response_to_hot(&hot_path, bytes.as_ref()).await?;
             bytes.len() as u64
         } else {
-            stream_response_to_hot(&hot_path, response).await?
+            info!(
+                "Streaming large archive payload for {} ({} bytes)",
+                request.cid.trim(),
+                content_length
+            );
+            stream_response_to_hot(&hot_path, response, Some(content_length)).await?
         }
     } else {
-        stream_response_to_hot(&hot_path, response).await?
+        info!(
+            "Streaming archive payload for {} (content length unknown)",
+            request.cid.trim()
+        );
+        stream_response_to_hot(&hot_path, response, None).await?
     };
 
     clone_hot_into_cold(&hot_path, &cold_path).await?;
@@ -545,6 +616,9 @@ fn build_app_state(cache_items: usize, inline_memory_max_bytes: u64) -> anyhow::
         client: Client::builder()
             .http2_adaptive_window(true)
             .pool_max_idle_per_host(32)
+            .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(STREAM_CHUNK_TIMEOUT_SECS))
+            .tcp_keepalive(Some(Duration::from_secs(60)))
             .build()
             .context("Unable to build the archive HTTP client")?,
         inflight: Arc::new(DashMap::new()),

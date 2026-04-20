@@ -381,14 +381,16 @@ async function backupSingleRoot(
   const startedAt = new Date();
 
   try {
-    const retryAt = recentFailedRetryAt(root);
-    if (retryAt && retryAt.getTime() > Date.now()) {
-      return {
-        status: "deferred",
-        availableAt: retryAt,
-        reason: "retry-cooldown",
-        retainJob: false,
-      };
+    if (!input.bypassSmartBudget) {
+      const retryAt = recentFailedRetryAt(root);
+      if (retryAt && retryAt.getTime() > Date.now()) {
+        return {
+          status: "deferred",
+          availableAt: retryAt,
+          reason: "retry-cooldown",
+          retainJob: false,
+        };
+      }
     }
 
     const deferred = await evaluateSmartBudget({ client, input, root });
