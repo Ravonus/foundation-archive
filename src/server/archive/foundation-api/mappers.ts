@@ -6,6 +6,7 @@ import {
   inferFoundationMediaKind,
   rewriteFoundationAssetUrl,
 } from "~/server/archive/foundation";
+import { detectWorkStorageProtocol } from "./client";
 import {
   type foundationCollectionDiscoverySchema,
   type foundationCollectionSchema,
@@ -136,6 +137,11 @@ export function mapFoundationWork(work: FoundationWork): FoundationLookupWork {
   const artist = mapFoundationArtist(work.creator);
   const owner = mapFoundationOwner(work.owner);
   const collection = mapFoundationCollection(work.collection);
+  const storageProtocol = detectWorkStorageProtocol({
+    metadataUrl: work.metadataUrl ?? null,
+    sourceUrl: media.sourceUrl,
+    mediaUrl: media.mediaUrl,
+  });
 
   return {
     ...artist,
@@ -147,6 +153,7 @@ export function mapFoundationWork(work: FoundationWork): FoundationLookupWork {
     foundationUrl: mapFoundationMintEvent(work),
     id: work.id,
     mediaKind: media.mediaKind,
+    storageProtocol,
     mediaUrl: media.mediaUrl,
     metadataUrl: work.metadataUrl ?? null,
     previewUrl: media.previewUrl,
@@ -190,6 +197,11 @@ export function toLookupWorkFromMintPage(
     artistWallet: mint.artistWallet?.toLowerCase() ?? null,
     ownerWallet: mint.ownerWallet?.toLowerCase() ?? null,
     id: `mint:${mint.chainId}:${mint.contractAddress.toLowerCase()}:${mint.tokenId}`,
+    storageProtocol: detectWorkStorageProtocol({
+      metadataUrl: mint.metadataUrl,
+      sourceUrl: mint.sourceUrl,
+      mediaUrl: mint.mediaUrl,
+    }),
   };
 }
 

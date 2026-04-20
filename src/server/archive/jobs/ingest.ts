@@ -208,7 +208,13 @@ export async function requestProfileArchive(
     24,
     20,
   );
-  await persistDiscoveredFoundationWorks(client, works, {
+  // Only try to pin works whose media/metadata live on IPFS. Arweave,
+  // centralized, and inline-data works can't be pinned and would just fail
+  // in the queue — skip them instead of filling the worker with dead jobs.
+  const archivableWorks = works.filter(
+    (work) => work.storageProtocol === "ipfs",
+  );
+  await persistDiscoveredFoundationWorks(client, archivableWorks, {
     indexedFrom: "foundation-profile-search",
     queueImmediately: false,
   });
@@ -221,7 +227,7 @@ export async function requestProfileArchive(
     jobIds: new Set<string>(),
   };
 
-  for (const work of works) {
+  for (const work of archivableWorks) {
     const result = await requestArtworkArchive(client, {
       chainId: work.chainId,
       contractAddress: work.contractAddress,

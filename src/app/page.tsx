@@ -178,6 +178,7 @@ function toGridItem(artwork: HomeArtwork) {
     metadataCid: artwork.metadataRoot?.cid ?? null,
     mediaCid: artwork.mediaRoot?.cid ?? null,
     lookupSource: "ARCHIVED",
+    storageProtocol: "ipfs" as const,
   } satisfies ArtworkGridItem;
 }
 

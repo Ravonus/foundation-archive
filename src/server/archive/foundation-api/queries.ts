@@ -76,7 +76,7 @@ export async function fetchFoundationWorksByCreator(
     }),
   );
 
-  return filterIpfsWorks(data.nfts.items.map((work) => mapFoundationWork(work)));
+  return data.nfts.items.map((work) => mapFoundationWork(work));
 }
 
 export async function fetchFoundationWorksByCreatorPage(
@@ -95,8 +95,12 @@ export async function fetchFoundationWorksByCreatorPage(
     }),
   );
 
+  const items = data.nfts.items.map((work) => mapFoundationWork(work));
+  const archivableItems = filterIpfsWorks(items);
+
   return {
-    items: filterIpfsWorks(data.nfts.items.map((work) => mapFoundationWork(work))),
+    items,
+    archivableItems,
     page: data.nfts.page,
     totalItems: data.nfts.totalItems,
     rawItemCount: data.nfts.items.length,
@@ -134,9 +138,7 @@ export async function fetchAllFoundationWorksByCreator(
       }),
     );
 
-    for (const work of filterIpfsWorks(
-      data.nfts.items.map((item) => mapFoundationWork(item)),
-    )) {
+    for (const work of data.nfts.items.map((item) => mapFoundationWork(item))) {
       worksByKey.set(workKey(work.contractAddress, work.tokenId), work);
     }
 

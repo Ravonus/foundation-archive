@@ -32,6 +32,18 @@ export function ProfileHeader({
         <ProfileStat label="Found now" value={counts.found} tone="info" />
       </div>
 
+      {counts.offChain > 0 ? (
+        <p
+          className="mt-3 rounded-[1.1rem] border border-dashed border-[var(--color-line)] bg-[var(--color-surface-quiet)] px-4 py-3 text-xs text-[var(--color-muted)]"
+          title="Works stored on Arweave, centralized servers, or inline data can't be pinned to IPFS, so we surface them without backing them up."
+        >
+          <span className="font-medium text-[var(--color-body)]">
+            {counts.offChain} off-chain
+          </span>{" "}
+          — shown below but not backed up (not on IPFS, so we can&apos;t pin).
+        </p>
+      ) : null}
+
       {marketSummary &&
       (marketSummary.listedCount > 0 || marketSummary.rescuableCount > 0) ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-[var(--color-line)] bg-[var(--color-surface-quiet)] px-4 py-3 text-xs text-[var(--color-body)]">

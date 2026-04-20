@@ -121,7 +121,6 @@ export default async function ProfilePage({
   const counts = await computeArtistCounts({
     accountAddress: resolved.accountAddress,
     username: resolved.username,
-    foundationTotal: foundationPage.totalItems,
   });
 
   const foundationExhausted = !hasMoreFoundationPages(

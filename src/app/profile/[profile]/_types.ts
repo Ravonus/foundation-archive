@@ -23,6 +23,7 @@ export type ProfileItemCounts = {
   saved: number;
   syncing: number;
   found: number;
+  offChain: number;
 };
 
 export type ProfileView = "all" | "saved" | "syncing" | "found";

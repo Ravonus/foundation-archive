@@ -14,6 +14,7 @@ import {
 } from "~/server/archive/foundation";
 import {
   discoverFoundationWorks,
+  fetchAllFoundationWorksByCreator,
   fetchFoundationUserByUsername,
   fetchFoundationWorksByCreatorPage,
   type FoundationLookupWork,
@@ -337,7 +338,7 @@ export async function loadArchivedArtistPage(input: {
 export async function computeArtistCounts(input: {
   accountAddress: string;
   username: string | null;
-  foundationTotal: number;
+  foundationWorks?: FoundationLookupWork[];
 }): Promise<ProfileItemCounts> {
   const artistWhere = buildArtistWhere(input);
   const [withRootsCount, savedCount, syncingCount] = await Promise.all([
@@ -346,14 +347,30 @@ export async function computeArtistCounts(input: {
     db.artwork.count({ where: { AND: [artistWhere, SYNCING_WHERE] } }),
   ]);
 
-  const found = Math.max(0, input.foundationTotal - withRootsCount);
-  const total = withRootsCount + found;
+  const allWorks =
+    input.foundationWorks ??
+    (await fetchAllFoundationWorksByCreator(input.accountAddress, 24, 12).catch(
+      () => [] as FoundationLookupWork[],
+    ));
+  const archivableFoundationCount = allWorks.filter(
+    (work) => work.storageProtocol === "ipfs",
+  ).length;
+  const offChain = Math.max(0, allWorks.length - archivableFoundationCount);
+
+  // `found` = IPFS-archivable works Foundation knows about that we don't yet
+  // have captured in the DB. Off-chain/centralized/arweave works are counted
+  // separately in `offChain` so the primary numbers only reflect what we can
+  // actually pin. `total` is the full Foundation catalog so the header stat
+  // matches what's rendered in the grid.
+  const found = Math.max(0, archivableFoundationCount - withRootsCount);
+  const total = Math.max(allWorks.length, withRootsCount + found + offChain);
 
   return {
     total,
     saved: savedCount,
     syncing: syncingCount,
     found,
+    offChain,
   };
 }
 
@@ -434,11 +451,17 @@ export function mergeArchivedAndFoundation(input: {
     const key = artworkKey(work.contractAddress, work.tokenId);
     if (seen.has(key)) continue;
     const archived = input.archivedByKey.get(key);
+    const isArchivable = work.storageProtocol === "ipfs";
     if (archived && hasCapturedServerRoot(archived)) {
       if (input.view === "found") continue;
       seen.add(key);
       items.push(toArchivedGridItem(archived));
     } else {
+      // For the `found` tab, keep only archivable (IPFS) works so the count
+      // and the list agree. Off-chain works surface in the `all` view where
+      // we want the artist's full Foundation catalog visible with a clear
+      // "not archivable" badge.
+      if (input.view === "found" && !isArchivable) continue;
       seen.add(key);
       items.push(toDiscoveredGridItem(work));
     }

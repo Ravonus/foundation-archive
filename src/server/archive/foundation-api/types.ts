@@ -1,5 +1,12 @@
 import { type MediaKind } from "~/server/prisma-client";
 
+export type WorkStorageProtocol =
+  | "ipfs"
+  | "arweave"
+  | "centralized"
+  | "inline"
+  | "unknown";
+
 export interface FoundationUserProfile {
   accountAddress: string;
   name: string | null;
@@ -30,6 +37,7 @@ export interface FoundationLookupWork {
   previewUrl: string | null;
   sourceUrl: string | null;
   staticPreviewUrl: string | null;
+  storageProtocol: WorkStorageProtocol;
   title: string;
   tokenId: string;
 }

@@ -16,6 +16,13 @@ import { api } from "~/trpc/react";
 
 export type ArtworkMarketState = "listed" | "auction" | "rescuable";
 
+export type ArtworkStorageProtocol =
+  | "ipfs"
+  | "arweave"
+  | "centralized"
+  | "inline"
+  | "unknown";
+
 export interface ArtworkGridItem {
   id: string;
   slug: string | null;
@@ -39,6 +46,7 @@ export interface ArtworkGridItem {
   metadataCid: string | null;
   mediaCid: string | null;
   lookupSource: "ARCHIVED" | "FOUNDATION_LIVE";
+  storageProtocol: ArtworkStorageProtocol;
   marketState?: ArtworkMarketState | null;
 }
 
@@ -46,6 +54,36 @@ type Health = "preserved" | "partial" | "pending" | "missing" | "failed";
 
 function healthOf(item: ArtworkGridItem): Health {
   return archiveItemStatus(item);
+}
+
+function isArchivableProtocol(protocol: ArtworkStorageProtocol) {
+  return protocol === "ipfs";
+}
+
+function offChainLabel(protocol: ArtworkStorageProtocol): string {
+  switch (protocol) {
+    case "arweave":
+      return "Arweave";
+    case "centralized":
+      return "Off-chain";
+    case "inline":
+      return "Inline data";
+    default:
+      return "Not on IPFS";
+  }
+}
+
+function offChainExplanation(protocol: ArtworkStorageProtocol): string {
+  switch (protocol) {
+    case "arweave":
+      return "Stored on Arweave. We don't back this up because Arweave already handles permanence, and our archive pins to IPFS.";
+    case "centralized":
+      return "Stored on a centralized server. We can't pin this to IPFS, so we don't include it in the archive.";
+    case "inline":
+      return "The media is embedded directly in the token's on-chain data — nothing to pin.";
+    default:
+      return "This work isn't stored on IPFS, so we can't pin it to the archive.";
+  }
 }
 
 function healthLabel(h: Health) {
@@ -400,7 +438,25 @@ function ItemPoster({ item }: { item: ArtworkGridItem }) {
   );
 }
 
-function HealthBadge({ health }: { health: Health }) {
+function HealthBadge({
+  health,
+  protocol,
+}: {
+  health: Health;
+  protocol: ArtworkStorageProtocol;
+}) {
+  if (!isArchivableProtocol(protocol)) {
+    const explanation = offChainExplanation(protocol);
+    return (
+      <span
+        className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--tint-muted)] px-2.5 py-1 text-[0.7rem] font-medium text-[var(--color-muted)]"
+        title={explanation}
+        aria-label={`${offChainLabel(protocol)}: ${explanation}`}
+      >
+        {offChainLabel(protocol)}
+      </span>
+    );
+  }
   const explanation = healthExplanation(health);
   return (
     <span
@@ -456,6 +512,16 @@ function ItemAction({
   isSubmitting: boolean;
   onRequest: (item: ArtworkGridItem) => void;
 }) {
+  if (!isArchivableProtocol(item.storageProtocol)) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-muted)]"
+        title={offChainExplanation(item.storageProtocol)}
+      >
+        {offChainLabel(item.storageProtocol)}
+      </span>
+    );
+  }
   if (shouldShowRequest(health)) {
     return (
       <button
@@ -526,7 +592,7 @@ function ItemCard({
         <div className="relative aspect-square w-full overflow-hidden">
           <ItemPoster item={item} />
         </div>
-        <HealthBadge health={health} />
+        <HealthBadge health={health} protocol={item.storageProtocol} />
         <MarketBadge state={item.marketState} />
       </Link>
 

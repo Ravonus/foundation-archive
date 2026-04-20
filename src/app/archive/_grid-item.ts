@@ -76,6 +76,7 @@ export function toArchivedGridItem(
     metadataCid: artwork.metadataRoot?.cid ?? null,
     mediaCid: artwork.mediaRoot?.cid ?? null,
     lookupSource: "ARCHIVED",
+    storageProtocol: "ipfs",
   } satisfies ArtworkGridItem;
 }
 
@@ -119,6 +120,7 @@ export function toDiscoveredGridItem(
     metadataCid: null,
     mediaCid: null,
     lookupSource: "FOUNDATION_LIVE",
+    storageProtocol: work.storageProtocol,
   } satisfies ArtworkGridItem;
 }
 
