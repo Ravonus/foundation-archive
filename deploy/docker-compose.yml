@@ -37,8 +37,8 @@ services:
     command:
       - |
         set -eu
-        mkdir -p "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /data/archive-storage-hot
-        ls -ld /mnt/backups "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /data/archive-storage-hot
+        mkdir -p "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /mnt/backups/kubo-data /data/archive-storage-hot
+        ls -ld /mnt/backups "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /mnt/backups/kubo-data /data/archive-storage-hot
     volumes:
       - cold-storage:/mnt/backups
       - hot-storage:/data/archive-storage-hot
