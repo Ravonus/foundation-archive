@@ -75,7 +75,10 @@ async function runOnePass(args: {
     where: { backupStatus: "DOWNLOADED" },
     select: { cid: true },
     distinct: ["cid"],
-    orderBy: { lastDownloadedAt: "asc" },
+    // Newest downloads first — legacy rows often lack an on-disk
+    // directory (archive layout changed over time), so starting from
+    // the tail converges on real work faster.
+    orderBy: { lastDownloadedAt: "desc" },
     ...(limit > 0 ? { take: limit } : {}),
   });
 

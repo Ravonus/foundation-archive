@@ -25,5 +25,5 @@ compose run --rm storage-check
 compose build web archiver
 compose up -d postgres
 compose run --rm db-init
-compose up -d archiver socket worker web
+compose up -d kubo archiver socket worker web migrate-kubo-pins
 compose ps

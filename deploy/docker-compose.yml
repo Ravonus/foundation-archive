@@ -141,6 +141,37 @@ services:
       - cold-storage:/mnt/backups
       - hot-storage:/data/archive-storage-hot
 
+  # Long-running daemon that walks the cold-storage tree and migrates
+  # each CID into kubo's blockstore (same NAS disk, no duplication),
+  # then removes the file-tree copy. Runs `pnpm migrate:kubo-pins
+  # --loop` forever; a pass that produces nothing just sleeps and
+  # recomputes. restart=unless-stopped means redeploys automatically
+  # bring it back — no more "the detached process got killed by the
+  # next push" problem. Once the cold-storage tree is drained, we can
+  # comment this service out and remove it.
+  migrate-kubo-pins:
+    image: foundation-archive-app:local
+    command:
+      - pnpm
+      - migrate:kubo-pins
+      - --loop
+      - --concurrency
+      - "8"
+      - --interval-ms
+      - "120000"
+    env_file:
+      - .env.production
+    environment:
+      KUBO_API_URL: ${KUBO_API_URL:-http://kubo:5001}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kubo:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - cold-storage:/mnt/backups
+
   socket:
     image: foundation-archive-app:local
     build:
