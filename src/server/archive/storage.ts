@@ -16,7 +16,7 @@ import { buildGatewayUrl } from "~/server/archive/ipfs";
 
 const ROOT_FILE_SENTINEL = "__root__";
 const ARCHIVE_DOWNLOAD_TIMEOUT_MS = 60 * 60 * 1000;
-const ARCHIVE_PIN_TIMEOUT_MS = 20_000;
+const ARCHIVE_PIN_TIMEOUT_MS = 10 * 60 * 1000;
 
 type RustArchiverDownloadResponse = {
   absolute_path: string;
@@ -311,7 +311,7 @@ async function pinCidWithKuboFromNode(cid: string) {
           Authorization: env.KUBO_API_AUTH_HEADER,
         }
       : undefined,
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(ARCHIVE_PIN_TIMEOUT_MS),
   });
 
   if (!response.ok) {
