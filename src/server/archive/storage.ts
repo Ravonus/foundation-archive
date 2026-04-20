@@ -362,12 +362,62 @@ export function getHotArchivedFilePath(
   return path.join(getHotCidDirectory(cid), safeRelativePath);
 }
 
+function buildGatewayFallbackUrls(
+  cid: string,
+  relativePath: string | null | undefined,
+  primaryGatewayUrl: string | null | undefined,
+): string[] {
+  const pathSuffix = relativePath
+    ? `/${relativePath.replace(/^\/+/, "")}`
+    : "";
+  const seen = new Set<string>();
+  const push = (url: string | null | undefined) => {
+    if (!url) return;
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+    }
+  };
+
+  push(primaryGatewayUrl);
+
+  if (env.KUBO_API_URL) {
+    try {
+      const kuboGateway = new URL(env.KUBO_API_URL);
+      kuboGateway.port = "8080";
+      kuboGateway.pathname = `/ipfs/${cid}${pathSuffix}`;
+      kuboGateway.search = "";
+      push(kuboGateway.toString());
+    } catch {
+      // ignore malformed KUBO_API_URL
+    }
+  }
+
+  for (const host of [
+    "https://dweb.link",
+    "https://cloudflare-ipfs.com",
+    "https://nftstorage.link",
+    "https://4everland.io",
+  ]) {
+    push(`${host}/ipfs/${cid}${pathSuffix}`);
+  }
+
+  return Array.from(seen);
+}
+
 export async function downloadFileToArchive(input: {
   cid: string;
   relativePath: string | null | undefined;
   gatewayUrl: string | null | undefined;
   originalUrl: string | null | undefined;
 }) {
+  const gatewayUrls = buildGatewayFallbackUrls(
+    input.cid,
+    input.relativePath,
+    input.gatewayUrl,
+  );
+
   if (env.ARCHIVE_ARCHIVER_URL && shouldAttemptRustArchiver()) {
     try {
       const response = await requestRustArchiver<RustArchiverDownloadResponse>(
@@ -376,6 +426,7 @@ export async function downloadFileToArchive(input: {
           cid: input.cid,
           relative_path: input.relativePath,
           gateway_url: input.gatewayUrl,
+          gateway_urls: gatewayUrls,
           original_url: input.originalUrl,
           final_root_dir: getArchiveStorageRoot(),
           hot_root_dir: getArchiveHotStorageRoot(),

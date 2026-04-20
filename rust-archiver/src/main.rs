@@ -74,6 +74,8 @@ struct ArchiveRootRequest {
     cid: String,
     relative_path: Option<String>,
     gateway_url: Option<String>,
+    #[serde(default)]
+    gateway_urls: Vec<String>,
     original_url: Option<String>,
     final_root_dir: String,
     hot_root_dir: String,
@@ -522,31 +524,108 @@ async fn archive_root(
         return Ok(Json(response));
     }
 
-    let source_url = request
-        .gateway_url
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .or(request
-            .original_url
-            .as_deref()
-            .filter(|value| !value.trim().is_empty()))
-        .ok_or_else(|| AppError::bad_request("gateway_url or original_url is required"))?;
-
-    let response = state
-        .client
-        .get(source_url)
-        .header(USER_AGENT, "foundation-archive-archiver/0.1")
-        .send()
-        .await
-        .map_err(|error| AppError::internal(format!("Unable to fetch the source file: {error}")))?;
-
-    if !response.status().is_success() {
-        return Err(AppError::internal(format!(
-            "Failed to download {} with status {}",
-            source_url,
-            response.status()
-        )));
+    let mut source_urls: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let push_candidate = |value: &str, bag: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if seen.insert(trimmed.to_string()) {
+            bag.push(trimmed.to_string());
+        }
+    };
+    if let Some(primary) = request.gateway_url.as_deref() {
+        push_candidate(primary, &mut source_urls, &mut seen);
     }
+    for extra in &request.gateway_urls {
+        push_candidate(extra, &mut source_urls, &mut seen);
+    }
+    if let Some(original) = request.original_url.as_deref() {
+        push_candidate(original, &mut source_urls, &mut seen);
+    }
+
+    if source_urls.is_empty() {
+        return Err(AppError::bad_request(
+            "gateway_url, gateway_urls, or original_url is required",
+        ));
+    }
+
+    let mut last_error: Option<String> = None;
+    let mut response: Option<reqwest::Response> = None;
+    let mut source_url_used = String::new();
+    let transient_retry_delays = [Duration::from_millis(500), Duration::from_secs(2)];
+
+    'outer: for candidate in &source_urls {
+        let mut attempt: usize = 0;
+        loop {
+            if attempt > 0 {
+                info!(
+                    "Retrying archive payload for {} via {} (attempt {})",
+                    request.cid.trim(),
+                    candidate,
+                    attempt + 1
+                );
+            } else {
+                info!(
+                    "Fetching archive payload for {} via {}",
+                    request.cid.trim(),
+                    candidate
+                );
+            }
+
+            let outcome = state
+                .client
+                .get(candidate)
+                .header(USER_AGENT, "foundation-archive-archiver/0.1")
+                .send()
+                .await;
+
+            match outcome {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        source_url_used = candidate.clone();
+                        response = Some(resp);
+                        break 'outer;
+                    }
+
+                    let transient = matches!(status.as_u16(), 408 | 425 | 429 | 502 | 503 | 504);
+                    last_error = Some(format!(
+                        "Gateway {} returned status {}",
+                        candidate, status
+                    ));
+                    warn!("{}", last_error.as_deref().unwrap_or(""));
+
+                    if transient && attempt < transient_retry_delays.len() {
+                        tokio::time::sleep(transient_retry_delays[attempt]).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    break;
+                }
+                Err(error) => {
+                    let retriable = error.is_timeout() || error.is_connect();
+                    last_error = Some(format!("Gateway {} fetch error: {error}", candidate));
+                    warn!("{}", last_error.as_deref().unwrap_or(""));
+
+                    if retriable && attempt < transient_retry_delays.len() {
+                        tokio::time::sleep(transient_retry_delays[attempt]).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    let response = response.ok_or_else(|| {
+        AppError::internal(
+            last_error
+                .unwrap_or_else(|| "All configured gateways failed.".to_string()),
+        )
+    })?;
 
     let mime_type = response
         .headers()
@@ -568,16 +647,18 @@ async fn archive_root(
             bytes.len() as u64
         } else {
             info!(
-                "Streaming large archive payload for {} ({} bytes)",
+                "Streaming large archive payload for {} via {} ({} bytes)",
                 request.cid.trim(),
+                source_url_used,
                 content_length
             );
             stream_response_to_hot(&hot_path, response, Some(content_length)).await?
         }
     } else {
         info!(
-            "Streaming archive payload for {} (content length unknown)",
-            request.cid.trim()
+            "Streaming archive payload for {} via {} (content length unknown)",
+            request.cid.trim(),
+            source_url_used
         );
         stream_response_to_hot(&hot_path, response, None).await?
     };
