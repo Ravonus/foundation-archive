@@ -3,6 +3,7 @@ import { getAddress } from "viem";
 
 import { db } from "~/server/db";
 import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
+import { foundationImgixVariant } from "~/server/archive/foundation";
 import {
   AGORIX_LOGOS,
   OG_THEME,
@@ -461,9 +462,26 @@ export default async function ProfileOgImage({
   const { profile } = await params;
   const resolved = await resolveOgProfile(profile);
 
+  // Ask imgix for bounded, auto-compressed variants. Full-res Foundation
+  // covers/avatars routinely exceed inlineImage's 6 MB fetch cap (e.g.
+  // 8 MB animated GIF avatars); the transformed variants land in the
+  // tens-of-KB range and decode fast enough to stay under the Satori
+  // render budget.
   const [bannerInlined, avatarInlined] = await Promise.all([
-    inlineImage(resolved?.coverImageUrl),
-    inlineImage(resolved?.profileImageUrl),
+    inlineImage(
+      foundationImgixVariant(resolved?.coverImageUrl, {
+        width: 1200,
+        height: 240,
+        format: "jpg",
+      }),
+    ),
+    inlineImage(
+      foundationImgixVariant(resolved?.profileImageUrl, {
+        width: 256,
+        height: 256,
+        format: "png",
+      }),
+    ),
   ]);
 
   const displayName =
