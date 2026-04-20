@@ -210,7 +210,12 @@ function OgFrame({
           position: "relative",
           overflow: "hidden",
           backgroundColor: palette.surfaceAlt,
-          backgroundImage: bannerUrl ? undefined : bannerPlaceholder,
+          // Only attach the placeholder gradient when there's no uploaded
+          // banner — Satori's style parser trims every declared value, so
+          // leaving `backgroundImage: undefined` here causes a
+          // "Cannot read properties of undefined (reading 'trim')" crash
+          // inside next/og the moment `bannerUrl` becomes non-null.
+          ...(bannerUrl ? null : { backgroundImage: bannerPlaceholder }),
           borderBottom: `1px solid ${palette.line}`,
         }}
       >
@@ -307,7 +312,7 @@ function OgFrame({
             height: 200,
             borderRadius: 999,
             backgroundColor: palette.surfaceAlt,
-            backgroundImage: avatarUrl ? undefined : avatarPlaceholder,
+            ...(avatarUrl ? null : { backgroundImage: avatarPlaceholder }),
             border: `8px solid ${palette.avatarRing}`,
             display: "flex",
             alignItems: "center",
