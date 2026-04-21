@@ -99,8 +99,12 @@ while true; do
   iteration=$((iteration + 1))
 
   cids_tmp="$(mktemp)"
+  # GROUP BY cid + ORDER BY MAX(lastDownloadedAt) avoids SELECT DISTINCT's
+  # ORDER-BY-must-be-in-select-list rule. Newest-first so rows likely to
+  # have intact cold-storage dirs (the recent downloads) get processed
+  # before ancient legacy rows where the dir is long gone.
   docker exec "${PG_NAME}" psql -U "${PG_USER}" -t -A -d "${PG_DB}" -c \
-    "SELECT DISTINCT cid FROM \"IpfsRoot\" WHERE \"backupStatus\"='DOWNLOADED' ORDER BY \"lastDownloadedAt\" DESC NULLS LAST LIMIT ${BATCH_SIZE};" \
+    "SELECT cid FROM \"IpfsRoot\" WHERE \"backupStatus\"='DOWNLOADED' GROUP BY cid ORDER BY MAX(\"lastDownloadedAt\") DESC NULLS LAST LIMIT ${BATCH_SIZE};" \
     2>/dev/null | sed '/^$/d' > "${cids_tmp}"
   count=$(wc -l < "${cids_tmp}")
 
