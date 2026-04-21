@@ -29,7 +29,18 @@ export const env = createEnv({
     BASE_RPC_URL: z.string().url().optional(),
     INTERNAL_CRON_SECRET: z.string().min(1).optional(),
     AUTO_CRAWLER_ENABLED: z.coerce.boolean().default(true),
-    ARCHIVE_INGRESS_PAUSED: z.coerce.boolean().default(false),
+    // Manual flag used during operational windows (e.g. kubo migration)
+    // to freeze the automatic discovery/crawl. Accepts 1/true (on) or
+    // 0/false/unset (off). z.coerce.boolean() can't do this — it
+    // Boolean()-s the string so "0" becomes truthy.
+    ARCHIVE_INGRESS_PAUSED: z
+      .string()
+      .optional()
+      .transform((value) => {
+        if (!value) return false;
+        const normalized = value.trim().toLowerCase();
+        return normalized === "1" || normalized === "true" || normalized === "yes";
+      }),
     AUTO_SCAN_BLOCK_WINDOW: z.coerce.number().int().positive().default(50000),
     AUTO_SCAN_CONTRACTS_PER_TICK: z.coerce.number().int().positive().default(1),
     SMART_PIN_START_BYTES: z.coerce.number().int().positive().default(10485760),
