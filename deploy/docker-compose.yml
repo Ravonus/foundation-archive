@@ -156,7 +156,7 @@ services:
       - migrate:kubo-pins
       - --loop
       - --concurrency
-      - "8"
+      - "3"
       - --interval-ms
       - "120000"
     env_file:
