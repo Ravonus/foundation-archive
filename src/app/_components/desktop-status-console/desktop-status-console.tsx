@@ -11,6 +11,7 @@ import { useDesktopConsoleState } from "./hooks/use-desktop-console-state";
 import { AdvancedSettingsSection } from "./sections/advanced-settings-section";
 import { BridgeStatusHeader } from "./sections/bridge-status-header";
 import { ConnectSection } from "./sections/connect-section";
+import { LinkedDevicesSection } from "./sections/linked-devices-section";
 import { PublicGatewaySection } from "./sections/public-gateway-section";
 import { SavedWorksSection } from "./sections/saved-works-section";
 import { UploadSection } from "./sections/upload-section";
@@ -113,6 +114,13 @@ export function DesktopStatusConsole() {
         openPreparedPairing={actions.openPreparedPairing}
         disconnectSelectedDevice={actions.disconnectSelectedDevice}
         isDisconnecting={transitions.isDisconnecting}
+      />
+
+      <LinkedDevicesSection
+        relayDevices={bridge.relayDevices}
+        selectedDeviceId={selectedDevice?.id ?? null}
+        setSelectedDeviceId={raw.setSelectedDeviceId}
+        disconnectRelayDevice={bridge.disconnectRelayDevice}
       />
 
       {showConnectSection ? (

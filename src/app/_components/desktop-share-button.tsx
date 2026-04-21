@@ -67,37 +67,45 @@ function showShareNotification(outcome: ShareOutcome) {
 
 async function runShareAction({
   canPinDirectly,
-  hasConnectedRelayHelper,
+  hasPairedDevice,
   queueWorkToRelay,
   shareWork,
   work,
 }: {
   canPinDirectly: boolean;
-  hasConnectedRelayHelper: boolean;
+  hasPairedDevice: boolean;
   queueWorkToRelay: (work: DesktopShareableWork) => Promise<unknown>;
   shareWork: (work: DesktopShareableWork) => Promise<{ pins: unknown[] }>;
   work: DesktopShareableWork;
 }): Promise<ShareOutcome> {
-  if (!canPinDirectly && !hasConnectedRelayHelper) {
-    throw new Error(
-      "Desktop app isn't reachable. Make sure it's running on your computer, then try again.",
-    );
-  }
-
-  if (!canPinDirectly || hasConnectedRelayHelper) {
-    await queueWorkToRelay(work);
+  // Direct path: local bridge is on the same loopback as the browser.
+  if (canPinDirectly) {
+    const result = await shareWork(work);
     return {
-      message: relaySuccessMessage,
+      message: `Saved on this computer (${result.pins.length} file${result.pins.length === 1 ? "" : "s"} sent).`,
       notificationTitle: "Foundation backup saved",
-      notificationBody: `${work.title} is pinned on your desktop app now.`,
+      notificationBody: `${work.title} is pinned on this computer now.`,
     };
   }
 
-  const result = await shareWork(work);
+  // Relay path: queueWorkToRelay hits /api/relay/owner/queue-work, which
+  // persists the job on the archive server regardless of whether our local
+  // WebSocket finished handshaking. We only need hasPairedDevice — the
+  // device-was-ever-connected bootstrap cache — to know a worker exists.
+  // The socket is only needed to surface live job status; if it isn't
+  // connected yet, queueWorkToRelay will still succeed and the job gets
+  // picked up when the bridge reconnects.
+  if (!hasPairedDevice) {
+    throw new Error(
+      "Desktop app isn't connected yet. Open the desktop app, then try again.",
+    );
+  }
+
+  await queueWorkToRelay(work);
   return {
-    message: `Saved on this computer (${result.pins.length} file${result.pins.length === 1 ? "" : "s"} sent).`,
+    message: relaySuccessMessage,
     notificationTitle: "Foundation backup saved",
-    notificationBody: `${work.title} is pinned on this computer now.`,
+    notificationBody: `${work.title} is pinned on your desktop app now.`,
   };
 }
 
@@ -111,7 +119,7 @@ function SaveButtonIcon({ isWorking }: { isWorking: boolean }) {
 
 type RunSaveParams = {
   canPinDirectly: boolean;
-  hasConnectedRelayHelper: boolean;
+  hasPairedDevice: boolean;
   queueWorkToRelay: (work: DesktopShareableWork) => Promise<unknown>;
   shareWork: (work: DesktopShareableWork) => Promise<{ pins: unknown[] }>;
   work: DesktopShareableWork;
@@ -119,30 +127,23 @@ type RunSaveParams = {
   setFeedback: (value: FeedbackState | null) => void;
 };
 
-function pendingMessage(params: {
-  canPinDirectly: boolean;
-  hasConnectedRelayHelper: boolean;
-}) {
-  if (!params.canPinDirectly || params.hasConnectedRelayHelper) {
-    return "Sending to your desktop app\u2026";
-  }
-  return "Saving to this computer\u2026";
+function pendingMessage(canPinDirectly: boolean) {
+  return canPinDirectly
+    ? "Saving to this computer\u2026"
+    : "Sending to your desktop app\u2026";
 }
 
 function runSaveClick(params: RunSaveParams) {
   params.setIsWorking(true);
   params.setFeedback({
     tone: "pending",
-    message: pendingMessage({
-      canPinDirectly: params.canPinDirectly,
-      hasConnectedRelayHelper: params.hasConnectedRelayHelper,
-    }),
+    message: pendingMessage(params.canPinDirectly),
   });
   const notificationPermissionPromise = ensureNotificationPermission();
 
   const action = runShareAction({
     canPinDirectly: params.canPinDirectly,
-    hasConnectedRelayHelper: params.hasConnectedRelayHelper,
+    hasPairedDevice: params.hasPairedDevice,
     queueWorkToRelay: params.queueWorkToRelay,
     shareWork: params.shareWork,
     work: params.work,
@@ -262,6 +263,10 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
 
   const shareable = Boolean(work.metadataCid ?? work.mediaCid);
   const canPinDirectly = reachable;
+  // "Paired" = we've ever seen a relay device, whether or not it's live.
+  // Bootstraps from localStorage so a page refresh or fresh navigation
+  // doesn't get a fatal "not reachable" toast while the socket handshakes.
+  const hasPairedDevice = relayDevices.length > 0;
   const hasConnectedRelayHelper =
     relaySocketConnected && relayDevices.some((device) => device.connected);
 
@@ -274,7 +279,7 @@ export function DesktopShareButton({ work }: { work: DesktopShareableWork }) {
   const handleSave = () =>
     runSaveClick({
       canPinDirectly,
-      hasConnectedRelayHelper,
+      hasPairedDevice,
       queueWorkToRelay,
       shareWork,
       work,
