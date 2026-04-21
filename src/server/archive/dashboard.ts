@@ -5,6 +5,7 @@ import type {
   ArchivePolicyCard,
   ArchiveWorkerStatusCard,
 } from "~/lib/archive-live";
+import { createTtlSwrCache } from "~/lib/ttl-swr-cache";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import { archivePinningEnabled } from "~/server/archive/jobs/shared";
 import { readRecentArchiveEvents } from "~/server/archive/live-events";
@@ -424,7 +425,7 @@ async function fetchSnapshotAuxiliaries(client: DatabaseClient) {
   return { stats, worker, crawlers, latestArchived, recentEvents };
 }
 
-export async function getArchiveLiveSnapshot(
+async function buildArchiveLiveSnapshot(
   client: DatabaseClient,
 ): Promise<ArchiveLiveSnapshot> {
   const policyRecord = await client.archivePolicyState.findUnique({
@@ -461,4 +462,24 @@ export async function getArchiveLiveSnapshot(
       .filter(Boolean) as ArchiveLiveArtworkCard[],
     recentEvents,
   };
+}
+
+// Process-scoped TTL+SWR cache. The snapshot is built from ~10 count
+// queries plus some heavier joins; it's shared by the landing page
+// and /archive and gets hit on basically every pageview. Caching for
+// a handful of seconds takes this from ~1s of DB work to ~0ms on
+// steady-state traffic, with a stale window that lets us keep serving
+// while a background refresh runs.
+const cachedArchiveLiveSnapshot = createTtlSwrCache(
+  (client: DatabaseClient) => buildArchiveLiveSnapshot(client),
+  {
+    ttlMs: 15_000,
+    staleTtlMs: 5 * 60_000,
+  },
+);
+
+export async function getArchiveLiveSnapshot(
+  client: DatabaseClient,
+): Promise<ArchiveLiveSnapshot> {
+  return cachedArchiveLiveSnapshot(client);
 }

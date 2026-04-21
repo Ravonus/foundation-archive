@@ -21,6 +21,7 @@ import {
 import { CountUp, FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
 import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
+import { createTtlSwrCache } from "~/lib/ttl-swr-cache";
 import { toArchivedGridItem } from "~/app/archive/_grid-item";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { db } from "~/server/db";
@@ -396,56 +397,82 @@ function RecentSection({ items }: { items: ArtworkGridItem[] }) {
   );
 }
 
-async function loadHomeData() {
-  try {
-    const [
-      artworkCount,
-      pinnedRootCount,
-      pendingJobCount,
-      recentArtworks,
-      liveSnapshot,
-    ] = await Promise.all([
-      db.artwork.count({
-        where: {
-          OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
-        },
-      }),
-      db.ipfsRoot.count({
-        where: {
-          OR: [{ pinStatus: "PINNED" }, { backupStatus: "DOWNLOADED" }],
-        },
-      }),
-      db.queueJob.count({ where: { status: "PENDING" } }),
-      // Pull 80 most recent artworks then dedupe by (contract, artist) in
-      // JS so the grid shows VISUAL variety. Foundation re-indexes whole
-      // series in bursts — without dedupe, the top 12 are often a single
-      // edition repeated (12× "Replica, 2023" token #1343..#1332). Over-
-      // fetching 80 keeps the diversity pool wide enough.
-      db.artwork.findMany({
-        where: {
-          OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
-        },
-        take: 80,
-        orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
-        include: { metadataRoot: true, mediaRoot: true },
-      }),
-      getArchiveLiveSnapshot(db),
-    ]);
+type HomeData = {
+  artworkCount: number;
+  pinnedRootCount: number;
+  pendingJobCount: number;
+  recentArtworks: HomeArtwork[];
+  liveSnapshot: ArchiveLiveSnapshot;
+  degraded: boolean;
+};
 
-    return {
-      artworkCount,
-      pinnedRootCount,
-      pendingJobCount,
-      recentArtworks,
-      liveSnapshot,
-      degraded: false,
-    };
+async function fetchHomeDataFresh(): Promise<HomeData> {
+  const [
+    artworkCount,
+    pinnedRootCount,
+    pendingJobCount,
+    recentArtworks,
+    liveSnapshot,
+  ] = await Promise.all([
+    db.artwork.count({
+      where: {
+        OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
+      },
+    }),
+    db.ipfsRoot.count({
+      where: {
+        OR: [{ pinStatus: "PINNED" }, { backupStatus: "DOWNLOADED" }],
+      },
+    }),
+    db.queueJob.count({ where: { status: "PENDING" } }),
+    // Pull ~40 recent artworks then dedupe by (contract, artist) in
+    // JS so the grid shows VISUAL variety. Foundation re-indexes whole
+    // series in bursts — without dedupe, the top 12 are often a single
+    // edition repeated. Over-fetching 40 keeps the diversity pool wide
+    // enough without the extra 40 rows' worth of includes (metadataRoot
+    // + mediaRoot) we were eating with the original 80.
+    db.artwork.findMany({
+      where: {
+        OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
+      },
+      take: 40,
+      orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
+      include: { metadataRoot: true, mediaRoot: true },
+    }),
+    getArchiveLiveSnapshot(db),
+  ]);
+
+  return {
+    artworkCount,
+    pinnedRootCount,
+    pendingJobCount,
+    recentArtworks,
+    liveSnapshot,
+    degraded: false,
+  };
+}
+
+// Module-scoped TTL+SWR cache. Landing-page counts change slowly; we
+// trade a few seconds of freshness for instant repeat loads. Stale
+// window lets us serve last-known-good while the next fetch runs in
+// the background.
+const getCachedHomeData = createTtlSwrCache(fetchHomeDataFresh, {
+  ttlMs: 30_000,
+  staleTtlMs: 10 * 60_000,
+});
+
+async function loadHomeData(): Promise<HomeData> {
+  try {
+    return await getCachedHomeData();
   } catch (error) {
     if (!isTransientDatabaseError(error)) {
       throw error;
     }
 
-    console.error("Home page data unavailable, rendering fallback state.", error);
+    console.error(
+      "Home page data unavailable, rendering fallback state.",
+      error,
+    );
 
     return {
       artworkCount: 0,
