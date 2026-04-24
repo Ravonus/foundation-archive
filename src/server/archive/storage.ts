@@ -386,6 +386,34 @@ async function kuboPinRemoveSilently(rawCid: string) {
   }
 }
 
+/// Cheap pin existence check. Uses `/api/v0/pin/ls?arg=<cid>&type=recursive`,
+/// which returns 200 + a JSON body listing the cid if pinned, or 500
+/// with an error body otherwise. We treat 200 as "already pinned"; any
+/// other outcome means we still need to do the add ourselves.
+async function kuboHasRecursivePin(cid: string): Promise<boolean> {
+  if (!env.KUBO_API_URL) return false;
+  try {
+    const url = new URL("/api/v0/pin/ls", env.KUBO_API_URL);
+    url.searchParams.set("arg", cid);
+    url.searchParams.set("type", "recursive");
+    url.searchParams.set("quiet", "true");
+    const response = await fetch(url, {
+      method: "POST",
+      headers: env.KUBO_API_AUTH_HEADER
+        ? { Authorization: env.KUBO_API_AUTH_HEADER }
+        : undefined,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return false;
+    const body = await response.text();
+    // `--quiet` prints a line per pinned CID. Any non-empty body means
+    // at least one match.
+    return body.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /// Re-adds the cold-storage directory for `cid` through kubo's default
 /// chunker (plain `ipfs add -r`, NOT `--nocopy` — that flag forces
 /// raw-leaves=true which would change the CID). If the produced CID
@@ -406,6 +434,34 @@ async function pinCidWithKuboFromNode(cid: string) {
   }
 
   const cidDir = getCidDirectory(cid);
+
+  // Fast path: kubo already has the CID pinned — either from a prior
+  // worker cycle or from the migration script that walks cold-storage.
+  // Don't stream bytes to kubo twice; just clean up whatever cold-
+  // storage leftover remains and report success.
+  if (await kuboHasRecursivePin(cid)) {
+    let freedDiskBytes = 0;
+    try {
+      const stats = await stat(cidDir);
+      if (stats.isDirectory()) {
+        try {
+          freedDiskBytes = await computeDirectorySize(cidDir);
+        } catch {
+          freedDiskBytes = 0;
+        }
+        await rm(cidDir, { recursive: true, force: true });
+      }
+    } catch {
+      // cold-storage dir is already gone — perfect, nothing to clean.
+    }
+    return {
+      pinned: true as const,
+      provider: "kubo",
+      reference: cid,
+      freedDiskBytes,
+    };
+  }
+
   let cidStats;
   try {
     cidStats = await stat(cidDir);
