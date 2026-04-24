@@ -386,36 +386,65 @@ async function kuboPinRemoveSilently(rawCid: string) {
   }
 }
 
-const KUBO_NETWORK_PIN_TIMEOUT_MS = 15 * 60 * 1000;
+// Short enough that bitswap either resolves via peers that actually
+// have the content or we bail — avoids the pathological case where 16
+// worker jobs each hold a multi-minute pin request open and freeze kubo
+// for everyone else (including the Next /ipfs gateway proxy).
+const KUBO_NETWORK_PIN_TIMEOUT_MS = 45_000;
+const KUBO_NETWORK_PIN_MAX_CONCURRENCY = 3;
+
+// Simple async semaphore: hand out up to N slots, block the rest.
+function makeSemaphore(max: number) {
+  let active = 0;
+  const waiters: Array<() => void> = [];
+  const release = () => {
+    active -= 1;
+    const next = waiters.shift();
+    if (next) next();
+  };
+  return async function acquire<T>(job: () => Promise<T>): Promise<T> {
+    if (active >= max) {
+      await new Promise<void>((resolve) => waiters.push(resolve));
+    }
+    active += 1;
+    try {
+      return await job();
+    } finally {
+      release();
+    }
+  };
+}
+
+const networkPinSlot = makeSemaphore(KUBO_NETWORK_PIN_MAX_CONCURRENCY);
 
 /// Fallback pin via bitswap: asks kubo to resolve + fetch the CID from
-/// the wider network and store all blocks locally. This is the only
-/// reliable path for multi-file directory CIDs where our cold-storage
-/// copy is a partial subset (we only downloaded one file but Foundation
-/// originally pushed the whole dir), because kubo fetches the full DAG
-/// and therefore reproduces the original CID exactly. Slower than
-/// local-add — can be minutes per CID — but runs parallel to other
-/// worker jobs, and saves the row from the SKIPPED purgatory.
+/// the wider network and store all blocks locally. Used when our local
+/// dir is a partial subset and local-add can't reproduce the stored
+/// CID. Rate-limited — too many concurrent bitswap requests starve
+/// kubo of the attention it needs to answer simple /api/v0/pin/ls
+/// and /api/v0/cat calls, which hangs the web pod.
 async function kuboNetworkPin(cid: string): Promise<void> {
   if (!env.KUBO_API_URL) {
     throw new Error("KUBO_API_URL is not configured.");
   }
-  const url = new URL("/api/v0/pin/add", env.KUBO_API_URL);
-  url.searchParams.set("arg", cid);
-  url.searchParams.set("progress", "false");
-  const response = await fetch(url, {
-    method: "POST",
-    headers: env.KUBO_API_AUTH_HEADER
-      ? { Authorization: env.KUBO_API_AUTH_HEADER }
-      : undefined,
-    signal: AbortSignal.timeout(KUBO_NETWORK_PIN_TIMEOUT_MS),
+  return networkPinSlot(async () => {
+    const url = new URL("/api/v0/pin/add", env.KUBO_API_URL);
+    url.searchParams.set("arg", cid);
+    url.searchParams.set("progress", "false");
+    const response = await fetch(url, {
+      method: "POST",
+      headers: env.KUBO_API_AUTH_HEADER
+        ? { Authorization: env.KUBO_API_AUTH_HEADER }
+        : undefined,
+      signal: AbortSignal.timeout(KUBO_NETWORK_PIN_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Kubo network pin/add failed for ${cid}: ${response.status} ${text.slice(0, 200)}`,
+      );
+    }
   });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Kubo network pin/add failed for ${cid}: ${response.status} ${text.slice(0, 200)}`,
-    );
-  }
 }
 
 /// Cheap pin existence check. Uses `/api/v0/pin/ls?arg=<cid>&type=recursive`,
