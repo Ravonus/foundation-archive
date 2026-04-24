@@ -365,6 +365,7 @@ async function persistDiscoveryProgress({
   newContracts,
   skippedContracts,
   sampleErrors,
+  pagesConsumed = 1,
 }: {
   client: DatabaseClient;
   policy: PolicyState;
@@ -372,6 +373,11 @@ async function persistDiscoveryProgress({
   newContracts: number;
   skippedContracts: number;
   sampleErrors: string[];
+  /// How many consecutive pages this tick consumed. The old path
+  /// processed one page per tick; batched discovery can burn through
+  /// several in parallel and needs the cursor to skip ahead by that
+  /// much.
+  pagesConsumed?: number;
 }) {
   const nextCursor = nextDiscoveryCursor({
     currentSource: discovery.source,
@@ -380,7 +386,10 @@ async function persistDiscoveryProgress({
   });
   const nextDiscoveryPage =
     nextCursor.discoveryPage ??
-    policy.discoveryPage + (nextCursor.discoveryPageIncrement ?? 0);
+    policy.discoveryPage +
+      (nextCursor.discoveryPageIncrement === null
+        ? 0
+        : (nextCursor.discoveryPageIncrement ?? 0) * pagesConsumed);
   const completedFoundationPass =
     nextCursor.discoverySource === "drops" &&
     nextDiscoveryPage === 0 &&
@@ -428,6 +437,13 @@ async function persistDiscoveryProgress({
   };
 }
 
+// Pages fetched in parallel per tick. The old 1-page-per-tick pace
+// meant a full pass over Foundation's ~4k collection pages took hours,
+// which stalled the smart-pin budget ramp (it only advances when a
+// full pass completes). 8 parallel GraphQL calls is well within
+// Foundation's tolerance and cuts wall time ~8x.
+const DISCOVERY_PAGES_PER_TICK = 8;
+
 export async function runAutomaticContractDiscoveryTick(
   client: DatabaseClient,
 ) {
@@ -459,39 +475,87 @@ export async function runAutomaticContractDiscoveryTick(
     });
   }
 
-  let discovery: DiscoveryPageResult;
+  // Kick off DISCOVERY_PAGES_PER_TICK pages in parallel. The first one
+  // to hit reachedEnd truncates the batch, so we don't advance the
+  // cursor past the end of the current source/query.
+  const pagePromises: Promise<DiscoveryPageResult>[] = [];
+  for (let i = 0; i < DISCOVERY_PAGES_PER_TICK; i += 1) {
+    pagePromises.push(
+      fetchDiscoveryPage({
+        discoverySource: policy.discoverySource,
+        discoveryPage: policy.discoveryPage + i,
+        discoveryQueryIndex: policy.discoveryQueryIndex,
+        discoveryPerPage: policy.discoveryPerPage,
+      }),
+    );
+  }
+
+  let discoveries: DiscoveryPageResult[];
   try {
-    discovery = await fetchDiscoveryPage({
-      discoverySource: policy.discoverySource,
-      discoveryPage: policy.discoveryPage,
-      discoveryQueryIndex: policy.discoveryQueryIndex,
-      discoveryPerPage: policy.discoveryPerPage,
-    });
+    discoveries = await Promise.all(pagePromises);
   } catch (error) {
     return handleDiscoveryError({ client, policy, error, backlog });
   }
 
+  // Truncate at the first page that reports reachedEnd, inclusive —
+  // persistDiscoveryProgress needs to know when the source exhausts.
+  let endIndex = discoveries.length;
+  for (let i = 0; i < discoveries.length; i += 1) {
+    const result = discoveries[i];
+    if (result?.reachedEnd) {
+      endIndex = i + 1;
+      break;
+    }
+  }
+  const batch = discoveries.slice(0, endIndex);
+
   let upsertResult: DiscoveryUpsertResult;
   let progressResult: { completedFoundationPass: boolean };
+  let lastDiscovery = batch[batch.length - 1] ?? discoveries[0];
+  if (!lastDiscovery) {
+    // Should be impossible — DISCOVERY_PAGES_PER_TICK > 0 — but keep
+    // the type-checker happy and the worker stable.
+    return {
+      source: policy.discoverySource,
+      page: policy.discoveryPage,
+      query: null,
+      seenContracts: 0,
+      newContracts: 0,
+      completedFoundationPass: false,
+      pausedForBacklog: false,
+      backlogMaxPendingJobs: backlog.maxPendingJobs,
+      backlogHeadroomJobs: backlog.pendingHeadroom,
+    };
+  }
   try {
-    upsertResult = await upsertDiscoveryItems({ client, discovery });
+    // Fold all batch pages into one upsert + one cursor advance so the
+    // DB doesn't see N writes per tick.
+    const combined: DiscoveryPageResult = {
+      ...lastDiscovery,
+      items: batch.flatMap((page) => page.items),
+    };
+    upsertResult = await upsertDiscoveryItems({
+      client,
+      discovery: combined,
+    });
     progressResult = await persistDiscoveryProgress({
       client,
       policy,
-      discovery,
+      discovery: combined,
       newContracts: upsertResult.newContracts,
       skippedContracts: upsertResult.skippedContracts,
       sampleErrors: upsertResult.sampleErrors,
+      pagesConsumed: batch.length,
     });
   } catch (error) {
     return handleDiscoveryError({ client, policy, error, backlog });
   }
 
   return {
-    source: discovery.source,
-    page: discovery.page,
-    query: discovery.query,
-    seenContracts: discovery.items.length,
+    source: lastDiscovery.source,
+    page: lastDiscovery.page,
+    query: lastDiscovery.query,
+    seenContracts: batch.reduce((sum, page) => sum + page.items.length, 0),
     newContracts: upsertResult.newContracts,
     completedFoundationPass: progressResult.completedFoundationPass,
     pausedForBacklog: false,
