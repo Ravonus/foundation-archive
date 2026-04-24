@@ -37,11 +37,16 @@ services:
     command:
       - |
         set -eu
-        mkdir -p "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /mnt/backups/kubo-data /data/archive-storage-hot
-        ls -ld /mnt/backups "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /mnt/backups/kubo-data /data/archive-storage-hot
+        mkdir -p "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /mnt/backups/kubo-data /data/archive-storage-hot /data/kubo-metadata
+        # kubo runs as uid 1000 (ipfs user). Pre-chown the local
+        # metadata volume so the container-init.d script can populate
+        # /data/kubo-metadata/datastore without permission errors.
+        chown -R 1000:1000 /data/kubo-metadata
+        ls -ld /mnt/backups "/mnt/backups/${NAS_ARCHIVE_SUBDIR:-foundation}" /mnt/backups/kubo-data /data/archive-storage-hot /data/kubo-metadata
     volumes:
       - cold-storage:/mnt/backups
       - hot-storage:/data/archive-storage-hot
+      - kubo-metadata:/data/kubo-metadata
 
   db-init:
     image: foundation-archive-app:local
