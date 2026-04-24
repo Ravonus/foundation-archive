@@ -48,6 +48,15 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      # Build in the host's network namespace so apt + pnpm install can
+      # use whatever DNS the host resolves with. The default buildkit
+      # network is sandboxed and relies on docker's embedded resolver
+      # forwarding to the daemon's configured DNS — on this node that
+      # forwarder can't reach the host's systemd-resolved stub and
+      # every apt-get update / pnpm install goes "Temporary failure
+      # resolving" until we restart with an explicit daemon DNS (sudo).
+      # `network: host` avoids the sudo step entirely.
+      network: host
       args:
         SKIP_ENV_VALIDATION: 1
         ARCHIVE_SOCKET_INTERNAL_URL: ${ARCHIVE_SOCKET_INTERNAL_URL:-http://127.0.0.1:43129}
@@ -75,6 +84,15 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      # Build in the host's network namespace so apt + pnpm install can
+      # use whatever DNS the host resolves with. The default buildkit
+      # network is sandboxed and relies on docker's embedded resolver
+      # forwarding to the daemon's configured DNS — on this node that
+      # forwarder can't reach the host's systemd-resolved stub and
+      # every apt-get update / pnpm install goes "Temporary failure
+      # resolving" until we restart with an explicit daemon DNS (sudo).
+      # `network: host` avoids the sudo step entirely.
+      network: host
       args:
         SKIP_ENV_VALIDATION: 1
         ARCHIVE_SOCKET_INTERNAL_URL: ${ARCHIVE_SOCKET_INTERNAL_URL:-http://127.0.0.1:43129}
@@ -115,6 +133,15 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      # Build in the host's network namespace so apt + pnpm install can
+      # use whatever DNS the host resolves with. The default buildkit
+      # network is sandboxed and relies on docker's embedded resolver
+      # forwarding to the daemon's configured DNS — on this node that
+      # forwarder can't reach the host's systemd-resolved stub and
+      # every apt-get update / pnpm install goes "Temporary failure
+      # resolving" until we restart with an explicit daemon DNS (sudo).
+      # `network: host` avoids the sudo step entirely.
+      network: host
       args:
         SKIP_ENV_VALIDATION: 1
         ARCHIVE_SOCKET_INTERNAL_URL: ${ARCHIVE_SOCKET_INTERNAL_URL:-http://127.0.0.1:43129}
@@ -146,6 +173,15 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      # Build in the host's network namespace so apt + pnpm install can
+      # use whatever DNS the host resolves with. The default buildkit
+      # network is sandboxed and relies on docker's embedded resolver
+      # forwarding to the daemon's configured DNS — on this node that
+      # forwarder can't reach the host's systemd-resolved stub and
+      # every apt-get update / pnpm install goes "Temporary failure
+      # resolving" until we restart with an explicit daemon DNS (sudo).
+      # `network: host` avoids the sudo step entirely.
+      network: host
       args:
         SKIP_ENV_VALIDATION: 1
         ARCHIVE_SOCKET_INTERNAL_URL: ${ARCHIVE_SOCKET_INTERNAL_URL:-http://127.0.0.1:43129}
