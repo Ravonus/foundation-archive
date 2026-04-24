@@ -369,6 +369,53 @@ async function* streamAddMultipartBody(args: {
   yield emit(`\r\n--${boundary}--\r\n`);
 }
 
+/// Single-file variant of the multipart body. Foundation stores
+/// single-file CIDs on disk as `ipfs/<cid>/__root__` because the
+/// download path needs a stable filename, but the CID itself is the
+/// bare file — NOT a UnixFS directory containing a file named
+/// `__root__`. Wrapping it through `streamAddMultipartBody` produces
+/// `Qm<different>` (dir-containing-a-file) and the pin gets skipped as
+/// a mismatch. This emits one file part, no directory wrapper, so
+/// kubo's /api/v0/add returns the bare-file CID.
+async function* streamAddSingleFileBody(args: {
+  absolutePath: string;
+  boundary: string;
+}): AsyncGenerator<Uint8Array> {
+  const { absolutePath, boundary } = args;
+  const encoder = new TextEncoder();
+  yield encoder.encode(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; ` +
+      `filename="${encodeURIComponent(ROOT_FILE_SENTINEL)}"\r\n` +
+      `Content-Type: application/octet-stream\r\n\r\n`,
+  );
+  const fileStream = createReadStream(absolutePath);
+  for await (const chunk of fileStream) {
+    yield chunk instanceof Uint8Array
+      ? chunk
+      : new Uint8Array(chunk as Buffer);
+  }
+  yield encoder.encode(`\r\n--${boundary}--\r\n`);
+}
+
+async function detectCidLayout(cidDir: string): Promise<
+  | { kind: "single-file"; absolutePath: string }
+  | { kind: "directory" }
+> {
+  const entries = await readdir(cidDir, { withFileTypes: true });
+  if (
+    entries.length === 1 &&
+    entries[0]!.isFile() &&
+    entries[0]!.name === ROOT_FILE_SENTINEL
+  ) {
+    return {
+      kind: "single-file",
+      absolutePath: path.join(cidDir, ROOT_FILE_SENTINEL),
+    };
+  }
+  return { kind: "directory" };
+}
+
 async function kuboPinRemoveSilently(rawCid: string) {
   if (!env.KUBO_API_URL) return;
   try {
@@ -537,13 +584,21 @@ async function pinCidWithKuboFromNode(cid: string) {
     );
   }
 
+  const layout = await detectCidLayout(cidDir);
   const cidDirName = path.basename(cidDir);
   const boundary = `----agorix-kubo-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 10)}`;
 
   const bodyStream = Readable.toWeb(
-    Readable.from(streamAddMultipartBody({ cidDir, cidDirName, boundary })),
+    Readable.from(
+      layout.kind === "single-file"
+        ? streamAddSingleFileBody({
+            absolutePath: layout.absolutePath,
+            boundary,
+          })
+        : streamAddMultipartBody({ cidDir, cidDirName, boundary }),
+    ),
   ) as ReadableStream<Uint8Array>;
 
   const url = new URL("/api/v0/add", env.KUBO_API_URL);
@@ -575,17 +630,31 @@ async function pinCidWithKuboFromNode(cid: string) {
 
   const rawBody = await response.text();
   let rootHash: string | null = null;
-  for (const line of rawBody.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const obj = JSON.parse(trimmed) as { Name?: string; Hash?: string };
-    if (obj.Name === cidDirName && obj.Hash) rootHash = obj.Hash;
-  }
-
-  if (!rootHash) {
-    throw new Error(
-      `Kubo add for ${cid} returned no entry named "${cidDirName}".`,
-    );
+  if (layout.kind === "single-file") {
+    // Single-file response is one NDJSON line with the bare file CID.
+    for (const line of rawBody.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const obj = JSON.parse(trimmed) as { Hash?: string };
+      if (obj.Hash) rootHash = obj.Hash;
+    }
+    if (!rootHash) {
+      throw new Error(
+        `Kubo add for ${cid} (single-file) returned no Hash entry.`,
+      );
+    }
+  } else {
+    for (const line of rawBody.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const obj = JSON.parse(trimmed) as { Name?: string; Hash?: string };
+      if (obj.Name === cidDirName && obj.Hash) rootHash = obj.Hash;
+    }
+    if (!rootHash) {
+      throw new Error(
+        `Kubo add for ${cid} returned no entry named "${cidDirName}".`,
+      );
+    }
   }
 
   if (rootHash !== cid) {

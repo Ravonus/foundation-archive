@@ -12,13 +12,14 @@ import {
 
 import { ArchiveLiveBoard } from "~/app/_components/archive-live-board";
 import { ArtworkGrid, type ArtworkGridItem } from "~/app/_components/artwork-grid";
+import { HeroStats } from "~/app/_components/hero-stats";
 import {
   BracketFrame,
   CaptionTag,
   FeaturePanel,
   ThemedImage,
 } from "~/app/_components/brand";
-import { CountUp, FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
+import { FadeUp, Stagger, WordReveal } from "~/app/_components/motion";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
 import type { ArchiveLiveSnapshot } from "~/lib/archive-live";
 import { createTtlSwrCache } from "~/lib/ttl-swr-cache";
@@ -310,57 +311,6 @@ function HeroSearch() {
   );
 }
 
-function HeroStats({
-  artworkCount,
-  pinnedRootCount,
-  pendingJobCount,
-}: {
-  artworkCount: number;
-  pinnedRootCount: number;
-  pendingJobCount: number;
-}) {
-  return (
-    <FadeUp delay={0.75} duration={0.5}>
-      <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.7rem] uppercase tracking-[0.22em] text-[var(--color-muted)]">
-        <span
-          className="inline-flex items-center gap-2"
-          title="Works we know about and are saving."
-        >
-          <span
-            aria-hidden
-            className="h-1.5 w-1.5 rounded-full bg-[var(--color-ok)]"
-          />
-          <CountUp value={artworkCount} /> work
-          {artworkCount === 1 ? "" : "s"} tracked
-        </span>
-        <span
-          className="inline-flex items-center gap-2"
-          title="Files fully saved to the archive."
-        >
-          <span
-            aria-hidden
-            className="h-1.5 w-1.5 rounded-full bg-[var(--color-info)]"
-          />
-          <CountUp value={pinnedRootCount} /> file
-          {pinnedRootCount === 1 ? "" : "s"} saved
-        </span>
-        {pendingJobCount > 0 ? (
-          <span
-            className="inline-flex items-center gap-2"
-            title="Works waiting in line to be saved."
-          >
-            <span
-              aria-hidden
-              className="dot-pulse h-1.5 w-1.5 rounded-full bg-[var(--color-warn)]"
-            />
-            <CountUp value={pendingJobCount} /> in line
-          </span>
-        ) : null}
-      </div>
-    </FadeUp>
-  );
-}
-
 function RecentSection({ items }: { items: ArtworkGridItem[] }) {
   return (
     <section className="mt-12 pb-16 sm:mt-16">
@@ -398,39 +348,17 @@ function RecentSection({ items }: { items: ArtworkGridItem[] }) {
 }
 
 type HomeData = {
-  artworkCount: number;
-  pinnedRootCount: number;
-  pendingJobCount: number;
   recentArtworks: HomeArtwork[];
   liveSnapshot: ArchiveLiveSnapshot;
   degraded: boolean;
 };
 
 async function fetchHomeDataFresh(): Promise<HomeData> {
-  const [
-    artworkCount,
-    pinnedRootCount,
-    pendingJobCount,
-    recentArtworks,
-    liveSnapshot,
-  ] = await Promise.all([
-    db.artwork.count({
-      where: {
-        OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
-      },
-    }),
-    db.ipfsRoot.count({
-      where: {
-        OR: [{ pinStatus: "PINNED" }, { backupStatus: "DOWNLOADED" }],
-      },
-    }),
-    db.queueJob.count({ where: { status: "PENDING" } }),
+  const [recentArtworks, liveSnapshot] = await Promise.all([
     // Pull ~40 recent artworks then dedupe by (contract, artist) in
     // JS so the grid shows VISUAL variety. Foundation re-indexes whole
     // series in bursts — without dedupe, the top 12 are often a single
-    // edition repeated. Over-fetching 40 keeps the diversity pool wide
-    // enough without the extra 40 rows' worth of includes (metadataRoot
-    // + mediaRoot) we were eating with the original 80.
+    // edition repeated.
     db.artwork.findMany({
       where: {
         OR: [{ metadataRootId: { not: null } }, { mediaRootId: { not: null } }],
@@ -439,13 +367,12 @@ async function fetchHomeDataFresh(): Promise<HomeData> {
       orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
       include: { metadataRoot: true, mediaRoot: true },
     }),
+    // HeroStats + the live board both read from this one snapshot on
+    // the client, so we don't duplicate the count queries here.
     getArchiveLiveSnapshot(db),
   ]);
 
   return {
-    artworkCount,
-    pinnedRootCount,
-    pendingJobCount,
     recentArtworks,
     liveSnapshot,
     degraded: false,
@@ -476,9 +403,6 @@ async function loadHomeData(): Promise<HomeData> {
     );
 
     return {
-      artworkCount: 0,
-      pinnedRootCount: 0,
-      pendingJobCount: 0,
       recentArtworks: [] as HomeArtwork[],
       liveSnapshot: emptyArchiveLiveSnapshot(),
       degraded: true,
@@ -487,14 +411,7 @@ async function loadHomeData(): Promise<HomeData> {
 }
 
 export default async function HomePage() {
-  const {
-    artworkCount,
-    pinnedRootCount,
-    pendingJobCount,
-    recentArtworks,
-    liveSnapshot,
-    degraded,
-  } = await loadHomeData();
+  const { recentArtworks, liveSnapshot, degraded } = await loadHomeData();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 sm:px-6">
@@ -512,11 +429,7 @@ export default async function HomePage() {
               </FadeUp>
             ) : null}
             <HeroSearch />
-            <HeroStats
-              artworkCount={artworkCount}
-              pinnedRootCount={pinnedRootCount}
-              pendingJobCount={pendingJobCount}
-            />
+            <HeroStats initialSnapshot={liveSnapshot} />
           </div>
           <div className="hidden lg:block">
             <HeroArt />
