@@ -589,46 +589,19 @@ async function pinCidWithKuboFromNode(cid: string) {
   }
 
   if (rootHash !== cid) {
-    // Local dir didn't reproduce the stored CID (partial directory —
-    // we don't have all the siblings Foundation uploaded). Unpin the
-    // stray CID kubo just produced, then fall back to a bitswap fetch
-    // of the real CID. Network pin is slow-ish (~10–60 s per CID) but
-    // it's the only way to get a matching pin for partial dirs.
+    // Partial directory — local add produced a different CID. Unpin
+    // the stray CID kubo just created and accept the skip; the old
+    // bitswap-network-pin fallback tied up worker slots for minutes
+    // per cold CID and ended up halving overall throughput. The row
+    // stays DOWNLOADED on disk and will re-attempt on the next worker
+    // pass if hydration fills in siblings later.
     await kuboPinRemoveSilently(rootHash);
-    try {
-      await kuboNetworkPin(cid);
-      let freedDiskBytes = 0;
-      try {
-        freedDiskBytes = await computeDirectorySize(cidDir);
-      } catch {
-        freedDiskBytes = 0;
-      }
-      try {
-        await rm(cidDir, { recursive: true, force: true });
-      } catch {
-        freedDiskBytes = 0;
-      }
-      return {
-        pinned: true as const,
-        provider: "kubo-network",
-        reference: cid,
-        freedDiskBytes,
-      };
-    } catch (networkError) {
-      // Bitswap couldn't find the CID either — give up. The row stays
-      // DOWNLOADED on disk and will retry on the next worker pass if
-      // content shows up on IPFS later.
-      console.warn(
-        `[archive] Network pin fallback failed for ${cid}:`,
-        formatErrorMessage(networkError),
-      );
-      return {
-        pinned: false as const,
-        provider: "skipped-cid-mismatch",
-        reference: rootHash,
-        freedDiskBytes: 0,
-      };
-    }
+    return {
+      pinned: false as const,
+      provider: "skipped-cid-mismatch",
+      reference: rootHash,
+      freedDiskBytes: 0,
+    };
   }
 
   // Match — kubo's blockstore now owns the DAG. The file-tree copy is
