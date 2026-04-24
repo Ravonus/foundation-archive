@@ -222,14 +222,17 @@ services:
     image: ipfs/kubo:release
     restart: unless-stopped
     environment:
-      # Put kubo's blockstore on the same NAS share cold-storage lives
-      # on, but in a sibling subdirectory so the file-tree archive and
-      # the kubo repo don't stomp each other. Kubo initializes this path
-      # on first boot and keeps using it afterwards.
+      # Blocks live on the NAS (cold-storage mount). Flatfs writes one
+      # file per block — atomic enough that CIFS handles it fine.
       IPFS_PATH: /mnt/backups/kubo-data
     volumes:
       - kubo-staging:/export
       - cold-storage:/mnt/backups
+      # Small local docker volume for the LevelDB pin metadata. CIFS +
+      # LevelDB = corrupt-on-restart, so the 002-split-datastore init
+      # symlinks $IPFS_PATH/datastore into this local mount while
+      # leaving $IPFS_PATH/blocks on the NAS.
+      - kubo-metadata:/data/kubo-metadata
       - ./kubo-init:/container-init.d:ro
 
 volumes:
@@ -246,6 +249,8 @@ volumes:
       o: addr=${NAS_HOST},username=${NAS_USERNAME},password=${NAS_PASSWORD},vers=${NAS_SMB_VERS:-3.0},uid=1000,gid=1000,file_mode=0664,dir_mode=0775,iocharset=utf8
   kubo-staging:
     name: foundation-archive-kubo-staging
+  kubo-metadata:
+    name: foundation-archive-kubo-metadata
 
 networks:
   umami_default:
