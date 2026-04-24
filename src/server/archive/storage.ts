@@ -795,21 +795,82 @@ async function gatewayLsLinks(arg: string): Promise<KuboLink[]> {
   });
 }
 
+/// Parse the gateway's HTML directory listing as a last-ditch fallback.
+/// ipfs.io rejects `Accept: application/vnd.ipld.dag-json` for a lot of
+/// Foundation content (returns 406), but it reliably serves the default
+/// HTML index, which has `<a href="/ipfs/<childCid>?filename=<name>">`
+/// entries for each child. We only need name + CID to continue
+/// hydration, so the regex pull is enough.
+async function gatewayLsLinksViaHtml(arg: string): Promise<KuboLink[]> {
+  const separator = arg.indexOf("/");
+  const cid = separator < 0 ? arg : arg.slice(0, separator);
+  const sub = separator < 0 ? "" : arg.slice(separator);
+  const base = env.IPFS_GATEWAY_BASE_URL.replace(/\/+$/, "");
+  // Trailing slash is required — ipfs.io 301s otherwise and the Accept
+  // header below is lost on the redirect.
+  const url = `${base}/ipfs/${cid}${sub}/`;
+
+  const response = await fetch(url, {
+    headers: { Accept: "text/html" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(GATEWAY_LS_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gateway HTML ls failed for ${arg}: ${response.status}`);
+  }
+
+  const html = await response.text();
+  // Each child file renders as `<a href="/ipfs/<childCid>?filename=<name>">`.
+  // (The row also has a `<a href="/ipfs/<rootCid>/<name>">` but that path
+  // is resolved through the rootCid rather than pointing at the leaf.)
+  const pattern = /href="\/ipfs\/([^"/?]+)\?filename=([^"]+)"/g;
+  const links: KuboLink[] = [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(pattern)) {
+    const childCid = match[1];
+    const rawName = match[2];
+    if (!childCid || !rawName) continue;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(rawName);
+    } catch {
+      decoded = rawName;
+    }
+    // Dedupe — the HTML sometimes lists the same entry twice (e.g.
+    // "copy" buttons include a second href).
+    if (seen.has(decoded)) continue;
+    seen.add(decoded);
+    links.push({
+      Name: decoded,
+      Hash: childCid,
+      Size: 0,
+      // HTML listings don't tell us file vs dir. expandKuboLink treats
+      // Type=undefined as a file, which is correct for all Foundation
+      // content we've observed.
+      Type: undefined,
+    });
+  }
+  return links;
+}
+
 async function resolveLsLinks(arg: string): Promise<KuboLink[]> {
   try {
     return await kuboLsLinks(arg);
   } catch (kuboError) {
     try {
       return await gatewayLsLinks(arg);
-    } catch (gatewayError) {
-      // Re-throw the more descriptive of the two so callers know what
-      // actually happened. Kubo's "fetch failed" / "timeout" vs
-      // gateway's "404" are both useful.
-      const kuboMessage = formatErrorMessage(kuboError);
-      const gatewayMessage = formatErrorMessage(gatewayError);
-      throw new Error(
-        `ls failed (kubo: ${kuboMessage}; gateway: ${gatewayMessage})`,
-      );
+    } catch (dagJsonError) {
+      try {
+        return await gatewayLsLinksViaHtml(arg);
+      } catch (htmlError) {
+        const kuboMessage = formatErrorMessage(kuboError);
+        const dagJsonMessage = formatErrorMessage(dagJsonError);
+        const htmlMessage = formatErrorMessage(htmlError);
+        throw new Error(
+          `ls failed (kubo: ${kuboMessage}; dag-json: ${dagJsonMessage}; html: ${htmlMessage})`,
+        );
+      }
     }
   }
 }
