@@ -648,7 +648,14 @@ type KuboLink = {
   Type?: number;
 };
 
-const KUBO_LS_TIMEOUT_MS = 20_000;
+// Kubo's /api/v0/ls tries bitswap/DHT first and blocks until it
+// resolves each link's type + size. For CIDs we've never touched, that
+// routinely hits 20 s+ on content that's otherwise instantly available
+// from a gateway. Keep the kubo call short so we fall over to the
+// gateway path fast.
+const KUBO_LS_TIMEOUT_MS = 3_000;
+const GATEWAY_LS_TIMEOUT_MS = 10_000;
+const HYDRATE_CONCURRENCY = 6;
 const KUBO_DIRECTORY_TYPES = new Set([1, 5]);
 const KUBO_LS_MAX_DEPTH = 8;
 
@@ -663,6 +670,10 @@ async function kuboLsLinks(arg: string): Promise<KuboLink[]> {
 
   const endpoint = new URL("/api/v0/ls", env.KUBO_API_URL);
   endpoint.searchParams.set("arg", arg);
+  // `size=false` skips the expensive cumulative-size traversal. We only
+  // use sizes for the hydration budget; a per-file HEAD during download
+  // covers that case already.
+  endpoint.searchParams.set("size", "false");
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -683,6 +694,70 @@ async function kuboLsLinks(arg: string): Promise<KuboLink[]> {
   return result.Objects?.[0]?.Links ?? [];
 }
 
+/// Fallback directory listing via HTTP gateway. Ask for
+/// `application/vnd.ipld.dag-json` — the gateway returns the UnixFS
+/// node as JSON without the bitswap lookup cost kubo's /api/v0/ls pays.
+/// Type info is inferred later during recursion (call this again for
+/// any child we need to walk into).
+async function gatewayLsLinks(arg: string): Promise<KuboLink[]> {
+  // `arg` is either "<cid>" or "<cid>/<subpath>". Build gateway URL.
+  const separator = arg.indexOf("/");
+  const cid = separator < 0 ? arg : arg.slice(0, separator);
+  const sub = separator < 0 ? "" : arg.slice(separator);
+  const base = env.IPFS_GATEWAY_BASE_URL.replace(/\/+$/, "");
+  const url = `${base}/ipfs/${cid}${sub}`;
+
+  const response = await fetch(url, {
+    headers: { Accept: "application/vnd.ipld.dag-json" },
+    signal: AbortSignal.timeout(GATEWAY_LS_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gateway ls failed for ${arg}: ${response.status}`);
+  }
+
+  const body = (await response.json()) as {
+    Links?: Array<{
+      Hash?: { "/"?: string } | string;
+      Name?: string;
+      Tsize?: number;
+    }>;
+  };
+
+  return (body.Links ?? []).map((link) => {
+    const hash =
+      typeof link.Hash === "string" ? link.Hash : (link.Hash?.["/"] ?? "");
+    return {
+      Name: link.Name,
+      Hash: hash,
+      Size: link.Tsize ?? 0,
+      // dag-json doesn't include UnixFS type info. expandKuboLink
+      // re-enters gatewayLs if needed; any link whose name indicates a
+      // file (has an extension) we treat as a file.
+      Type: undefined,
+    } satisfies KuboLink;
+  });
+}
+
+async function resolveLsLinks(arg: string): Promise<KuboLink[]> {
+  try {
+    return await kuboLsLinks(arg);
+  } catch (kuboError) {
+    try {
+      return await gatewayLsLinks(arg);
+    } catch (gatewayError) {
+      // Re-throw the more descriptive of the two so callers know what
+      // actually happened. Kubo's "fetch failed" / "timeout" vs
+      // gateway's "404" are both useful.
+      const kuboMessage = formatErrorMessage(kuboError);
+      const gatewayMessage = formatErrorMessage(gatewayError);
+      throw new Error(
+        `ls failed (kubo: ${kuboMessage}; gateway: ${gatewayMessage})`,
+      );
+    }
+  }
+}
+
 async function expandKuboLink(args: {
   rootCid: string;
   basePath: string;
@@ -693,13 +768,18 @@ async function expandKuboLink(args: {
   if (!name) return [];
 
   const childPath = args.basePath ? `${args.basePath}/${name}` : name;
-  const isDirectory =
+  const isKnownDirectory =
     args.link.Type !== undefined && KUBO_DIRECTORY_TYPES.has(args.link.Type);
 
-  if (isDirectory) {
-    return kuboLsRecursive(args.rootCid, childPath, args.depth + 1);
+  if (isKnownDirectory) {
+    return listDirectoryRecursive(args.rootCid, childPath, args.depth + 1);
   }
 
+  // When the gateway fallback populated the link (Type=undefined), we
+  // can't tell directory vs file. Almost all Foundation content is flat
+  // dirs of named files (nft.jpg, metadata.json, 1.json, etc). Treat
+  // named links as files; callers that need deep recursion should seed
+  // a kubo pin first so the richer kubo ls works.
   return [
     {
       path: childPath,
@@ -709,7 +789,7 @@ async function expandKuboLink(args: {
   ];
 }
 
-async function kuboLsRecursive(
+async function listDirectoryRecursive(
   rootCid: string,
   basePath = "",
   depth = 0,
@@ -717,11 +797,15 @@ async function kuboLsRecursive(
   if (depth > KUBO_LS_MAX_DEPTH) return [];
 
   const arg = basePath ? `${rootCid}/${basePath}` : rootCid;
-  const links = await kuboLsLinks(arg);
+  const links = await resolveLsLinks(arg);
   const out: DirectoryEntry[] = [];
 
-  for (const link of links) {
-    const expanded = await expandKuboLink({ rootCid, basePath, link, depth });
+  // Expand links in parallel so a dir of many named children doesn't
+  // pay N sequential round-trips for its own traversal.
+  const expansions = await Promise.all(
+    links.map((link) => expandKuboLink({ rootCid, basePath, link, depth })),
+  );
+  for (const expanded of expansions) {
     out.push(...expanded);
   }
 
@@ -756,10 +840,10 @@ export async function hydrateCidDirectory(args: {
 
   let entries: DirectoryEntry[];
   try {
-    entries = await kuboLsRecursive(args.cid);
+    entries = await listDirectoryRecursive(args.cid);
   } catch (error) {
     console.warn(
-      `[archive] Skipping sibling hydration for ${args.cid}: Kubo ls failed —`,
+      `[archive] Skipping sibling hydration for ${args.cid}: ls failed —`,
       formatErrorMessage(error),
     );
     return empty;
@@ -773,10 +857,12 @@ export async function hydrateCidDirectory(args: {
     ? cleanRelativePath(args.skipPath)
     : null;
 
-  let attempted = 0;
-  let downloaded = 0;
+  // First pass: drop already-present and the skip path, enforce the
+  // size budget in the deterministic entry order. Everything that
+  // survives goes into `toDownload` and gets pulled in parallel.
+  const toDownload: DirectoryEntry[] = [];
   let skipped = 0;
-  let totalBytes = 0;
+  let plannedBytes = 0;
   let truncatedByBudget = false;
 
   for (const entry of entries) {
@@ -785,39 +871,59 @@ export async function hydrateCidDirectory(args: {
       skipped += 1;
       continue;
     }
-
     const targetPath = getArchivedFilePath(args.cid, entry.path);
     if (await pathExists(targetPath)) {
       skipped += 1;
       continue;
     }
-
-    if (entry.size > 0 && totalBytes + entry.size > sizeBudget) {
+    if (entry.size > 0 && plannedBytes + entry.size > sizeBudget) {
       truncatedByBudget = true;
       console.warn(
-        `[archive] Sibling hydration for ${args.cid} stopped at ${formatBytes(totalBytes)} (budget ${formatBytes(sizeBudget)}); ${entries.length - attempted} entries remaining.`,
+        `[archive] Sibling hydration for ${args.cid} stopped at ${formatBytes(plannedBytes)} (budget ${formatBytes(sizeBudget)}); remaining entries skipped.`,
       );
       break;
     }
-
-    attempted += 1;
-
-    try {
-      const result = await downloadFileToArchive({
-        cid: args.cid,
-        relativePath: entry.path,
-        gatewayUrl: buildGatewayUrl(args.cid, entry.path),
-        originalUrl: null,
-      });
-      totalBytes += result.byteSize;
-      downloaded += 1;
-    } catch (error) {
-      console.warn(
-        `[archive] Sibling hydration failed for ${args.cid}/${entry.path}:`,
-        formatErrorMessage(error),
-      );
-    }
+    toDownload.push(entry);
+    plannedBytes += entry.size;
   }
+
+  let attempted = 0;
+  let downloaded = 0;
+  let totalBytes = 0;
+
+  // Parallel downloads with a fixed-size worker pool. Keeping this
+  // modest (HYDRATE_CONCURRENCY=6) avoids saturating the gateway AND
+  // the NAS writes at the same time — the archiver container already
+  // runs several artworks concurrently at the worker level.
+  let cursor = 0;
+  const runOne = async (): Promise<void> => {
+    while (true) {
+      const index = cursor++;
+      if (index >= toDownload.length) return;
+      const entry = toDownload[index];
+      if (!entry) return;
+      attempted += 1;
+      try {
+        const result = await downloadFileToArchive({
+          cid: args.cid,
+          relativePath: entry.path,
+          gatewayUrl: buildGatewayUrl(args.cid, entry.path),
+          originalUrl: null,
+        });
+        totalBytes += result.byteSize;
+        downloaded += 1;
+      } catch (error) {
+        console.warn(
+          `[archive] Sibling hydration failed for ${args.cid}/${entry.path}:`,
+          formatErrorMessage(error),
+        );
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: HYDRATE_CONCURRENCY }, () => runOne()),
+  );
 
   return {
     attempted,

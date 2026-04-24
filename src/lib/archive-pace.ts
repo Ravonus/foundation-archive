@@ -24,8 +24,12 @@ export const ARCHIVE_PACE_CONFIG = {
     label: "Fast",
     contractsPerTick: 4,
     queueLimit: 8,
-    busyDelayMs: 4_000,
-    idleDelayMs: 15_000,
+    // The worker runs the full queueLimit in parallel inside a cycle,
+    // so `busyDelayMs` is pure idle gap between cycles. 500 ms is
+    // plenty to let the event loop breathe without the old 4 s stall
+    // that left the pipeline half-empty.
+    busyDelayMs: 500,
+    idleDelayMs: 10_000,
     maxPendingJobs: 576,
   },
   turbo: {
@@ -33,8 +37,8 @@ export const ARCHIVE_PACE_CONFIG = {
     label: "Turbo",
     contractsPerTick: 8,
     queueLimit: 16,
-    busyDelayMs: 2_500,
-    idleDelayMs: 10_000,
+    busyDelayMs: 250,
+    idleDelayMs: 5_000,
     maxPendingJobs: 1_200,
   },
 } as const;
