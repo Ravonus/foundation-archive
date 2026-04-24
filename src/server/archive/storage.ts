@@ -386,6 +386,38 @@ async function kuboPinRemoveSilently(rawCid: string) {
   }
 }
 
+const KUBO_NETWORK_PIN_TIMEOUT_MS = 15 * 60 * 1000;
+
+/// Fallback pin via bitswap: asks kubo to resolve + fetch the CID from
+/// the wider network and store all blocks locally. This is the only
+/// reliable path for multi-file directory CIDs where our cold-storage
+/// copy is a partial subset (we only downloaded one file but Foundation
+/// originally pushed the whole dir), because kubo fetches the full DAG
+/// and therefore reproduces the original CID exactly. Slower than
+/// local-add — can be minutes per CID — but runs parallel to other
+/// worker jobs, and saves the row from the SKIPPED purgatory.
+async function kuboNetworkPin(cid: string): Promise<void> {
+  if (!env.KUBO_API_URL) {
+    throw new Error("KUBO_API_URL is not configured.");
+  }
+  const url = new URL("/api/v0/pin/add", env.KUBO_API_URL);
+  url.searchParams.set("arg", cid);
+  url.searchParams.set("progress", "false");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: env.KUBO_API_AUTH_HEADER
+      ? { Authorization: env.KUBO_API_AUTH_HEADER }
+      : undefined,
+    signal: AbortSignal.timeout(KUBO_NETWORK_PIN_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Kubo network pin/add failed for ${cid}: ${response.status} ${text.slice(0, 200)}`,
+    );
+  }
+}
+
 /// Cheap pin existence check. Uses `/api/v0/pin/ls?arg=<cid>&type=recursive`,
 /// which returns 200 + a JSON body listing the cid if pinned, or 500
 /// with an error body otherwise. We treat 200 as "already pinned"; any
@@ -528,13 +560,46 @@ async function pinCidWithKuboFromNode(cid: string) {
   }
 
   if (rootHash !== cid) {
+    // Local dir didn't reproduce the stored CID (partial directory —
+    // we don't have all the siblings Foundation uploaded). Unpin the
+    // stray CID kubo just produced, then fall back to a bitswap fetch
+    // of the real CID. Network pin is slow-ish (~10–60 s per CID) but
+    // it's the only way to get a matching pin for partial dirs.
     await kuboPinRemoveSilently(rootHash);
-    return {
-      pinned: false as const,
-      provider: "skipped-cid-mismatch",
-      reference: rootHash,
-      freedDiskBytes: 0,
-    };
+    try {
+      await kuboNetworkPin(cid);
+      let freedDiskBytes = 0;
+      try {
+        freedDiskBytes = await computeDirectorySize(cidDir);
+      } catch {
+        freedDiskBytes = 0;
+      }
+      try {
+        await rm(cidDir, { recursive: true, force: true });
+      } catch {
+        freedDiskBytes = 0;
+      }
+      return {
+        pinned: true as const,
+        provider: "kubo-network",
+        reference: cid,
+        freedDiskBytes,
+      };
+    } catch (networkError) {
+      // Bitswap couldn't find the CID either — give up. The row stays
+      // DOWNLOADED on disk and will retry on the next worker pass if
+      // content shows up on IPFS later.
+      console.warn(
+        `[archive] Network pin fallback failed for ${cid}:`,
+        formatErrorMessage(networkError),
+      );
+      return {
+        pinned: false as const,
+        provider: "skipped-cid-mismatch",
+        reference: rootHash,
+        freedDiskBytes: 0,
+      };
+    }
   }
 
   // Match — kubo's blockstore now owns the DAG. The file-tree copy is

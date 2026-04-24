@@ -473,7 +473,7 @@ async function buildArchiveLiveSnapshot(
 const cachedArchiveLiveSnapshot = createTtlSwrCache(
   (client: DatabaseClient) => buildArchiveLiveSnapshot(client),
   {
-    ttlMs: 15_000,
+    ttlMs: 5_000,
     staleTtlMs: 5 * 60_000,
   },
 );

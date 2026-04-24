@@ -452,13 +452,14 @@ async function fetchHomeDataFresh(): Promise<HomeData> {
   };
 }
 
-// Module-scoped TTL+SWR cache. Landing-page counts change slowly; we
-// trade a few seconds of freshness for instant repeat loads. Stale
-// window lets us serve last-known-good while the next fetch runs in
-// the background.
+// Module-scoped TTL+SWR cache. Kept short (5s fresh) so the home
+// counters visibly move while the backup pipeline is busy — but SWR
+// means we almost always serve a cached copy, with the refresh running
+// behind the scenes. Effective cost is ~one DB round-trip every 5s per
+// container.
 const getCachedHomeData = createTtlSwrCache(fetchHomeDataFresh, {
-  ttlMs: 30_000,
-  staleTtlMs: 10 * 60_000,
+  ttlMs: 5_000,
+  staleTtlMs: 5 * 60_000,
 });
 
 async function loadHomeData(): Promise<HomeData> {
