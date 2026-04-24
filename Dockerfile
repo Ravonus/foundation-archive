@@ -6,10 +6,10 @@ ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app
 
 RUN corepack enable
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates \
-  openssl \
-  && rm -rf /var/lib/apt/lists/*
+# node:22-bookworm-slim already ships ca-certificates, and nothing in
+# our runtime shells out to the openssl binary (Prisma uses libssl from
+# the base image). The apt-get step used to live here; dropped it so
+# the build doesn't depend on buildkit having working DNS.
 
 COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma ./prisma
