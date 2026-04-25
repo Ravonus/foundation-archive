@@ -11,6 +11,10 @@ import { buildPublicUtilityGatewayUrl } from "~/lib/desktop-relay";
 import { ChainBadge } from "~/app/_components/chain-badge";
 
 import { InventoryPreview } from "./inventory-preview";
+import {
+  buildInventoryPreviewCandidates,
+  normalizePreviewKind,
+} from "./preview-media";
 import { itemContext, itemLabel, type PinMatch } from "../types";
 
 function CardHeader({
@@ -158,21 +162,20 @@ function useInventoryCardContent(
   const subtitle = primaryMatch?.artistUsername
     ? `@${primaryMatch.artistUsername}`
     : (primaryMatch?.artistName ?? itemContext(item));
+  const mediaKind = normalizePreviewKind(item.mediaKind);
   const previewCandidates = useMemo(
     () =>
-      Array.from(
-        new Set(
-          [
-            primaryMatch?.posterUrl ?? null,
-            item.previewLocalGatewayUrl ?? null,
-            item.previewPublicGatewayUrl ?? null,
-            item.mediaCid ? buildPublicUtilityGatewayUrl(item.mediaCid) : null,
-            item.localGatewayUrl ?? null,
-            item.publicGatewayUrl ?? null,
-            buildPublicUtilityGatewayUrl(item.cid),
-          ].filter((value): value is string => Boolean(value)),
-        ),
-      ),
+      buildInventoryPreviewCandidates({
+        mediaKind,
+        posterUrl: primaryMatch?.posterUrl ?? null,
+        previewLocalGatewayUrl: item.previewLocalGatewayUrl,
+        previewPublicGatewayUrl: item.previewPublicGatewayUrl,
+        localGatewayUrl: item.localGatewayUrl,
+        publicGatewayUrl: item.publicGatewayUrl,
+        utilityGatewayUrl: item.mediaCid
+          ? buildPublicUtilityGatewayUrl(item.mediaCid)
+          : buildPublicUtilityGatewayUrl(item.cid),
+      }),
     [
       item.cid,
       item.mediaCid,
@@ -180,6 +183,7 @@ function useInventoryCardContent(
       item.publicGatewayUrl,
       item.previewLocalGatewayUrl,
       item.previewPublicGatewayUrl,
+      mediaKind,
       primaryMatch?.posterUrl,
     ],
   );
@@ -209,7 +213,11 @@ export function InventoryCard({
       className="rounded-[1.6rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[0_18px_70px_-50px_rgba(17,17,17,0.45)]"
     >
       <CardHeader title={title} subtitle={subtitle} pinned={item.pinned} />
-      <InventoryPreview title={title} previewCandidates={previewCandidates} />
+      <InventoryPreview
+        title={title}
+        mediaKind={item.mediaKind}
+        previewCandidates={previewCandidates}
+      />
       <CardMeta item={item} primaryMatch={primaryMatch} />
       <CardActions item={item} primaryMatch={primaryMatch} />
     </motion.article>

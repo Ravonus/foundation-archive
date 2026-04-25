@@ -19,6 +19,11 @@ import { buildPublicUtilityGatewayUrl } from "~/lib/desktop-relay";
 import { cn, formatDate, shortAddress } from "~/lib/utils";
 
 import {
+  buildInventoryPreviewCandidates,
+  normalizePreviewKind,
+  type PreviewCandidate,
+} from "./preview-media";
+import {
   itemContext,
   itemLabel,
   pinItemCids,
@@ -28,46 +33,7 @@ import {
 
 export type PinHealth = "saved" | "unreachable" | "checking" | "missing";
 
-type PreviewKind = "IMAGE" | "VIDEO" | "AUDIO" | "HTML" | "MODEL" | "UNKNOWN";
-
-type PreviewCandidate = {
-  url: string;
-  kind: PreviewKind;
-};
-
 const EASE = [0.22, 1, 0.36, 1] as const;
-const PREVIEW_KIND_MARKERS: Array<{
-  kind: Exclude<PreviewKind, "UNKNOWN">;
-  markers: string[];
-}> = [
-  {
-    kind: "IMAGE",
-    markers: [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"],
-  },
-  {
-    kind: "VIDEO",
-    markers: [".mp4", ".mov", ".webm"],
-  },
-  {
-    kind: "AUDIO",
-    markers: [".mp3", ".wav", ".ogg", ".aac"],
-  },
-  {
-    kind: "HTML",
-    markers: [".html"],
-  },
-  {
-    kind: "MODEL",
-    markers: [
-      ".glb",
-      ".gltf",
-      ".usdz",
-      "model/gltf",
-      "model/vnd.usdz",
-      "model",
-    ],
-  },
-];
 
 function healthClass(health: PinHealth) {
   switch (health) {
@@ -154,52 +120,6 @@ export function pinHealthFor(
   return "unreachable";
 }
 
-function normalizePreviewKind(value: string | null | undefined): PreviewKind {
-  const normalized = value?.trim().toUpperCase();
-  if (
-    normalized === "IMAGE" ||
-    normalized === "VIDEO" ||
-    normalized === "AUDIO" ||
-    normalized === "HTML" ||
-    normalized === "MODEL"
-  ) {
-    return normalized;
-  }
-  return "UNKNOWN";
-}
-
-function previewKindFromUrl(url: string): PreviewKind {
-  const lower = url.toLowerCase();
-  return (
-    PREVIEW_KIND_MARKERS.find(({ markers }) =>
-      markers.some((marker) => lower.includes(marker)),
-    )?.kind ?? "UNKNOWN"
-  );
-}
-
-function previewKindForPreviewUrl(
-  url: string,
-  fallbackKind: PreviewKind,
-  openUrl: string | null,
-): PreviewKind {
-  if (openUrl && url !== openUrl) return "IMAGE";
-
-  const fromUrl = previewKindFromUrl(url);
-  if (fromUrl !== "UNKNOWN") return fromUrl;
-  return fallbackKind;
-}
-
-function dedupePreviewCandidates(candidates: Array<PreviewCandidate | null>) {
-  const seen = new Set<string>();
-
-  return candidates.filter((candidate): candidate is PreviewCandidate => {
-    if (!candidate) return false;
-    if (seen.has(candidate.url)) return false;
-    seen.add(candidate.url);
-    return true;
-  });
-}
-
 function CardPoster({
   title,
   candidates,
@@ -217,7 +137,7 @@ function CardPoster({
   const index =
     candidateState.seed === candidateSeed ? candidateState.index : 0;
   const active = candidates[index] ?? null;
-  const modelPosterUrl =
+  const fallbackImage =
     candidates.find(
       (candidate) =>
         candidate.kind === "IMAGE" && candidate.url !== active?.url,
@@ -245,6 +165,8 @@ function CardPoster({
         playsInline
         autoPlay
         loop
+        controls
+        poster={fallbackImage ?? undefined}
         preload="metadata"
         onError={advanceCandidate}
         className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
@@ -258,6 +180,8 @@ function CardPoster({
         src={active.url}
         title={title}
         loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+        onError={advanceCandidate}
         className="h-full w-full border-0 bg-[var(--color-surface-alt)]"
       />
     );
@@ -287,10 +211,18 @@ function CardPoster({
       <ModelMediaPreview
         src={active.url}
         candidates={modelCandidateUrls}
-        poster={modelPosterUrl}
+        poster={fallbackImage}
         alt={title}
         className="h-full w-full"
       />
+    );
+  }
+
+  if (active.kind === "UNKNOWN") {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[var(--color-surface-alt)] px-4 text-center text-sm text-[var(--color-subtle)]">
+        Preview unavailable for this file type.
+      </div>
     );
   }
 
@@ -335,60 +267,15 @@ function buildPreviewCandidates(
   item: BridgePinInventoryItem,
   primaryMatch: PinMatch | null,
 ): PreviewCandidate[] {
-  const mediaKind = normalizePreviewKind(item.mediaKind);
-  const utilityGatewayUrl = buildPublicUtilityGatewayUrl(
-    item.mediaCid ?? item.cid,
-  );
-
-  return dedupePreviewCandidates([
-    primaryMatch?.posterUrl
-      ? { url: primaryMatch.posterUrl, kind: "IMAGE" }
-      : null,
-    item.previewLocalGatewayUrl
-      ? {
-          url: item.previewLocalGatewayUrl,
-          kind: previewKindForPreviewUrl(
-            item.previewLocalGatewayUrl,
-            mediaKind,
-            item.localGatewayUrl,
-          ),
-        }
-      : null,
-    item.previewPublicGatewayUrl
-      ? {
-          url: item.previewPublicGatewayUrl,
-          kind: previewKindForPreviewUrl(
-            item.previewPublicGatewayUrl,
-            mediaKind,
-            item.publicGatewayUrl,
-          ),
-        }
-      : null,
-    item.localGatewayUrl
-      ? {
-          url: item.localGatewayUrl,
-          kind:
-            previewKindFromUrl(item.localGatewayUrl) !== "UNKNOWN"
-              ? previewKindFromUrl(item.localGatewayUrl)
-              : mediaKind,
-        }
-      : null,
-    item.publicGatewayUrl
-      ? {
-          url: item.publicGatewayUrl,
-          kind:
-            previewKindFromUrl(item.publicGatewayUrl) !== "UNKNOWN"
-              ? previewKindFromUrl(item.publicGatewayUrl)
-              : mediaKind,
-        }
-      : null,
-    utilityGatewayUrl
-      ? {
-          url: utilityGatewayUrl,
-          kind: mediaKind,
-        }
-      : null,
-  ]);
+  return buildInventoryPreviewCandidates({
+    mediaKind: normalizePreviewKind(item.mediaKind),
+    posterUrl: primaryMatch?.posterUrl ?? null,
+    previewLocalGatewayUrl: item.previewLocalGatewayUrl,
+    previewPublicGatewayUrl: item.previewPublicGatewayUrl,
+    localGatewayUrl: item.localGatewayUrl,
+    publicGatewayUrl: item.publicGatewayUrl,
+    utilityGatewayUrl: buildPublicUtilityGatewayUrl(item.mediaCid ?? item.cid),
+  });
 }
 
 function buildTitle(
