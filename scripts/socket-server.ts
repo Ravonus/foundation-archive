@@ -211,7 +211,9 @@ async function main() {
       type: "owner.snapshot",
       devices: devices.map((device) => ({
         ...device,
-        connected: device.relayEnabled && liveDeviceIds.has(device.id),
+        connected:
+          device.relayEnabled &&
+          (device.connected || liveDeviceIds.has(device.id)),
       })),
     });
 

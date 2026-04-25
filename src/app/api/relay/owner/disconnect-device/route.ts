@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { env } from "~/env";
 import { db } from "~/server/db";
-import { disconnectRelayDeviceByOwner } from "~/server/relay/service";
+import { removeRelayDeviceByOwner } from "~/server/relay/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
-    const device = await disconnectRelayDeviceByOwner(db, input);
+    const device = await removeRelayDeviceByOwner(db, input);
 
     const socketDisconnectUrl = `${env.ARCHIVE_SOCKET_INTERNAL_URL}/relay/internal/disconnect`;
     void fetch(socketDisconnectUrl, {

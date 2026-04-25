@@ -468,7 +468,7 @@ export async function reportRelayJobResult(
   };
 }
 
-export async function disconnectRelayDeviceByOwner(
+export async function removeRelayDeviceByOwner(
   db: DbClient,
   input: {
     ownerToken: string;
@@ -486,13 +486,9 @@ export async function disconnectRelayDeviceByOwner(
     throw new Error("Linked desktop device was not found.");
   }
 
-  await db.relayDevice.update({
+  await db.relayDevice.delete({
     where: {
       id: device.id,
-    },
-    data: {
-      relayEnabled: false,
-      lastError: null,
     },
   });
 
