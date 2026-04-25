@@ -49,10 +49,6 @@ function nextBackoff(current: number) {
   return Math.min(Math.max(current * 2, INITIAL_BACKOFF_MS), MAX_BACKOFF_MS);
 }
 
-function isLoopbackHost(hostname: string) {
-  return hostname === "127.0.0.1" || hostname === "localhost";
-}
-
 function clearScheduledTimer(
   timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
 ) {
@@ -99,16 +95,8 @@ function shouldProbeBridge(
   if (typeof window === "undefined") return true;
 
   try {
-    const bridgeHostname = new URL(bridgeUrl).hostname;
-    if (!isLoopbackHost(bridgeHostname)) {
-      return true;
-    }
-
-    if (isLoopbackHost(window.location.hostname)) {
-      return true;
-    }
-
-    return false;
+    new URL(bridgeUrl);
+    return true;
   } catch {
     return true;
   }

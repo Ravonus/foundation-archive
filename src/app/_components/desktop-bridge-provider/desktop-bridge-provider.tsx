@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { RelayOwnerClientMessage } from "~/lib/desktop-relay";
 import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
@@ -63,6 +63,81 @@ function readCachedRelayDevices(): RelayOwnerDevice[] {
   } catch {
     return [];
   }
+}
+
+function localRelayLabel(config: BridgeConfig) {
+  const configuredLabel = config.relay_device_label?.trim();
+  if (configuredLabel && configuredLabel.length > 0) return configuredLabel;
+
+  const configuredName = config.relay_device_name.trim();
+  if (configuredName.length > 0) return configuredName;
+
+  return "Foundation desktop app";
+}
+
+function createLocalRelayDevice(input: {
+  deviceId: string;
+  label: string;
+  connected: boolean;
+  lastSeenAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}): RelayOwnerDevice {
+  return {
+    id: input.deviceId,
+    deviceLabel: input.label,
+    relayEnabled: true,
+    connected: input.connected,
+    lastSeenAt: input.lastSeenAt,
+    lastError: input.lastError,
+    lastCompletedJobAt: null,
+    createdAt: input.createdAt,
+    pendingJobCount: 0,
+    recentJobs: [],
+  };
+}
+
+function relayDevicesWithLocalBridge(input: {
+  devices: RelayOwnerDevice[];
+  config: BridgeConfig | null;
+  reachable: boolean;
+  health: BridgeHealth | null;
+}) {
+  const { devices, config, reachable, health } = input;
+  const deviceId = config?.relay_device_id?.trim();
+  if (!deviceId || !config?.relay_enabled) return devices;
+
+  const now = health?.now ?? new Date().toISOString();
+  const label = localRelayLabel(config);
+  const connectionTime = reachable
+    ? now
+    : (config.relay_last_connected_at ?? null);
+  const markConnected = (device: RelayOwnerDevice): RelayOwnerDevice =>
+    device.id === deviceId
+      ? {
+          ...device,
+          connected: reachable,
+          relayEnabled: true,
+          deviceLabel: device.deviceLabel.length > 0 ? device.deviceLabel : label,
+          lastSeenAt: device.lastSeenAt ?? connectionTime,
+          lastError: null,
+        }
+      : device;
+
+  const existing = devices.find((device) => device.id === deviceId);
+  if (existing) return devices.map(markConnected);
+
+  return [
+    createLocalRelayDevice({
+      deviceId,
+      label,
+      connected: reachable,
+      lastSeenAt: connectionTime,
+      lastError: config.relay_last_error,
+      createdAt: now,
+    }),
+    ...devices,
+  ];
 }
 
 export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
@@ -131,6 +206,17 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     setError,
   });
 
+  const visibleRelayDevices = useMemo(
+    () =>
+      relayDevicesWithLocalBridge({
+        devices: relayDevices,
+        config,
+        reachable,
+        health,
+      }),
+    [config, health, reachable, relayDevices],
+  );
+
   const persistSession = (nextSession: BridgeSession | null) => {
     setSession(nextSession);
     if (nextSession) {
@@ -151,7 +237,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
 
   const relayOwnerDeps: RelayOwnerDeps = {
     ownerToken,
-    relayDevices,
+    relayDevices: visibleRelayDevices,
     pinEnrichment,
     setRelayDevices,
     setRelayInventories,
@@ -246,7 +332,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     health,
     config,
     ownerToken,
-    relayDevices,
+    relayDevices: visibleRelayDevices,
     relayInventories,
     relayDeviceStates,
     relaySocketConnected,
