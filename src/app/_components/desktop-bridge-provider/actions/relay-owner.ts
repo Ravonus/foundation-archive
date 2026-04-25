@@ -178,6 +178,9 @@ function createDisconnectRelayDevice(
       );
     }
 
+    deps.setRelayDevices(
+      deps.relayDevices.filter((device) => device.id !== deviceId),
+    );
     deps.setRelayInventories((current) => {
       const next = { ...current };
       delete next[deviceId];

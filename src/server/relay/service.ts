@@ -486,10 +486,29 @@ export async function removeRelayDeviceByOwner(
     throw new Error("Linked desktop device was not found.");
   }
 
-  await db.relayDevice.delete({
-    where: {
-      id: device.id,
-    },
+  await db.$transaction(async (tx) => {
+    // Older production rows may predate the current FK actions, so clear
+    // dependents explicitly before deleting the device record.
+    await tx.relayPairing.updateMany({
+      where: {
+        claimedByDeviceId: device.id,
+      },
+      data: {
+        claimedByDeviceId: null,
+      },
+    });
+
+    await tx.relayJob.deleteMany({
+      where: {
+        deviceId: device.id,
+      },
+    });
+
+    await tx.relayDevice.delete({
+      where: {
+        id: device.id,
+      },
+    });
   });
 
   return {
