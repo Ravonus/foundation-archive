@@ -305,10 +305,9 @@ async function main() {
         return;
       }
 
-      safeSend(socket, {
-        type: "owner.error",
-        message: "That desktop app is not currently connected.",
-      });
+      // Polling-based desktop apps can be healthy without holding a live
+      // relay WebSocket, so a missing inventory socket is not a connection
+      // error. A future device inventory broadcast will fill this in.
       return;
     }
 

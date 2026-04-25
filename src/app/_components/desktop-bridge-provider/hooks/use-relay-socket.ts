@@ -32,7 +32,7 @@ type SocketSetters = {
       current: Record<string, RelayDeviceStateSnapshot>,
     ) => Record<string, RelayDeviceStateSnapshot>,
   ) => void;
-  setError: (message: string) => void;
+  setError: (message: string | null) => void;
 };
 
 function handleRelayMessage(
@@ -42,6 +42,7 @@ function handleRelayMessage(
   if (payload.type === "owner.snapshot") {
     const devices = payload.devices as RelayOwnerDevice[];
     setters.setRelayDevices(devices);
+    setters.setError(null);
     const deviceIds = new Set(devices.map((device) => device.id));
     setters.setRelayInventories((current) =>
       Object.fromEntries(
@@ -79,6 +80,7 @@ function handleRelayMessage(
   }
 
   if (payload.type === "owner.inventory") {
+    setters.setError(null);
     setters.setRelayInventories((current) => ({
       ...current,
       [payload.deviceId]: {
@@ -91,6 +93,7 @@ function handleRelayMessage(
   }
 
   if (payload.type === "owner.deviceState") {
+    setters.setError(null);
     setters.setRelayDeviceStates((current) => ({
       ...current,
       [payload.deviceId]: {
