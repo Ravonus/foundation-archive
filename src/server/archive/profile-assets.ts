@@ -532,22 +532,23 @@ function profileWithCachedAssetUrls(
     localPath: string | null;
   }>,
 ): FoundationUserProfile {
-  const downloaded = new Map(
-    assets
-      .filter(
-        (asset) =>
-          asset.status === BackupStatus.DOWNLOADED && Boolean(asset.localPath),
-      )
-      .map((asset) => [asset.kind, profileAssetPublicPath(asset.id)]),
-  );
+  const archivedAssetUrl = (kind: ProfileAssetKind) => {
+    const asset = assets.find(
+      (candidate) =>
+        candidate.kind === kind &&
+        candidate.status === BackupStatus.DOWNLOADED &&
+        Boolean(candidate.localPath),
+    );
+    return asset ? profileAssetPublicPath(asset.id) : null;
+  };
 
   return {
     accountAddress: profile.accountAddress,
     username: profile.username,
     name: profile.name,
     bio: profile.bio,
-    profileImageUrl: downloaded.get("avatar") ?? profile.profileImageUrl,
-    coverImageUrl: downloaded.get("cover") ?? profile.coverImageUrl,
+    profileImageUrl: archivedAssetUrl("avatar"),
+    coverImageUrl: archivedAssetUrl("cover"),
   };
 }
 

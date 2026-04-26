@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 
 import { ProfileAvatar } from "~/app/_components/profile/profile-avatar";
-import { placeholderBannerBackground } from "~/lib/profile-placeholder";
+import { ProfileBanner } from "~/app/_components/profile/profile-banner";
 
 type ProfileHeroProps = {
   name: string;
@@ -62,26 +62,7 @@ export function ProfileHero(props: ProfileHeroProps) {
       }
     >
       <div className="relative h-40 w-full overflow-hidden bg-[var(--color-surface-alt)] sm:h-56">
-        {bannerUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={bannerUrl}
-            alt=""
-            referrerPolicy="no-referrer"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div
-            aria-hidden
-            className="h-full w-full"
-            style={{
-              backgroundImage: placeholderBannerBackground(resolvedSeed),
-            }}
-          />
-        )}
-        {bannerUrl ? (
-          <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.45)] via-transparent to-transparent" />
-        ) : null}
+        <ProfileBanner imageUrl={bannerUrl} seed={resolvedSeed} />
       </div>
 
       <div className="relative grid gap-8 px-6 pb-6 sm:px-8 sm:pb-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,360px)]">
