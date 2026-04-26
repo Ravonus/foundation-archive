@@ -22,6 +22,8 @@ const PROFILE_ASSET_TIMEOUT_MS = 45_000;
 const PROFILE_ASSET_MAX_BYTES = 25 * 1024 * 1024;
 const FOUNDATION_PROFILE_RETRY_LIMIT = 4;
 const FOUNDATION_PROFILE_RETRY_BASE_MS = 1_000;
+const FOUNDATION_FORBIDDEN_COOLDOWN_MS = 30_000;
+let foundationLookupCooldownUntil = 0;
 
 type ProfileAssetKind = "avatar" | "cover";
 type ProfileLookupResult =
@@ -68,7 +70,7 @@ function normalizeUsername(username: string | null | undefined) {
 function isRetryableFoundationLookupError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    /Foundation API request failed: (408|409|425|429|5\d\d)/i.test(message) ||
+    /Foundation API request failed: (403|408|409|425|429|5\d\d)/i.test(message) ||
     /Unable to fetch Foundation .*: (408|409|425|429|5\d\d)/i.test(message) ||
     /timed out|timeout|network|fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(
       message,
@@ -87,6 +89,11 @@ async function withFoundationLookupRetries<T>(
     attempt <= FOUNDATION_PROFILE_RETRY_LIMIT;
     attempt += 1
   ) {
+    const cooldownMs = foundationLookupCooldownUntil - Date.now();
+    if (cooldownMs > 0) {
+      await sleep(cooldownMs);
+    }
+
     try {
       return await run();
     } catch (error) {
@@ -98,9 +105,17 @@ async function withFoundationLookupRetries<T>(
         break;
       }
 
+      const backoffBase = isForbiddenFoundationApiError(error)
+        ? FOUNDATION_FORBIDDEN_COOLDOWN_MS
+        : FOUNDATION_PROFILE_RETRY_BASE_MS;
       const backoffMs =
-        FOUNDATION_PROFILE_RETRY_BASE_MS * 2 ** (attempt - 1) +
-        Math.floor(Math.random() * 250);
+        backoffBase * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
+      if (isForbiddenFoundationApiError(error)) {
+        foundationLookupCooldownUntil = Math.max(
+          foundationLookupCooldownUntil,
+          Date.now() + backoffMs,
+        );
+      }
       console.warn(
         `[profiles] retrying ${label} in ${backoffMs}ms after ${error instanceof Error ? error.message : String(error)}`,
       );
