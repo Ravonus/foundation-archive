@@ -230,6 +230,14 @@ services:
   kubo:
     image: ipfs/kubo:release
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - ipfs --api=/ip4/127.0.0.1/tcp/5001 id >/dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     environment:
       # Blocks live on the NAS (cold-storage mount). Flatfs writes one
       # file per block — atomic enough that CIFS handles it fine.
