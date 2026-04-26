@@ -1,4 +1,4 @@
-/* eslint-disable complexity */
+/* eslint-disable complexity, max-lines */
 
 import {
   BackupStatus,
@@ -18,9 +18,15 @@ import { getArchivePolicyState } from "~/server/archive/state";
 import {
   downloadFileToArchive,
   ensureArchiveRoot,
+  kuboHasRecursivePin,
   hydrateCidDirectory,
   pinCidWithKubo,
+  pinCidWithKuboNetwork,
 } from "~/server/archive/storage";
+import {
+  buildRelayGatewayUrl,
+  findRelayGatewayCandidates,
+} from "~/server/relay/pin-routing";
 import {
   type DatabaseClient,
   FAILED_ROOT_RETRY_COOLDOWN_MS,
@@ -69,6 +75,11 @@ type ProcessedOutcome = {
   status: "processed";
   availableAt: null;
 };
+type ResolvedDownloadResult = {
+  byteSize: number;
+  alreadyPinned?: boolean;
+  hasLocalArchive: boolean;
+};
 
 function hasDownloadedRoot(root: RootRecord) {
   return (
@@ -99,21 +110,36 @@ async function resolveDownloadResult(args: {
   input: BackupRootInput;
   root: RootRecord;
   startedAt: Date;
-}) {
+}): Promise<ResolvedDownloadResult> {
   const { client, input, root, startedAt } = args;
   if (hasDownloadedRoot(root)) {
     return {
       byteSize: root.byteSize ?? root.estimatedByteSize ?? 0,
+      hasLocalArchive: true,
     };
   }
 
-  const { downloadResult } = await downloadRootAndRecord({
-    client,
-    input,
-    root,
-    startedAt,
-  });
-  return downloadResult;
+  try {
+    const { downloadResult } = await downloadRootAndRecord({
+      client,
+      input,
+      root,
+      startedAt,
+    });
+    return {
+      byteSize: downloadResult.byteSize,
+      hasLocalArchive: true,
+    };
+  } catch (error) {
+    if (!env.KUBO_API_URL) throw error;
+    return pinRootWithKuboNetworkFallback({
+      client,
+      input,
+      root,
+      startedAt,
+      reason: error,
+    });
+  }
 }
 
 function recentFailedRetryAt(root: RootRecord) {
@@ -183,11 +209,13 @@ async function downloadRootAndRecord(args: {
   const { client, input, root, startedAt } = args;
   await ensureArchiveRoot();
 
+  const gatewayUrls = await gatewayUrlsForPinnedRelayPeers(client, root);
   const downloadResult = await downloadFileToArchive({
     cid: root.cid,
     relativePath: root.relativePath,
     gatewayUrl: root.gatewayUrl,
     originalUrl: root.originalUrl,
+    gatewayUrls,
   });
 
   if (root.relativePath) {
@@ -246,6 +274,138 @@ async function downloadRootAndRecord(args: {
   return { updatedRoot, downloadResult };
 }
 
+function relayPathSegments(root: RootRecord) {
+  return (root.relativePath ?? "")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+async function gatewayUrlsForPinnedRelayPeers(
+  client: DatabaseClient,
+  root: RootRecord,
+) {
+  const candidates = await findRelayGatewayCandidates(client, root.cid).catch(
+    () => [],
+  );
+  const segments = relayPathSegments(root);
+  return candidates
+    .map((candidate) => buildRelayGatewayUrl(candidate, root.cid, segments))
+    .filter((url): url is string => Boolean(url));
+}
+
+function formatPinReason(reason: unknown) {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
+async function markRootPinnedByKubo(args: {
+  client: DatabaseClient;
+  input: BackupRootInput;
+  root: RootRecord;
+  startedAt: Date;
+  sizeBytes: number;
+  provider: "kubo-existing-pin" | "kubo-network";
+  reason?: unknown;
+}) {
+  const { client, input, root, startedAt, sizeBytes, provider, reason } = args;
+  await client.ipfsRoot.update({
+    where: { id: root.id },
+    data: {
+      backupStatus: BackupStatus.DOWNLOADED,
+      pinStatus: BackupStatus.PINNED,
+      pinProvider: PinProvider.KUBO,
+      pinReference: root.cid,
+      lastDownloadedAt: new Date(),
+      lastPinnedAt: new Date(),
+      lastDeferredAt: null,
+      deferredUntilByteSize: null,
+      localDirectory: null,
+      lastError: null,
+    },
+  });
+
+  await recordBackupRun(client, {
+    artworkId: input.artworkId,
+    rootId: root.id,
+    action: "PIN_BY_CID",
+    status: BackupStatus.PINNED,
+    provider: PinProvider.KUBO,
+    notes: reason
+      ? `Pinned through ${provider} after: ${formatPinReason(reason)}`
+      : `Pinned through ${provider}.`,
+    responsePayload: JSON.stringify({
+      pinned: true,
+      provider,
+      reference: root.cid,
+    }),
+    startedAt,
+    finishedAt: new Date(),
+  });
+
+  await syncArtworksForRoot(client, root.id);
+
+  await emitArchiveEvent(client, {
+    type: "root.pinned",
+    summary: `Pinned ${root.cid} on the server.`,
+    artwork: await loadArtworkLiveCard(client, input.artworkId),
+    cid: root.cid,
+    sizeBytes,
+    data: {
+      pinReference: root.cid,
+      provider,
+    },
+  });
+}
+
+async function markExistingKuboPinIfPresent(args: {
+  client: DatabaseClient;
+  input: BackupRootInput;
+  root: RootRecord;
+  startedAt: Date;
+}) {
+  const { client, input, root, startedAt } = args;
+  if (!env.KUBO_API_URL) return false;
+  if (!(await kuboHasRecursivePin(root.cid))) return false;
+
+  await markRootPinnedByKubo({
+    client,
+    input,
+    root,
+    startedAt,
+    sizeBytes: root.byteSize ?? root.estimatedByteSize ?? 0,
+    provider: "kubo-existing-pin",
+  });
+  return true;
+}
+
+async function pinRootWithKuboNetworkFallback(args: {
+  client: DatabaseClient;
+  input: BackupRootInput;
+  root: RootRecord;
+  startedAt: Date;
+  reason: unknown;
+}): Promise<ResolvedDownloadResult> {
+  const { client, input, root, startedAt, reason } = args;
+  await pinCidWithKuboNetwork(root.cid);
+  const sizeBytes = root.byteSize ?? root.estimatedByteSize ?? 0;
+
+  await markRootPinnedByKubo({
+    client,
+    input,
+    root,
+    startedAt,
+    sizeBytes,
+    provider: "kubo-network",
+    reason,
+  });
+
+  return {
+    byteSize: sizeBytes,
+    alreadyPinned: true,
+    hasLocalArchive: false,
+  };
+}
+
 async function pinRootWithKubo(args: {
   client: DatabaseClient;
   input: BackupRootInput;
@@ -277,7 +437,7 @@ async function pinRootWithKubo(args: {
       startedAt,
       finishedAt: new Date(),
     });
-    return;
+    return false;
   }
 
   await client.ipfsRoot.update({
@@ -319,6 +479,8 @@ async function pinRootWithKubo(args: {
       pinReference: pinResult.reference,
     },
   });
+
+  return true;
 }
 
 async function markPinSkipped(client: DatabaseClient, rootId: string) {
@@ -365,6 +527,58 @@ async function recordRootFailure(args: {
   await syncArtworksForRoot(client, root.id);
 }
 
+async function pinResolvedRootWithKubo(args: {
+  client: DatabaseClient;
+  input: BackupRootInput;
+  root: RootRecord;
+  downloadResult: ResolvedDownloadResult;
+  startedAt: Date;
+}) {
+  const { client, input, root, downloadResult, startedAt } = args;
+  try {
+    const pinnedLocally = await pinRootWithKubo({
+      client,
+      input,
+      root,
+      sizeBytes: downloadResult.byteSize,
+      startedAt,
+    });
+    if (!pinnedLocally) {
+      await pinRootWithKuboNetworkFallback({
+        client,
+        input,
+        root,
+        startedAt,
+        reason: "Local archive directory did not reproduce the root CID.",
+      });
+    }
+  } catch (pinError) {
+    const message =
+      pinError instanceof Error ? pinError.message : "Unknown pin failure";
+    console.warn(
+      `[archive] Pin failed for ${root.cid}, leaving as DOWNLOADED:`,
+      message,
+    );
+    await client.ipfsRoot.update({
+      where: { id: root.id },
+      data: {
+        pinStatus: BackupStatus.FAILED,
+        lastError: message,
+      },
+    });
+    await recordBackupRun(client, {
+      artworkId: input.artworkId,
+      rootId: root.id,
+      action: "PIN_BY_CID",
+      status: BackupStatus.FAILED,
+      provider: PinProvider.KUBO,
+      errorMessage: message,
+      startedAt,
+      finishedAt: new Date(),
+    });
+  }
+}
+
 async function backupSingleRoot(
   client: DatabaseClient,
   input: BackupRootInput,
@@ -375,6 +589,20 @@ async function backupSingleRoot(
   const startedAt = new Date();
 
   try {
+    if (
+      await markExistingKuboPinIfPresent({
+        client,
+        input,
+        root,
+        startedAt,
+      })
+    ) {
+      return {
+        status: "processed",
+        availableAt: null,
+      };
+    }
+
     if (!input.bypassSmartBudget) {
       const retryAt = recentFailedRetryAt(root);
       if (retryAt && retryAt.getTime() > Date.now()) {
@@ -402,55 +630,28 @@ async function backupSingleRoot(
       startedAt,
     });
 
-    try {
-      await verifyArchivedRootDependencies({
-        root,
-        artwork: input.artwork,
-      });
-    } catch (error) {
-      console.warn(
-        `[archive] Dependency verification partial for ${root.cid}:`,
-        error instanceof Error ? error.message : error,
-      );
+    if (downloadResult.hasLocalArchive) {
+      try {
+        await verifyArchivedRootDependencies({
+          root,
+          artwork: input.artwork,
+        });
+      } catch (error) {
+        console.warn(
+          `[archive] Dependency verification partial for ${root.cid}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
     }
 
-    if (env.KUBO_API_URL) {
-      try {
-        await pinRootWithKubo({
-          client,
-          input,
-          root,
-          sizeBytes: downloadResult.byteSize,
-          startedAt,
-        });
-      } catch (pinError) {
-        // The file is already on disk. A pin failure shouldn't undo that or
-        // flip the artwork back to "Retrying" — just record the pin as failed
-        // so it gets retried, and let the root stay DOWNLOADED.
-        const message =
-          pinError instanceof Error ? pinError.message : "Unknown pin failure";
-        console.warn(
-          `[archive] Pin failed for ${root.cid}, leaving as DOWNLOADED:`,
-          message,
-        );
-        await client.ipfsRoot.update({
-          where: { id: root.id },
-          data: {
-            pinStatus: BackupStatus.FAILED,
-            lastError: message,
-          },
-        });
-        await recordBackupRun(client, {
-          artworkId: input.artworkId,
-          rootId: root.id,
-          action: "PIN_BY_CID",
-          status: BackupStatus.FAILED,
-          provider: PinProvider.KUBO,
-          errorMessage: message,
-          startedAt,
-          finishedAt: new Date(),
-        });
-      }
+    if (env.KUBO_API_URL && !downloadResult.alreadyPinned) {
+      await pinResolvedRootWithKubo({
+        client,
+        input,
+        root,
+        downloadResult,
+        startedAt,
+      });
     } else if (!downloadedRoot) {
       await markPinSkipped(client, root.id);
     }

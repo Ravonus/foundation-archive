@@ -7,6 +7,7 @@ import {
   FOUNDATION_PLATFORM_CONTRACTS,
   chainLabel,
   getRpcClient,
+  rpcUrlConfiguredFor,
 } from "~/server/archive/chains";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import type { PrismaClient } from "~/server/prisma-client";
@@ -99,8 +100,10 @@ export async function ensureFoundationMarketIndexerStates(
 
     let seedBlock = 0;
     try {
-      const rpc = getRpcClient(target.chainId);
-      seedBlock = Number(await rpc.getBlockNumber());
+      if (rpcUrlConfiguredFor(target.chainId)) {
+        const rpc = getRpcClient(target.chainId);
+        seedBlock = Number(await rpc.getBlockNumber());
+      }
     } catch {
       // RPC may be unavailable at seed time; default to 0 and let the first
       // tick after RPC is configured advance the checkpoint.
@@ -144,6 +147,18 @@ async function runMarketIndexerForState(
   state: IndexerState,
 ) {
   const runStartedAt = new Date();
+  if (!rpcUrlConfiguredFor(state.chainId)) {
+    await client.foundationMarketIndexerState.update({
+      where: { id: state.id },
+      data: {
+        lastRunStartedAt: runStartedAt,
+        lastRunFinishedAt: new Date(),
+        lastEventCount: 0,
+        lastError: `${chainLabel(state.chainId)} RPC URL is not configured; market indexer is paused.`,
+      },
+    });
+    return null;
+  }
 
   let latestBlock: number;
   try {
@@ -168,10 +183,7 @@ async function runMarketIndexerForState(
   }
 
   const fromBlock = state.nextFromBlock;
-  const toBlock = Math.min(
-    fromBlock + state.blockWindowSize - 1,
-    latestBlock,
-  );
+  const toBlock = Math.min(fromBlock + state.blockWindowSize - 1, latestBlock);
 
   try {
     const rpc = getRpcClient(state.chainId);
@@ -233,7 +245,8 @@ async function recordIndexerFailure(
   runStartedAt: Date,
   error: unknown,
 ) {
-  const message = error instanceof Error ? error.message : "unknown indexer failure";
+  const message =
+    error instanceof Error ? error.message : "unknown indexer failure";
   await client.foundationMarketIndexerState.update({
     where: { id: state.id },
     data: {
@@ -282,17 +295,35 @@ async function dispatchMarketLog(
 
   switch (log.eventName) {
     case "ReserveAuctionCreated":
-      return handleReserveAuctionCreated(ctx, log.args as ReserveAuctionCreatedArgs);
+      return handleReserveAuctionCreated(
+        ctx,
+        log.args as ReserveAuctionCreatedArgs,
+      );
     case "ReserveAuctionBidPlaced":
-      return handleReserveAuctionBidPlaced(ctx, log.args as ReserveAuctionBidPlacedArgs);
+      return handleReserveAuctionBidPlaced(
+        ctx,
+        log.args as ReserveAuctionBidPlacedArgs,
+      );
     case "ReserveAuctionFinalized":
-      return handleReserveAuctionFinalized(ctx, log.args as ReserveAuctionFinalizedArgs);
+      return handleReserveAuctionFinalized(
+        ctx,
+        log.args as ReserveAuctionFinalizedArgs,
+      );
     case "ReserveAuctionCanceled":
-      return handleReserveAuctionCanceled(ctx, log.args as ReserveAuctionCanceledArgs);
+      return handleReserveAuctionCanceled(
+        ctx,
+        log.args as ReserveAuctionCanceledArgs,
+      );
     case "ReserveAuctionInvalidated":
-      return handleReserveAuctionInvalidated(ctx, log.args as ReserveAuctionInvalidatedArgs);
+      return handleReserveAuctionInvalidated(
+        ctx,
+        log.args as ReserveAuctionInvalidatedArgs,
+      );
     case "ReserveAuctionUpdated":
-      return handleReserveAuctionUpdated(ctx, log.args as ReserveAuctionUpdatedArgs);
+      return handleReserveAuctionUpdated(
+        ctx,
+        log.args as ReserveAuctionUpdatedArgs,
+      );
     case "BuyPriceSet":
       return handleBuyPriceSet(ctx, log.args as BuyPriceSetArgs);
     case "BuyPriceAccepted":
@@ -300,7 +331,10 @@ async function dispatchMarketLog(
     case "BuyPriceCanceled":
       return handleBuyPriceCanceled(ctx, log.args as BuyPriceCanceledArgs);
     case "BuyPriceInvalidated":
-      return handleBuyPriceInvalidated(ctx, log.args as BuyPriceInvalidatedArgs);
+      return handleBuyPriceInvalidated(
+        ctx,
+        log.args as BuyPriceInvalidatedArgs,
+      );
     default:
       return undefined;
   }
@@ -330,9 +364,8 @@ async function persistMarketEventLog(
         auctionId: enriched.auctionId,
         actorAddress: enriched.actorAddress,
         amount: enriched.amount,
-        payload: JSON.stringify(
-          args,
-          (_key, value: unknown): unknown => stringifyEventPayloadValue(value),
+        payload: JSON.stringify(args, (_key, value: unknown): unknown =>
+          stringifyEventPayloadValue(value),
         ),
       },
     });

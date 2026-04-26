@@ -24,6 +24,7 @@ import {
 } from "./queue";
 import { backupArtwork } from "./backup";
 import {
+  artworkNeedsOnlyFailedRootRepair,
   artworkBlockedBySmartBudget,
   type SmartBudgetArtworkSnapshot,
   unsatisfiedSmartBudgetRootIds,
@@ -33,6 +34,8 @@ import {
   ingestFoundationMintUrl,
   scanContractTokens,
 } from "./ingest";
+
+const FAILED_REPAIR_JOBS_PER_BATCH_FRACTION = 0.25;
 
 async function processSingleJob(client: DatabaseClient, job: QueueJob) {
   switch (job.kind) {
@@ -235,12 +238,22 @@ async function selectProcessableJobs(client: DatabaseClient, limit: number) {
   ]);
   const selected: QueueJob[] = [];
   const selectedRootIds = new Set<string>();
+  const failedRepairLimit = Math.max(
+    1,
+    Math.floor(limit * FAILED_REPAIR_JOBS_PER_BATCH_FRACTION),
+  );
+  let selectedFailedRepairJobs = 0;
 
   for (const job of jobs) {
     if (selected.length >= limit) break;
 
     const artworkId = budgetArtworkIdForJob(job);
     const artwork = artworkId ? (artworkById.get(artworkId) ?? null) : null;
+    const failedRepairJob = artworkNeedsOnlyFailedRootRepair(artwork);
+    if (failedRepairJob && selectedFailedRepairJobs >= failedRepairLimit) {
+      continue;
+    }
+
     if (artworkBlockedBySmartBudget(artwork, policy.smartPinMaxBytes)) {
       continue;
     }
@@ -251,16 +264,14 @@ async function selectProcessableJobs(client: DatabaseClient, limit: number) {
     }
 
     for (const rootId of rootIds) selectedRootIds.add(rootId);
+    if (failedRepairJob) selectedFailedRepairJobs += 1;
     selected.push(job);
   }
 
   return selected;
 }
 
-export async function processQueuedJobs(
-  client: DatabaseClient,
-  limit = 10,
-) {
+export async function processQueuedJobs(client: DatabaseClient, limit = 10) {
   await recoverStaleRunningJobs(client);
 
   const jobs = await selectProcessableJobs(client, limit);

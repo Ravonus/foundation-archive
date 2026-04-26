@@ -22,6 +22,10 @@ function rpcUrlFor(chainId: number): string | undefined {
   return undefined;
 }
 
+export function rpcUrlConfiguredFor(chainId: number) {
+  return Boolean(rpcUrlFor(chainId));
+}
+
 function viemChainFor(chainId: number) {
   return chainId === BASE_CHAIN_ID ? base : mainnet;
 }

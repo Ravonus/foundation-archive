@@ -21,10 +21,16 @@ import {
   normalizeAddress,
 } from "./shared";
 import {
+  artworkNeedsOnlyFailedRootRepair,
   artworkBlockedBySmartBudget,
   nextProcessableRootPriority,
   unsatisfiedSmartBudgetRootIds,
 } from "./smart-budget";
+
+const FAILED_REPAIR_READY_MIN = 8;
+const FAILED_REPAIR_READY_MAX = 32;
+const FAILED_REPAIR_READY_FRACTION = 0.03;
+const FAILED_REPAIR_PARK_MS = 60 * 60 * 1000;
 
 const SMART_BUDGET_ROOT_SELECT = {
   id: true,
@@ -109,7 +115,7 @@ async function updateActiveExistingJob(args: {
           ? (availableAt ?? new Date())
           : availabilityPulledForward
             ? availableAt
-          : undefined,
+            : undefined,
       maxAttempts,
     },
   });
@@ -418,6 +424,39 @@ async function blockedArtworkIdsForSmartBudget(args: {
   );
 }
 
+async function failedRepairArtworkIdsForJobs(args: {
+  client: DatabaseClient;
+  artworkIds: string[];
+}) {
+  const { client, artworkIds } = args;
+  if (artworkIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const artworks = await client.artwork.findMany({
+    where: {
+      id: {
+        in: artworkIds,
+      },
+    },
+    select: {
+      id: true,
+      metadataRoot: {
+        select: SMART_BUDGET_ROOT_SELECT,
+      },
+      mediaRoot: {
+        select: SMART_BUDGET_ROOT_SELECT,
+      },
+    },
+  });
+
+  return new Set(
+    artworks
+      .filter((artwork) => artworkNeedsOnlyFailedRootRepair(artwork))
+      .map((artwork) => artwork.id),
+  );
+}
+
 async function parkBlockedAutomaticBackupJobs(args: {
   client: DatabaseClient;
   activeJobs: ActiveJobSummary[];
@@ -469,6 +508,68 @@ async function parkBlockedAutomaticBackupJobs(args: {
   });
 
   return blockedJobIds.length;
+}
+
+async function parkOverflowFailedRepairJobs(args: {
+  client: DatabaseClient;
+  activeJobs: ActiveJobSummary[];
+  queueBudget: number;
+}) {
+  const { client, activeJobs, queueBudget } = args;
+  const now = Date.now();
+  const automaticReadyJobs = activeJobs.filter(
+    (job) =>
+      job.kind === QueueJobKind.BACKUP_ARTWORK &&
+      job.status === QueueJobStatus.PENDING &&
+      job.priority <= BACKUP_PRIORITY &&
+      Boolean(job.dedupeKey) &&
+      isReadyPendingJob(job, now),
+  );
+
+  if (automaticReadyJobs.length === 0) {
+    return 0;
+  }
+
+  const failedRepairArtworkIds = await failedRepairArtworkIdsForJobs({
+    client,
+    artworkIds: automaticReadyJobs
+      .map((job) => job.dedupeKey)
+      .filter((value): value is string => Boolean(value)),
+  });
+
+  const failedRepairJobs = automaticReadyJobs.filter(
+    (job) => job.dedupeKey && failedRepairArtworkIds.has(job.dedupeKey),
+  );
+
+  const repairLaneSize = Math.min(
+    FAILED_REPAIR_READY_MAX,
+    Math.max(
+      FAILED_REPAIR_READY_MIN,
+      Math.ceil(queueBudget * FAILED_REPAIR_READY_FRACTION),
+    ),
+  );
+  const overflowRepairJobs = failedRepairJobs.slice(repairLaneSize);
+
+  if (overflowRepairJobs.length === 0) {
+    return 0;
+  }
+
+  await client.queueJob.updateMany({
+    where: {
+      id: {
+        in: overflowRepairJobs.map((job) => job.id),
+      },
+      status: QueueJobStatus.PENDING,
+    },
+    data: {
+      availableAt: new Date(Date.now() + FAILED_REPAIR_PARK_MS),
+      startedAt: null,
+      finishedAt: null,
+      lastError: null,
+    },
+  });
+
+  return overflowRepairJobs.length;
 }
 
 function analyseRebalance(
@@ -647,7 +748,7 @@ async function refillAutomaticBackups(args: {
       artwork,
       priority: nextProcessableRootPriority(artwork, smartPinMaxBytes),
     }))
-    .filter((entry) => entry.priority.rank < 2)
+    .filter((entry) => entry.priority.rank < 3)
     .sort((left, right) => {
       const rankGap = left.priority.rank - right.priority.rank;
       if (rankGap !== 0) {
@@ -686,6 +787,36 @@ async function refillAutomaticBackups(args: {
   return refilledCount;
 }
 
+function rebalanceEventSummary(input: {
+  parkedBlockedJobs: number;
+  parkedRepairJobs: number;
+  overflowPendingJobs: number;
+  automaticPendingTarget: number;
+  refilledCount: number;
+}) {
+  const {
+    parkedBlockedJobs,
+    parkedRepairJobs,
+    overflowPendingJobs,
+    automaticPendingTarget,
+    refilledCount,
+  } = input;
+
+  if (parkedBlockedJobs > 0) {
+    return `Parked ${parkedBlockedJobs} oversized backup job${parkedBlockedJobs === 1 ? "" : "s"} until a later smart-pin tier opens.`;
+  }
+
+  if (parkedRepairJobs > 0) {
+    return `Kept a small failed-root repair lane open and parked ${parkedRepairJobs} retry job${parkedRepairJobs === 1 ? "" : "s"}.`;
+  }
+
+  if (overflowPendingJobs > 0) {
+    return `Rebalanced the automatic queue: kept ${automaticPendingTarget} active backup jobs and deferred ${overflowPendingJobs}.`;
+  }
+
+  return `Topped the automatic queue back up with ${refilledCount} backup job${refilledCount === 1 ? "" : "s"}.`;
+}
+
 export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
   const policy = await getArchivePolicyState(client);
   const initialActiveJobs = await fetchActiveJobs(client);
@@ -695,8 +826,17 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     smartPinMaxBytes: policy.smartPinMaxBytes,
     deferMs: policy.smartPinDeferMs,
   });
-  const activeJobs =
+  let activeJobs =
     parkedBlockedJobs > 0 ? await fetchActiveJobs(client) : initialActiveJobs;
+  const initialAnalysis = analyseRebalance(policy, activeJobs);
+  const parkedRepairJobs = await parkOverflowFailedRepairJobs({
+    client,
+    activeJobs,
+    queueBudget: initialAnalysis.queueBudget,
+  });
+  if (parkedRepairJobs > 0) {
+    activeJobs = await fetchActiveJobs(client);
+  }
   const analysis = analyseRebalance(policy, activeJobs);
   const {
     queueBudget,
@@ -742,16 +882,18 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
   if (
     overflowPendingJobs.length > 0 ||
     refilledCount > 0 ||
-    parkedBlockedJobs > 0
+    parkedBlockedJobs > 0 ||
+    parkedRepairJobs > 0
   ) {
     await emitArchiveEvent(client, {
       type: "queue.backlog-rebalanced",
-      summary:
-        parkedBlockedJobs > 0
-          ? `Parked ${parkedBlockedJobs} oversized backup job${parkedBlockedJobs === 1 ? "" : "s"} until a later smart-pin tier opens.`
-          : overflowPendingJobs.length > 0
-            ? `Rebalanced the automatic queue: kept ${automaticPendingTarget} active backup jobs and deferred ${overflowPendingJobs.length}.`
-            : `Topped the automatic queue back up with ${refilledCount} backup job${refilledCount === 1 ? "" : "s"}.`,
+      summary: rebalanceEventSummary({
+        parkedBlockedJobs,
+        parkedRepairJobs,
+        overflowPendingJobs: overflowPendingJobs.length,
+        automaticPendingTarget,
+        refilledCount,
+      }),
       data: {
         queueBudget,
         protectedJobs: protectedReadyJobs.length,
@@ -760,6 +902,7 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
         refillResumeThreshold,
         automaticPendingTarget,
         parkedBlockedJobs,
+        parkedRepairJobs,
         trimmedAutomaticJobs: overflowPendingJobs.length,
         refilledAutomaticJobs: refilledCount,
       },
@@ -773,6 +916,7 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     refillResumeThreshold,
     automaticPendingTarget,
     parkedBlockedJobs,
+    parkedRepairJobs,
     trimmedAutomaticJobs: overflowPendingJobs.length,
     refilledAutomaticJobs: refilledCount,
   };

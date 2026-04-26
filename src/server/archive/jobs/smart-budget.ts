@@ -35,6 +35,26 @@ export function rootKnownTooLarge(
   return size !== null && size > smartPinMaxBytes;
 }
 
+export function rootNeedsFailedRepair(
+  root: Exclude<SmartBudgetRootSnapshot, null>,
+) {
+  return (
+    !rootAlreadySatisfied(root) &&
+    (root.backupStatus === BackupStatus.FAILED ||
+      root.pinStatus === BackupStatus.FAILED)
+  );
+}
+
+export function artworkNeedsOnlyFailedRootRepair(
+  artwork: SmartBudgetArtworkSnapshot,
+) {
+  const unsatisfiedRoots = unsatisfiedSmartBudgetRoots(artwork);
+  return (
+    unsatisfiedRoots.length > 0 &&
+    unsatisfiedRoots.every((root) => rootNeedsFailedRepair(root))
+  );
+}
+
 export function artworkBlockedBySmartBudget(
   artwork: SmartBudgetArtworkSnapshot,
   smartPinMaxBytes: number,
@@ -81,6 +101,17 @@ export function nextProcessableRootPriority(
 ) {
   if (!artwork) {
     return {
+      rank: 4,
+      size: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
+  const unsatisfiedRoots = unsatisfiedSmartBudgetRoots(artwork);
+  if (
+    unsatisfiedRoots.length > 0 &&
+    unsatisfiedRoots.every((root) => rootNeedsFailedRepair(root))
+  ) {
+    return {
       rank: 2,
       size: Number.MAX_SAFE_INTEGER,
     };
@@ -89,7 +120,7 @@ export function nextProcessableRootPriority(
   let sawUnknownSize = false;
   let smallestKnownSize: number | null = null;
 
-  for (const root of unsatisfiedSmartBudgetRoots(artwork)) {
+  for (const root of unsatisfiedRoots) {
     const size = root.estimatedByteSize ?? root.byteSize;
     if (size === null) {
       sawUnknownSize = true;
@@ -119,7 +150,7 @@ export function nextProcessableRootPriority(
   }
 
   return {
-    rank: 2,
+    rank: 3,
     size: Number.MAX_SAFE_INTEGER,
   };
 }

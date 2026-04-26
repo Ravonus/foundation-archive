@@ -1,6 +1,6 @@
 /* eslint-disable complexity, max-lines, max-lines-per-function, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unused-vars */
 
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import {
   copyFile,
   link,
@@ -14,6 +14,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import { env } from "~/env";
 import { formatBytes } from "~/lib/utils";
@@ -21,6 +22,7 @@ import { buildGatewayUrl } from "~/server/archive/ipfs";
 
 const ROOT_FILE_SENTINEL = "__root__";
 const ARCHIVE_DOWNLOAD_TIMEOUT_MS = 60 * 60 * 1000;
+const ARCHIVE_SOURCE_FETCH_TIMEOUT_MS = 10 * 60 * 1000;
 const ARCHIVE_PIN_TIMEOUT_MS = 10 * 60 * 1000;
 
 type RustArchiverDownloadResponse = {
@@ -218,6 +220,7 @@ async function downloadFileToArchiveWithJs(input: {
   relativePath: string | null | undefined;
   gatewayUrl: string | null | undefined;
   originalUrl: string | null | undefined;
+  gatewayUrls?: readonly string[];
 }) {
   const targetPath = getArchivedFilePath(input.cid, input.relativePath);
   const hotPath = getHotArchivedFilePath(input.cid, input.relativePath);
@@ -246,49 +249,80 @@ async function downloadFileToArchiveWithJs(input: {
     };
   }
 
-  const sourceUrl = input.gatewayUrl ?? input.originalUrl;
-  if (!sourceUrl) {
+  const sourceUrls = buildGatewayFallbackUrls({
+    cid: input.cid,
+    relativePath: input.relativePath,
+    primaryGatewayUrl: input.gatewayUrl,
+    extraGatewayUrls: input.gatewayUrls,
+  });
+  if (input.originalUrl) {
+    sourceUrls.push(input.originalUrl);
+  }
+
+  const uniqueSourceUrls = Array.from(new Set(sourceUrls));
+
+  if (uniqueSourceUrls.length === 0) {
     throw new Error(
       `Unable to download CID ${input.cid} because no source URL was available.`,
     );
   }
 
-  const response = await fetch(sourceUrl, {
-    headers: {
-      "user-agent": "foundation-archive/0.1 (+https://foundation.agorix.io)",
-    },
-    signal: AbortSignal.timeout(ARCHIVE_DOWNLOAD_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to download ${sourceUrl}: ${response.status}`);
-  }
-
-  await ensureParentDirectory(hotPath);
-  const tempHotPath = temporaryFilePath(hotPath);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  await writeFile(tempHotPath, buffer);
-
-  try {
-    await rename(tempHotPath, hotPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw error;
+  let lastError: unknown = null;
+  for (const sourceUrl of uniqueSourceUrls) {
+    let response: Response;
+    try {
+      response = await fetch(sourceUrl, {
+        headers: {
+          "user-agent":
+            "foundation-archive/0.1 (+https://foundation.agorix.io)",
+        },
+        signal: AbortSignal.timeout(ARCHIVE_SOURCE_FETCH_TIMEOUT_MS),
+      });
+    } catch (error) {
+      lastError = error;
+      continue;
     }
 
-    await rm(tempHotPath, { force: true });
+    if (!response.ok || !response.body) {
+      lastError = new Error(
+        `Failed to download ${sourceUrl}: ${response.status}`,
+      );
+      continue;
+    }
+
+    await ensureParentDirectory(hotPath);
+    const tempHotPath = temporaryFilePath(hotPath);
+
+    try {
+      await pipeline(
+        Readable.fromWeb(
+          response.body as unknown as Parameters<typeof Readable.fromWeb>[0],
+        ),
+        createWriteStream(tempHotPath),
+      );
+      await rename(tempHotPath, hotPath);
+    } catch (error) {
+      await rm(tempHotPath, { force: true });
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        lastError = error;
+        continue;
+      }
+    }
+
+    await promoteHotFileToCold(hotPath, targetPath);
+    const fileStats = await stat(targetPath);
+
+    return {
+      absolutePath: targetPath,
+      localDirectory: getCidDirectory(input.cid),
+      byteSize: fileStats.size,
+      mimeType: response.headers.get("content-type"),
+    };
   }
 
-  await promoteHotFileToCold(hotPath, targetPath);
-
-  const fileStats = await stat(targetPath);
-
-  return {
-    absolutePath: targetPath,
-    localDirectory: getCidDirectory(input.cid),
-    byteSize: fileStats.size,
-    mimeType: response.headers.get("content-type"),
-  };
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Unable to download CID ${input.cid} from any archive source.`);
 }
 
 /// Walks the on-disk directory for a cold-storage CID in a deterministic
@@ -497,7 +531,7 @@ async function kuboNetworkPin(cid: string): Promise<void> {
 /// which returns 200 + a JSON body listing the cid if pinned, or 500
 /// with an error body otherwise. We treat 200 as "already pinned"; any
 /// other outcome means we still need to do the add ourselves.
-async function kuboHasRecursivePin(cid: string): Promise<boolean> {
+export async function kuboHasRecursivePin(cid: string): Promise<boolean> {
   if (!env.KUBO_API_URL) return false;
   try {
     const url = new URL("/api/v0/pin/ls", env.KUBO_API_URL);
@@ -741,11 +775,13 @@ export function getHotArchivedFilePath(
   return path.join(getHotCidDirectory(cid), safeRelativePath);
 }
 
-function buildGatewayFallbackUrls(
-  cid: string,
-  relativePath: string | null | undefined,
-  primaryGatewayUrl: string | null | undefined,
-): string[] {
+function buildGatewayFallbackUrls(input: {
+  cid: string;
+  relativePath: string | null | undefined;
+  primaryGatewayUrl: string | null | undefined;
+  extraGatewayUrls?: readonly string[];
+}): string[] {
+  const { cid, relativePath, primaryGatewayUrl, extraGatewayUrls = [] } = input;
   const pathSuffix = relativePath ? `/${relativePath.replace(/^\/+/, "")}` : "";
   const urls: string[] = [];
   const seen = new Set<string>();
@@ -757,6 +793,10 @@ function buildGatewayFallbackUrls(
     seen.add(trimmed);
     urls.push(trimmed);
   };
+
+  for (const url of extraGatewayUrls) {
+    push(url);
+  }
 
   push(primaryGatewayUrl);
 
@@ -789,12 +829,14 @@ export async function downloadFileToArchive(input: {
   relativePath: string | null | undefined;
   gatewayUrl: string | null | undefined;
   originalUrl: string | null | undefined;
+  gatewayUrls?: readonly string[];
 }) {
-  const gatewayUrls = buildGatewayFallbackUrls(
-    input.cid,
-    input.relativePath,
-    input.gatewayUrl,
-  );
+  const gatewayUrls = buildGatewayFallbackUrls({
+    cid: input.cid,
+    relativePath: input.relativePath,
+    primaryGatewayUrl: input.gatewayUrl,
+    extraGatewayUrls: input.gatewayUrls,
+  });
 
   if (env.ARCHIVE_ARCHIVER_URL && shouldAttemptRustArchiver()) {
     try {
@@ -803,7 +845,7 @@ export async function downloadFileToArchive(input: {
         {
           cid: input.cid,
           relative_path: input.relativePath,
-          gateway_url: input.gatewayUrl,
+          gateway_url: gatewayUrls[0] ?? input.gatewayUrl,
           gateway_urls: gatewayUrls,
           original_url: input.originalUrl,
           final_root_dir: getArchiveStorageRoot(),
@@ -1223,4 +1265,14 @@ export async function ensureArchiveRoot() {
 /// still route through it.
 export async function pinCidWithKubo(cid: string) {
   return pinCidWithKuboFromNode(cid);
+}
+
+export async function pinCidWithKuboNetwork(cid: string) {
+  await kuboNetworkPin(cid);
+  return {
+    pinned: true as const,
+    provider: "kubo-network",
+    reference: cid,
+    freedDiskBytes: 0,
+  };
 }
