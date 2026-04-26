@@ -29,6 +29,7 @@ import {
   syncArtworkStatuses,
   syncArtworksForRoot,
 } from "./shared";
+import { probeRootSize } from "./root-size-probe";
 
 type RootRecord = {
   id: string;
@@ -45,7 +46,6 @@ type RootRecord = {
   pinStatus: BackupStatus;
   updatedAt: Date;
 };
-
 type BackupRootInput = {
   artworkId: string;
   bypassSmartBudget?: boolean;
@@ -55,19 +55,16 @@ type BackupRootInput = {
   };
   root: RootRecord | null;
 };
-
 type DeferredOutcome = {
   status: "deferred";
   availableAt: Date;
   reason: "size" | "retry-cooldown";
   retainJob?: boolean;
 };
-
 type SkippedOutcome = {
   status: "skipped";
   availableAt: null;
 };
-
 type ProcessedOutcome = {
   status: "processed";
   availableAt: null;
@@ -130,39 +127,6 @@ function recentFailedRetryAt(root: RootRecord) {
   return new Date(root.updatedAt.getTime() + FAILED_ROOT_RETRY_COOLDOWN_MS);
 }
 
-async function headProbeRoot(root: RootRecord) {
-  const sourceUrl = root.gatewayUrl ?? root.originalUrl;
-  if (!sourceUrl) {
-    return {
-      estimatedByteSize: null as number | null,
-      mimeType: root.mimeType,
-    };
-  }
-
-  let estimatedByteSize = root.byteSize ?? root.estimatedByteSize ?? null;
-  let mimeType = root.mimeType;
-
-  if (!estimatedByteSize) {
-    try {
-      const headResponse = await fetch(sourceUrl, {
-        method: "HEAD",
-        headers: {
-          "user-agent": "foundation-archive/0.1 (+https://foundation.agorix.io)",
-        },
-        signal: AbortSignal.timeout(15_000),
-      });
-
-      const headerBytes = headResponse.headers.get("content-length");
-      estimatedByteSize = headerBytes ? Number(headerBytes) : null;
-      mimeType = headResponse.headers.get("content-type") ?? mimeType;
-    } catch {
-      estimatedByteSize = null;
-    }
-  }
-
-  return { estimatedByteSize, mimeType };
-}
-
 async function evaluateSmartBudget(args: {
   client: DatabaseClient;
   input: BackupRootInput;
@@ -172,7 +136,7 @@ async function evaluateSmartBudget(args: {
   if (input.bypassSmartBudget) return null;
 
   const policy = await getArchivePolicyState(client);
-  const { estimatedByteSize, mimeType } = await headProbeRoot(root);
+  const { estimatedByteSize, mimeType } = await probeRootSize(root);
   if (!estimatedByteSize) return null;
 
   await client.ipfsRoot.update({
@@ -206,7 +170,7 @@ async function evaluateSmartBudget(args: {
     status: "deferred",
     availableAt: new Date(Date.now() + policy.smartPinDeferMs),
     reason: "size",
-    retainJob: false,
+    retainJob: true,
   };
 }
 
@@ -418,7 +382,7 @@ async function backupSingleRoot(
           status: "deferred",
           availableAt: retryAt,
           reason: "retry-cooldown",
-          retainJob: false,
+          retainJob: true,
         };
       }
     }

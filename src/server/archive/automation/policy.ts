@@ -154,10 +154,13 @@ export async function maybeAdvanceSmartPinBudget(
   client: DatabaseClient,
   input: {
     completedFoundationPass: boolean;
+    completedCrawlerPass?: boolean;
   },
 ) {
   const policy = await getArchivePolicyState(client);
-  if (!input.completedFoundationPass) {
+  const completedArchiveScanPass =
+    input.completedFoundationPass || input.completedCrawlerPass === true;
+  if (!completedArchiveScanPass) {
     return {
       advanced: false,
       policy,
@@ -169,12 +172,6 @@ export async function maybeAdvanceSmartPinBudget(
     hasActiveAutomationBacklog(client),
   ]);
 
-  // We used to additionally require the full Foundation contract scan to be
-  // complete before advancing the smart-pin tier. In practice the crawler has
-  // 100k+ contracts to go through and takes months, which stalls every
-  // deferred large root indefinitely. Now we only wait for the current tier's
-  // work to drain and for the automation backlog to be clear, so the system
-  // can steadily unlock bigger files while discovery continues in parallel.
   if (hasCurrentTierWork || hasAutomationBacklog) {
     return {
       advanced: false,
@@ -214,7 +211,7 @@ export async function maybeAdvanceSmartPinBudget(
       smartPinMaxBytes: nextBudget,
       lastBudgetRaisedAt: new Date(),
       lastBudgetReason:
-        "Advanced to the next smart-pin tier after a full Foundation scan pass",
+        "Advanced to the next smart-pin tier after a full archive scan pass",
     },
   });
 
@@ -222,7 +219,7 @@ export async function maybeAdvanceSmartPinBudget(
 
   await emitArchiveEvent(client, {
     type: "policy.smart-pin-budget-raised",
-    summary: `Advanced the smart-pin tier to ${nextBudget} bytes after a full Foundation scan pass — re-queued ${requeued} deferred artwork(s).`,
+    summary: `Advanced the smart-pin tier to ${nextBudget} bytes after a full archive scan pass — re-queued ${requeued} deferred artwork(s).`,
     cid: smallestDeferredRoot.cid,
     sizeBytes: target,
     data: {

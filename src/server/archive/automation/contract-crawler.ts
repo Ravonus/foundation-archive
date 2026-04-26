@@ -15,6 +15,7 @@ import {
   crawlerTypePriority,
   type DatabaseClient,
 } from "./types";
+import { ensureAutoCrawlerContracts } from "./auto-discovered-upserts";
 
 type PolicyState = Awaited<ReturnType<typeof getArchivePolicyState>>;
 type BacklogState = ReturnType<typeof archiveIngressGuardForPendingJobs>;
@@ -30,6 +31,7 @@ function disabledCrawlerResult() {
   return {
     scannedContracts: 0,
     queuedTokens: 0,
+    completedCrawlerPass: false,
     pausedForBacklog: false,
     backlogMaxPendingJobs: 0,
     backlogHeadroomJobs: 0,
@@ -169,7 +171,9 @@ async function selectCrawlerCandidates({
   backlog: BacklogState;
 }) {
   const revisitThreshold = new Date(Date.now() - API_REVISIT_INTERVAL_MS);
-  const sampleSize = crawlerCandidateSampleSize(backlog.allowedCrawlerContracts);
+  const sampleSize = crawlerCandidateSampleSize(
+    backlog.allowedCrawlerContracts,
+  );
   const [unfinishedCandidates, dueRevisitCandidates] = await Promise.all([
     selectUnfinishedCrawlerCandidates({
       client,
@@ -385,8 +389,7 @@ async function persistBlockScanResult({
     data: {
       nextFromBlock: toBlock + 1,
       lastScannedBlock: toBlock,
-      completed:
-        crawler.scanToBlock !== null ? toBlock >= upperBound : false,
+      completed: crawler.scanToBlock !== null ? toBlock >= upperBound : false,
       totalDiscoveredCount: {
         increment: tokenIds.length,
       },
@@ -430,11 +433,13 @@ async function runBlockCrawlerForContract({
   client,
   crawler,
   latestBlock,
+  blockWindowSize,
   runStartedAt,
 }: {
   client: DatabaseClient;
   crawler: CrawlerCandidate;
   latestBlock: number;
+  blockWindowSize: number;
   runStartedAt: Date;
 }) {
   const startBlock = crawler.nextFromBlock || crawler.scanFromBlock;
@@ -446,7 +451,7 @@ async function runBlockCrawlerForContract({
   }
 
   const toBlock = Math.min(
-    startBlock + crawler.blockWindowSize - 1,
+    startBlock + blockWindowSize - 1,
     upperBound,
     latestBlock,
   );
@@ -538,7 +543,7 @@ async function runSingleCrawler({
   });
 
   try {
-    if (crawler.scanMode === "api") {
+    if (crawler.scanMode === "api" && foundationLiveLookupsEnabled()) {
       return await runApiCrawlerForContract({
         client,
         crawler,
@@ -556,6 +561,10 @@ async function runSingleCrawler({
       client,
       crawler,
       latestBlock,
+      blockWindowSize:
+        crawler.blockWindowSize > 0
+          ? crawler.blockWindowSize
+          : policy.blockWindowSize,
       runStartedAt,
     });
   } catch (error) {
@@ -591,13 +600,24 @@ async function runCrawlerLoop({
   return { scannedContracts, queuedTokens };
 }
 
-export async function runAutomaticContractCrawlerTick(
-  client: DatabaseClient,
-) {
+async function completedCrawlerPass(client: DatabaseClient) {
+  const remaining = await client.contractCrawlerState.count({
+    where: {
+      autoEnabled: true,
+      completed: false,
+    },
+  });
+
+  return remaining === 0;
+}
+
+export async function runAutomaticContractCrawlerTick(client: DatabaseClient) {
   const policy = await getArchivePolicyState(client);
   if (!policy.autoCrawlerEnabled) {
     return disabledCrawlerResult();
   }
+
+  await ensureAutoCrawlerContracts(client);
 
   const pendingJobs = await client.queueJob.count({
     where: {
@@ -629,6 +649,7 @@ export async function runAutomaticContractCrawlerTick(
     crawlers,
     policy,
   });
+  const completedPass = await completedCrawlerPass(client);
 
   await client.archivePolicyState.update({
     where: { id: policy.id },
@@ -640,6 +661,7 @@ export async function runAutomaticContractCrawlerTick(
   return {
     scannedContracts,
     queuedTokens,
+    completedCrawlerPass: completedPass,
     pausedForBacklog: false,
     backlogMaxPendingJobs: effectiveBacklog.maxPendingJobs,
     backlogHeadroomJobs: effectiveBacklog.pendingHeadroom,

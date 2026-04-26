@@ -80,12 +80,19 @@ async function updateActiveExistingJob(args: {
   payload: string;
   priority: number;
   maxAttempts: number;
+  availableAt: Date | undefined;
 }) {
-  const { client, existing, payload, priority, maxAttempts } = args;
+  const { client, existing, payload, priority, maxAttempts, availableAt } =
+    args;
   const priorityIncreased = priority > existing.priority;
+  const availabilityPulledForward =
+    existing.status === QueueJobStatus.PENDING &&
+    availableAt !== undefined &&
+    availableAt.getTime() < existing.availableAt.getTime();
   const changed =
     payload !== existing.payload ||
     priorityIncreased ||
+    availabilityPulledForward ||
     maxAttempts !== existing.maxAttempts;
 
   if (!changed) return existing;
@@ -96,8 +103,10 @@ async function updateActiveExistingJob(args: {
       payload,
       priority: Math.max(existing.priority, priority),
       availableAt:
-        existing.status === QueueJobStatus.PENDING && priorityIncreased
-          ? new Date()
+        priorityIncreased && existing.status === QueueJobStatus.PENDING
+          ? (availableAt ?? new Date())
+          : availabilityPulledForward
+            ? availableAt
           : undefined,
       maxAttempts,
     },
@@ -157,6 +166,7 @@ async function handleExistingDedupedJob(args: {
       payload,
       priority,
       maxAttempts,
+      availableAt: input.availableAt,
     });
   }
 
@@ -410,8 +420,9 @@ async function parkBlockedAutomaticBackupJobs(args: {
   client: DatabaseClient;
   activeJobs: ActiveJobSummary[];
   smartPinMaxBytes: number;
+  deferMs: number;
 }) {
-  const { client, activeJobs, smartPinMaxBytes } = args;
+  const { client, activeJobs, smartPinMaxBytes, deferMs } = args;
   const automaticPendingJobs = activeJobs.filter(
     (job) =>
       job.kind === QueueJobKind.BACKUP_ARTWORK &&
@@ -448,8 +459,9 @@ async function parkBlockedAutomaticBackupJobs(args: {
       status: QueueJobStatus.PENDING,
     },
     data: {
-      status: QueueJobStatus.CANCELLED,
-      finishedAt: new Date(),
+      availableAt: new Date(Date.now() + deferMs),
+      startedAt: null,
+      finishedAt: null,
       lastError: null,
     },
   });
@@ -674,6 +686,7 @@ export async function rebalanceAutomaticBackupQueue(client: DatabaseClient) {
     client,
     activeJobs: initialActiveJobs,
     smartPinMaxBytes: policy.smartPinMaxBytes,
+    deferMs: policy.smartPinDeferMs,
   });
   const activeJobs =
     parkedBlockedJobs > 0 ? await fetchActiveJobs(client) : initialActiveJobs;

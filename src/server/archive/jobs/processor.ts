@@ -1,4 +1,8 @@
-import { type QueueJob, QueueJobKind, QueueJobStatus } from "~/server/prisma-client";
+import {
+  type QueueJob,
+  QueueJobKind,
+  QueueJobStatus,
+} from "~/server/prisma-client";
 import {
   backupArtworkJobPayloadSchema,
   foundationJobPayloadSchema,
@@ -19,7 +23,10 @@ import {
   recoverStaleRunningJobs,
 } from "./queue";
 import { backupArtwork } from "./backup";
-import { artworkBlockedBySmartBudget } from "./smart-budget";
+import {
+  artworkBlockedBySmartBudget,
+  type SmartBudgetArtworkSnapshot,
+} from "./smart-budget";
 import {
   ingestContractToken,
   ingestFoundationMintUrl,
@@ -129,26 +136,49 @@ async function runJob(args: {
   }
 }
 
-async function jobBlockedBySmartBudget(args: {
-  client: DatabaseClient;
-  job: QueueJob;
-  smartPinMaxBytes: number;
-}) {
-  const { client, job, smartPinMaxBytes } = args;
-
+function budgetArtworkIdForJob(job: QueueJob) {
   if (
     job.kind !== QueueJobKind.BACKUP_ARTWORK ||
     shouldBypassSmartBudget(job.priority)
   ) {
-    return false;
+    return null;
   }
 
-  const payload = backupArtworkJobPayloadSchema.parse(
-    JSON.parse(job.payload) as unknown,
+  let parsedPayload: unknown;
+  try {
+    parsedPayload = JSON.parse(job.payload) as unknown;
+  } catch {
+    return null;
+  }
+
+  const payload = backupArtworkJobPayloadSchema.safeParse(parsedPayload);
+  return payload.success ? payload.data.artworkId : null;
+}
+
+async function loadSmartBudgetArtworks(
+  client: DatabaseClient,
+  jobs: QueueJob[],
+) {
+  const artworkIds = Array.from(
+    new Set(
+      jobs
+        .map((job) => budgetArtworkIdForJob(job))
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
-  const artwork = await client.artwork.findUnique({
-    where: { id: payload.artworkId },
+
+  if (artworkIds.length === 0) {
+    return new Map<string, SmartBudgetArtworkSnapshot>();
+  }
+
+  const artworks = await client.artwork.findMany({
+    where: {
+      id: {
+        in: artworkIds,
+      },
+    },
     select: {
+      id: true,
       metadataRoot: {
         select: {
           backupStatus: true,
@@ -170,11 +200,9 @@ async function jobBlockedBySmartBudget(args: {
     },
   });
 
-  if (!artwork) {
-    return false;
-  }
-
-  return artworkBlockedBySmartBudget(artwork, smartPinMaxBytes);
+  return new Map<string, SmartBudgetArtworkSnapshot>(
+    artworks.map((artwork) => [artwork.id, artwork]),
+  );
 }
 
 async function selectProcessableJobs(client: DatabaseClient, limit: number) {
@@ -198,19 +226,18 @@ async function selectProcessableJobs(client: DatabaseClient, limit: number) {
     return [];
   }
 
-  const policy = await getArchivePolicyState(client);
+  const [policy, artworkById] = await Promise.all([
+    getArchivePolicyState(client),
+    loadSmartBudgetArtworks(client, jobs),
+  ]);
   const selected: QueueJob[] = [];
 
   for (const job of jobs) {
     if (selected.length >= limit) break;
 
-    if (
-      await jobBlockedBySmartBudget({
-        client,
-        job,
-        smartPinMaxBytes: policy.smartPinMaxBytes,
-      })
-    ) {
+    const artworkId = budgetArtworkIdForJob(job);
+    const artwork = artworkId ? (artworkById.get(artworkId) ?? null) : null;
+    if (artworkBlockedBySmartBudget(artwork, policy.smartPinMaxBytes)) {
       continue;
     }
 

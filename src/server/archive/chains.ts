@@ -2,11 +2,7 @@ import { createPublicClient, http } from "viem";
 import { base, mainnet } from "viem/chains";
 
 import { env } from "~/env";
-import {
-  BASE_CHAIN_ID,
-  ETHEREUM_CHAIN_ID,
-  chainLabel,
-} from "~/lib/chain-label";
+import { BASE_CHAIN_ID, ETHEREUM_CHAIN_ID } from "~/lib/chain-label";
 
 export {
   BASE_CHAIN_ID,
@@ -20,10 +16,6 @@ export {
   isSupportedChainId,
 } from "~/lib/chain-label";
 
-function rpcEnvNameFor(chainId: number): "BASE_RPC_URL" | "ETHEREUM_RPC_URL" {
-  return chainId === BASE_CHAIN_ID ? "BASE_RPC_URL" : "ETHEREUM_RPC_URL";
-}
-
 function rpcUrlFor(chainId: number): string | undefined {
   if (chainId === BASE_CHAIN_ID) return env.BASE_RPC_URL;
   if (chainId === ETHEREUM_CHAIN_ID) return env.ETHEREUM_RPC_URL;
@@ -36,15 +28,10 @@ function viemChainFor(chainId: number) {
 
 export function getRpcClient(chainId: number) {
   const rpcUrl = rpcUrlFor(chainId);
-  if (!rpcUrl) {
-    throw new Error(
-      `${rpcEnvNameFor(chainId)} is required for ${chainLabel(chainId)} RPC reads (token URIs, block scans).`,
-    );
-  }
 
   return createPublicClient({
     chain: viemChainFor(chainId),
-    transport: http(rpcUrl),
+    transport: rpcUrl ? http(rpcUrl) : http(),
   });
 }
 

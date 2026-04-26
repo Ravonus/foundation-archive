@@ -33,6 +33,7 @@ function cycleHadActivity(input: {
   crawl: {
     scannedContracts: number;
     queuedTokens: number;
+    completedCrawlerPass: boolean;
   };
   marketIndexer: {
     scannedRanges: number;
@@ -80,6 +81,7 @@ function disabledCrawlerResult() {
   return {
     scannedContracts: 0,
     queuedTokens: 0,
+    completedCrawlerPass: false,
     pausedForBacklog: false,
     backlogMaxPendingJobs: 0,
     backlogHeadroomJobs: 0,
@@ -186,6 +188,7 @@ async function runIngressCycle(
         const marketIndexer = await runFoundationMarketIndexerTick(client);
         const budget = await maybeAdvanceSmartPinBudget(client, {
           completedFoundationPass: discovery.completedFoundationPass,
+          completedCrawlerPass: crawl.completedCrawlerPass,
         });
 
         return {
