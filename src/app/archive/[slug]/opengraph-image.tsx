@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 import { db } from "~/server/db";
-import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
+import { resolveFoundationProfileByUsername } from "~/server/archive/profile-assets";
 import { resolveArchivedLocalUrl } from "~/server/archive/dependencies";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import {
@@ -79,9 +79,10 @@ async function loadArchiveOgData(slug: string) {
       : (localPreview ?? artwork.staticPreviewUrl ?? artwork.previewUrl);
 
   const artistProfile = artwork.artistUsername
-    ? await fetchFoundationUserByUsername(artwork.artistUsername).catch(
-        () => null,
-      )
+    ? await resolveFoundationProfileByUsername(
+        db,
+        artwork.artistUsername,
+      ).catch(() => null)
     : null;
 
   return { artwork, previewCandidate, artistProfile };
@@ -247,8 +248,7 @@ function ArchiveOgFrame({
 
         <div
           style={{
-            fontFamily:
-              '"Fraunces", "Inter", system-ui, Georgia, serif',
+            fontFamily: '"Fraunces", "Inter", system-ui, Georgia, serif',
             fontSize: 58,
             fontWeight: 600,
             marginTop: 12,
@@ -401,24 +401,22 @@ export default async function ArchiveOgImage({
 
   if (!data) {
     return new ImageResponse(
-      (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: OG_THEME.background,
-            color: OG_THEME.ink,
-            fontSize: 48,
-            fontWeight: 700,
-            fontFamily: '"Noto Sans", system-ui, -apple-system, sans-serif',
-          }}
-        >
-          Agorix
-        </div>
-      ),
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: OG_THEME.background,
+          color: OG_THEME.ink,
+          fontSize: 48,
+          fontWeight: 700,
+          fontFamily: '"Noto Sans", system-ui, -apple-system, sans-serif',
+        }}
+      >
+        Agorix
+      </div>,
       {
         ...size,
         headers: {
@@ -433,7 +431,7 @@ export default async function ArchiveOgImage({
 
   const [previewInlined, avatarInlined] = await Promise.all([
     inlineImage(absoluteUrl(previewCandidate)),
-    inlineImage(artistProfile?.profileImageUrl),
+    inlineImage(absoluteUrl(artistProfile?.profileImageUrl)),
   ]);
 
   const title = firstLine(artwork.title, 90) ?? "Untitled";
@@ -495,23 +493,19 @@ export default async function ArchiveOgImage({
           style: "normal" as const,
         }
       : null,
-  ].filter(
-    (font): font is NonNullable<typeof font> => Boolean(font),
-  );
+  ].filter((font): font is NonNullable<typeof font> => Boolean(font));
 
   return new ImageResponse(
-    (
-      <ArchiveOgFrame
-        previewUrl={previewInlined?.dataUrl ?? null}
-        title={title}
-        artistLabel={artistLabel}
-        artistHandle={artistHandle}
-        artistAvatarUrl={avatarInlined?.dataUrl ?? null}
-        artistInitials={artistInitials}
-        collectionName={collectionName}
-        description={description}
-      />
-    ),
+    <ArchiveOgFrame
+      previewUrl={previewInlined?.dataUrl ?? null}
+      title={title}
+      artistLabel={artistLabel}
+      artistHandle={artistHandle}
+      artistAvatarUrl={avatarInlined?.dataUrl ?? null}
+      artistInitials={artistInitials}
+      collectionName={collectionName}
+      description={description}
+    />,
     {
       ...size,
       fonts: fonts.length > 0 ? fonts : undefined,

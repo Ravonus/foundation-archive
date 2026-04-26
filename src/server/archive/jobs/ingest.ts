@@ -1,9 +1,7 @@
-import {
-  BackupStatus,
-  QueueJobStatus,
-} from "~/server/prisma-client";
+import { BackupStatus, QueueJobStatus } from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { fetchAllFoundationWorksByCreator } from "~/server/archive/foundation-api";
+import { resolveFoundationProfileByUsername } from "~/server/archive/profile-assets";
 import {
   contractScanJobPayloadSchema,
   publicArchiveProfileInputSchema,
@@ -124,7 +122,9 @@ export async function requestArtworkArchive(
     await resetRootsForManualRetry(client, artwork);
   }
 
-  const canBackupDirectly = Boolean(artwork && canBackupArtworkDirectly(artwork));
+  const canBackupDirectly = Boolean(
+    artwork && canBackupArtworkDirectly(artwork),
+  );
 
   const job =
     canBackupDirectly && artwork
@@ -192,6 +192,12 @@ export async function requestProfileArchive(
   rawInput: unknown,
 ) {
   const input = publicArchiveProfileInputSchema.parse(rawInput);
+  if (input.username) {
+    await resolveFoundationProfileByUsername(client, input.username).catch(
+      () => null,
+    );
+  }
+
   const publicJobsAhead = await client.queueJob.count({
     where: {
       status: {

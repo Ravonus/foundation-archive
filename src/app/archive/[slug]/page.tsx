@@ -13,11 +13,8 @@ import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
 import { ProfileHero } from "~/app/_components/profile/profile-hero";
 import { ArtworkActionsPanelShell } from "~/app/_components/web3/artwork-actions-panel-shell";
-import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
-import {
-  chainExplorerAddressUrl,
-  chainLabel,
-} from "~/lib/chain-label";
+import { resolveFoundationProfileByUsername } from "~/server/archive/profile-assets";
+import { chainExplorerAddressUrl, chainLabel } from "~/lib/chain-label";
 import { formatDate, shortAddress } from "~/lib/utils";
 import {
   readDependencyManifest,
@@ -107,7 +104,9 @@ export async function generateMetadata(
   }
 
   const artistLabel = metadataArtistLabel(artwork);
-  const collection = artwork.collectionName ? ` from ${artwork.collectionName}` : "";
+  const collection = artwork.collectionName
+    ? ` from ${artwork.collectionName}`
+    : "";
   const ogTitle = `${artwork.title} by ${artistLabel}${collection} — preserved on Agorix`;
   const rawDescription = metadataDescription(artwork);
   const extended = `${rawDescription} · Preserved on Agorix, a public Foundation archive.`;
@@ -157,7 +156,6 @@ type DerivedView = {
   imagePreviewUrl: string | null;
   canRenderBrowserVideo: boolean;
   canRenderBrowserModel: boolean;
-  hasShareableRoots: boolean;
   health: Health;
   copy: ReturnType<typeof healthCopy>;
 };
@@ -297,9 +295,6 @@ async function deriveView(artwork: ArtworkWithRelations): Promise<DerivedView> {
       Boolean(browserMediaUrl) && artwork.mediaKind === "VIDEO",
     canRenderBrowserModel:
       Boolean(browserMediaUrl) && artwork.mediaKind === "MODEL",
-    hasShareableRoots: Boolean(
-      artwork.metadataRoot?.cid ?? artwork.mediaRoot?.cid,
-    ),
     health,
     copy: healthCopy(health),
   };
@@ -427,7 +422,7 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
         { limit: 50 },
       ),
       artwork.artistUsername
-        ? fetchFoundationUserByUsername(artwork.artistUsername).catch(
+        ? resolveFoundationProfileByUsername(db, artwork.artistUsername).catch(
             () => null,
           )
         : Promise.resolve(null),
@@ -530,7 +525,7 @@ function ArtistHero({
     (artistUsername ? `@${artistUsername}` : null) ??
     (artistWallet ? shortAddress(artistWallet) : "Unknown artist");
   const usernameBadge =
-    profile.username ?? artistUsername
+    (profile.username ?? artistUsername)
       ? `@${profile.username ?? artistUsername ?? ""}`
       : undefined;
   const archiveHref = profile.username
@@ -543,7 +538,7 @@ function ArtistHero({
 
   const aside = archiveHref ? (
     <div className="rounded-[1.4rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-      <p className="font-mono text-[0.62rem] uppercase tracking-[0.24em] text-[var(--color-muted)]">
+      <p className="font-mono text-[0.62rem] tracking-[0.24em] text-[var(--color-muted)] uppercase">
         Archive
       </p>
       <p className="mt-2 text-sm text-[var(--color-body)]">
@@ -564,9 +559,7 @@ function ArtistHero({
     <ProfileHero
       name={displayName}
       nameHref={archiveHref ?? undefined}
-      seed={
-        profile.username ?? artistUsername ?? artistWallet ?? displayName
-      }
+      seed={profile.username ?? artistUsername ?? artistWallet ?? displayName}
       eyebrow="Artist"
       usernameBadge={usernameBadge}
       subtitle={artistWallet ? shortAddress(artistWallet) : undefined}
@@ -817,6 +810,7 @@ function DesktopSharePanel({ artwork, view }: SectionProps) {
         foundationUrl: artwork.foundationUrl,
         artistUsername: artwork.artistUsername,
         metadataCid: artwork.metadataRoot?.cid,
+        mediaCid: artwork.mediaRoot?.cid,
         metadataUrl: artwork.metadataUrl,
         sourceUrl: artwork.sourceUrl,
         mediaUrl:
@@ -825,7 +819,6 @@ function DesktopSharePanel({ artwork, view }: SectionProps) {
           view.browserMediaUrl ??
           artwork.previewUrl ??
           artwork.staticPreviewUrl,
-        mediaCid: artwork.mediaRoot?.cid,
       }}
     />
   );

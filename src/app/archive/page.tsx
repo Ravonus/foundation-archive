@@ -10,6 +10,7 @@ import {
 } from "~/server/archive/foundation-api";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { attachMarketStateToGridItems } from "~/server/archive/foundation-market";
+import { archiveFoundationProfile } from "~/server/archive/profile-assets";
 import {
   persistDiscoveredFoundationWorks,
   PUBLIC_QUEUE_PRIORITY,
@@ -55,7 +56,15 @@ const EMPTY_DISCOVERY: DiscoveryResult = { profiles: [], works: [] };
 
 async function runDiscovery(query: string): Promise<DiscoveryResult> {
   if (!query) return EMPTY_DISCOVERY;
-  return discoverFoundationWorks(query).catch(() => EMPTY_DISCOVERY);
+  const discovery = await discoverFoundationWorks(query).catch(
+    () => EMPTY_DISCOVERY,
+  );
+  const profiles = await Promise.all(
+    discovery.profiles.map((profile) =>
+      archiveFoundationProfile(db, profile).catch(() => profile),
+    ),
+  );
+  return { ...discovery, profiles };
 }
 
 type MergeGridItemsInput = {

@@ -4,6 +4,11 @@ import { getAddress } from "viem";
 import { db } from "~/server/db";
 import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
 import {
+  archiveFoundationProfile,
+  getCachedFoundationProfileByAddress,
+  getCachedFoundationProfileByUsername,
+} from "~/server/archive/profile-assets";
+import {
   AGORIX_LOGOS,
   OG_THEME,
   inlineImage,
@@ -25,7 +30,6 @@ export const contentType = "image/png";
 // through without a redeploy.
 export const revalidate = 3600;
 
-
 type OgProfile = {
   username: string | null;
   name: string | null;
@@ -36,6 +40,111 @@ type OgProfile = {
 };
 
 const FOUNDATION_LOOKUP_TIMEOUT_MS = 1_800;
+const SITE_URL = (() => {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (raw && /^https?:/.test(raw)) return raw.replace(/\/$/, "");
+  return "https://foundation.agorix.io";
+})();
+
+function absoluteUrl(pathOrUrl: string | null | undefined) {
+  if (!pathOrUrl) return null;
+  if (/^https?:/.test(pathOrUrl)) return pathOrUrl;
+  if (pathOrUrl.startsWith("/")) return `${SITE_URL}${pathOrUrl}`;
+  return `${SITE_URL}/${pathOrUrl}`;
+}
+
+function toOgProfile(input: {
+  profile: {
+    accountAddress: string;
+    username: string | null;
+    name: string | null;
+    profileImageUrl: string | null;
+    coverImageUrl: string | null;
+    bio: string | null;
+  };
+  fallbackUsername: string | null;
+  fallbackAddress: string | null;
+}): OgProfile {
+  return {
+    username: input.profile.username ?? input.fallbackUsername,
+    name: input.profile.name ?? null,
+    profileImageUrl: input.profile.profileImageUrl ?? null,
+    coverImageUrl: input.profile.coverImageUrl ?? null,
+    bio: input.profile.bio ?? null,
+    accountAddress:
+      safeGetAddress(input.profile.accountAddress)?.toLowerCase() ??
+      input.fallbackAddress,
+  };
+}
+
+async function fetchLiveOgProfile(username: string | null) {
+  if (!username) return null;
+  const foundationProfile = await withTimeout(
+    fetchFoundationUserByUsername(username),
+    FOUNDATION_LOOKUP_TIMEOUT_MS,
+  ).catch(() => null);
+  if (!foundationProfile) return null;
+  return archiveFoundationProfile(db, foundationProfile).catch(
+    () => foundationProfile,
+  );
+}
+
+async function fetchCachedOgProfile(input: {
+  normalizedUsername: string | null;
+  normalizedAddress: string | null;
+}) {
+  if (input.normalizedUsername) {
+    return getCachedFoundationProfileByUsername(
+      db,
+      input.normalizedUsername,
+    ).catch(() => null);
+  }
+  if (input.normalizedAddress) {
+    return getCachedFoundationProfileByAddress(
+      db,
+      input.normalizedAddress,
+    ).catch(() => null);
+  }
+  return null;
+}
+
+async function archivedOgProfileFallback(input: {
+  key: string;
+  normalizedUsername: string | null;
+  normalizedAddress: string | null;
+}): Promise<OgProfile> {
+  const archived = await db.artwork
+    .findFirst({
+      where: input.normalizedUsername
+        ? {
+            artistUsername: {
+              equals: input.normalizedUsername,
+              mode: "insensitive",
+            },
+          }
+        : { artistWallet: input.normalizedAddress ?? input.key },
+      orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
+      select: {
+        artistName: true,
+        artistUsername: true,
+        artistWallet: true,
+      },
+    })
+    .catch(() => null);
+
+  const archivedWalletAddress = archived?.artistWallet
+    ? (safeGetAddress(archived.artistWallet)?.toLowerCase() ?? null)
+    : null;
+
+  return {
+    username: archived?.artistUsername ?? input.normalizedUsername,
+    name: archived?.artistName ?? null,
+    profileImageUrl: null,
+    coverImageUrl: null,
+    bio: null,
+    accountAddress: archivedWalletAddress ?? input.normalizedAddress,
+  };
+}
 
 /// Lean profile lookup for the OG route — skips the
 /// `resolveProfileFromKey` path used by the full page render because its
@@ -50,74 +159,35 @@ async function resolveOgProfile(profile: string): Promise<OgProfile | null> {
   const isAddress = /^0x[a-fA-F0-9]{40}$/.test(key);
   const normalizedUsername = isAddress ? null : key.replace(/^@+/, "");
   const normalizedAddress = isAddress
-    ? safeGetAddress(key)?.toLowerCase() ?? null
+    ? (safeGetAddress(key)?.toLowerCase() ?? null)
     : null;
 
-  let foundationProfile: Awaited<
-    ReturnType<typeof fetchFoundationUserByUsername>
-  > | null = null;
-  if (normalizedUsername) {
-    foundationProfile = await withTimeout(
-      fetchFoundationUserByUsername(normalizedUsername),
-      FOUNDATION_LOOKUP_TIMEOUT_MS,
-    ).catch(() => null);
+  const liveProfile = await fetchLiveOgProfile(normalizedUsername);
+  if (liveProfile) {
+    return toOgProfile({
+      profile: liveProfile,
+      fallbackUsername: normalizedUsername,
+      fallbackAddress: normalizedAddress,
+    });
   }
 
-  if (foundationProfile) {
-    const addressFromFoundation = foundationProfile.accountAddress
-      ? safeGetAddress(foundationProfile.accountAddress)?.toLowerCase() ?? null
-      : null;
-    return {
-      username: foundationProfile.username ?? normalizedUsername,
-      name: foundationProfile.name ?? null,
-      profileImageUrl: foundationProfile.profileImageUrl ?? null,
-      coverImageUrl: foundationProfile.coverImageUrl ?? null,
-      bio: foundationProfile.bio ?? null,
-      accountAddress: addressFromFoundation ?? normalizedAddress,
-    };
+  const cachedProfile = await fetchCachedOgProfile({
+    normalizedUsername,
+    normalizedAddress,
+  });
+  if (cachedProfile) {
+    return toOgProfile({
+      profile: cachedProfile,
+      fallbackUsername: normalizedUsername,
+      fallbackAddress: normalizedAddress,
+    });
   }
 
-  // DB fallback — populate at least name/username/address so the card
-  // always has headline text even when Foundation is unreachable.
-  const archived = await db.artwork
-    .findFirst({
-      where: normalizedUsername
-        ? {
-            artistUsername: { equals: normalizedUsername, mode: "insensitive" },
-          }
-        : { artistWallet: normalizedAddress ?? key },
-      orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
-      select: {
-        artistName: true,
-        artistUsername: true,
-        artistWallet: true,
-      },
-    })
-    .catch(() => null);
-
-  if (!archived) {
-    return {
-      username: normalizedUsername,
-      name: null,
-      profileImageUrl: null,
-      coverImageUrl: null,
-      bio: null,
-      accountAddress: normalizedAddress,
-    };
-  }
-
-  const archivedWalletAddress = archived.artistWallet
-    ? (safeGetAddress(archived.artistWallet)?.toLowerCase() ?? null)
-    : null;
-
-  return {
-    username: archived.artistUsername ?? normalizedUsername,
-    name: archived.artistName,
-    profileImageUrl: null,
-    coverImageUrl: null,
-    bio: null,
-    accountAddress: archivedWalletAddress ?? normalizedAddress,
-  };
+  return archivedOgProfileFallback({
+    key,
+    normalizedUsername,
+    normalizedAddress,
+  });
 }
 
 function safeGetAddress(value: string) {
@@ -340,8 +410,7 @@ function OgFrame({
             <div
               style={{
                 display: "flex",
-                fontFamily:
-                  '"Fraunces", "Inter", system-ui, Georgia, serif',
+                fontFamily: '"Fraunces", "Inter", system-ui, Georgia, serif',
                 fontSize: 82,
                 fontWeight: 600,
                 color: OG_THEME.ink,
@@ -375,8 +444,7 @@ function OgFrame({
           </div>
           <div
             style={{
-              fontFamily:
-                '"Fraunces", "Inter", system-ui, Georgia, serif',
+              fontFamily: '"Fraunces", "Inter", system-ui, Georgia, serif',
               fontSize: 64,
               fontWeight: 600,
               marginTop: 8,
@@ -467,8 +535,8 @@ export default async function ProfileOgImage({
   const resolved = await resolveOgProfile(profile);
 
   const [bannerInlined, avatarInlined] = await Promise.all([
-    inlineImage(resolved?.coverImageUrl),
-    inlineImage(resolved?.profileImageUrl),
+    inlineImage(absoluteUrl(resolved?.coverImageUrl)),
+    inlineImage(absoluteUrl(resolved?.profileImageUrl)),
   ]);
 
   const displayName =
@@ -528,29 +596,24 @@ export default async function ProfileOgImage({
           style: "normal" as const,
         }
       : null,
-  ].filter(
-    (font): font is NonNullable<typeof font> => Boolean(font),
-  );
+  ].filter((font): font is NonNullable<typeof font> => Boolean(font));
 
-  const seed =
-    resolved?.username ?? resolved?.accountAddress ?? displayName;
+  const seed = resolved?.username ?? resolved?.accountAddress ?? displayName;
 
   return new ImageResponse(
-    (
-      <OgFrame
-        bannerUrl={bannerInlined?.dataUrl ?? null}
-        bannerBrightness={
-          bannerInlined?.brightness ?? PLACEHOLDER_BANNER_BRIGHTNESS
-        }
-        avatarUrl={avatarInlined?.dataUrl ?? null}
-        avatarInitials={avatarInitials}
-        displayName={displayName}
-        handle={handle}
-        subtitle={subtitle}
-        bio={bio}
-        seed={seed}
-      />
-    ),
+    <OgFrame
+      bannerUrl={bannerInlined?.dataUrl ?? null}
+      bannerBrightness={
+        bannerInlined?.brightness ?? PLACEHOLDER_BANNER_BRIGHTNESS
+      }
+      avatarUrl={avatarInlined?.dataUrl ?? null}
+      avatarInitials={avatarInitials}
+      displayName={displayName}
+      handle={handle}
+      subtitle={subtitle}
+      bio={bio}
+      seed={seed}
+    />,
     {
       ...size,
       fonts: fonts.length > 0 ? fonts : undefined,

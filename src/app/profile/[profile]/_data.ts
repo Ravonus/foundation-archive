@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 import { getAddress } from "viem";
 
 import { type ArtworkGridItem } from "~/app/_components/artwork-grid";
-import { toArchivedGridItem, toDiscoveredGridItem } from "~/app/archive/_grid-item";
+import {
+  toArchivedGridItem,
+  toDiscoveredGridItem,
+} from "~/app/archive/_grid-item";
 import {
   type ArchivedArtworkRow,
   artworkKey,
@@ -13,9 +16,14 @@ import {
   tryFetchFoundationProfileByUsername,
 } from "~/server/archive/foundation";
 import {
+  archiveFoundationProfile,
+  getCachedFoundationProfileByAddress,
+  getCachedFoundationProfileByUsername,
+  resolveFoundationProfileByUsername,
+} from "~/server/archive/profile-assets";
+import {
   discoverFoundationWorks,
   fetchAllFoundationWorksByCreator,
-  fetchFoundationUserByUsername,
   fetchFoundationWorksByCreatorPage,
   type FoundationLookupWork,
 } from "~/server/archive/foundation-api";
@@ -42,9 +50,9 @@ const ARCHIVED_SELECT = {
   collectionName: true,
   tokenId: true,
   contractAddress: true,
-  metadataUrl: true,
   foundationContractType: true,
   mediaKind: true,
+  metadataUrl: true,
   metadataStatus: true,
   mediaStatus: true,
   sourceUrl: true,
@@ -144,6 +152,18 @@ async function resolveProfileFromAddressKey(
   key: string,
 ): Promise<ResolvedProfile> {
   const accountAddress = normalizeProfileAddress(key);
+  const cached = await getCachedFoundationProfileByAddress(db, accountAddress);
+  if (cached) {
+    return {
+      ...emptyResolvedProfile(accountAddress),
+      username: cached.username,
+      name: cached.name,
+      profileImageUrl: cached.profileImageUrl,
+      coverImageUrl: cached.coverImageUrl,
+      bio: cached.bio,
+    };
+  }
+
   const archived = await lookupArchivedProfileByWallet(accountAddress);
 
   return {
@@ -159,18 +179,22 @@ async function resolveProfileFromUsernameKey(
 ): Promise<ResolvedProfile> {
   const normalizedKey = key.replace(/^@+/, "");
   const foundProfile =
-    (await fetchFoundationUserByUsername(normalizedKey)) ??
+    (await resolveFoundationProfileByUsername(db, normalizedKey)) ??
     (await discoverFoundationWorks(normalizedKey)).profiles[0] ??
+    (await getCachedFoundationProfileByUsername(db, normalizedKey)) ??
     null;
 
   if (foundProfile) {
+    const archivedProfile = await archiveFoundationProfile(db, foundProfile);
     return {
-      ...emptyResolvedProfile(normalizeProfileAddress(foundProfile.accountAddress)),
-      username: foundProfile.username ?? normalizedKey,
-      name: foundProfile.name ?? null,
-      profileImageUrl: foundProfile.profileImageUrl ?? null,
-      coverImageUrl: foundProfile.coverImageUrl ?? null,
-      bio: foundProfile.bio ?? null,
+      ...emptyResolvedProfile(
+        normalizeProfileAddress(archivedProfile.accountAddress),
+      ),
+      username: archivedProfile.username ?? normalizedKey,
+      name: archivedProfile.name ?? null,
+      profileImageUrl: archivedProfile.profileImageUrl ?? null,
+      coverImageUrl: archivedProfile.coverImageUrl ?? null,
+      bio: archivedProfile.bio ?? null,
     };
   }
 
@@ -199,6 +223,22 @@ export function enrichProfileFromWorks(
   };
 }
 
+function mergeResolvedProfile(
+  resolved: ResolvedProfile,
+  profile: Awaited<ReturnType<typeof getCachedFoundationProfileByUsername>>,
+): ResolvedProfile {
+  if (!profile) return resolved;
+  return {
+    ...resolved,
+    accountAddress: normalizeProfileAddress(profile.accountAddress),
+    username: profile.username ?? resolved.username,
+    name: profile.name ?? resolved.name ?? null,
+    profileImageUrl: profile.profileImageUrl ?? resolved.profileImageUrl,
+    bio: profile.bio ?? resolved.bio ?? null,
+    coverImageUrl: profile.coverImageUrl ?? resolved.coverImageUrl ?? null,
+  };
+}
+
 export async function hydrateProfileFromFoundation(
   resolved: ResolvedProfile,
 ): Promise<ResolvedProfile> {
@@ -207,19 +247,11 @@ export async function hydrateProfileFromFoundation(
   const foundationProfile = await tryFetchFoundationProfileByUsername(
     resolved.username,
   ).catch(() => null);
-  if (!foundationProfile) return resolved;
+  const profile = foundationProfile
+    ? await archiveFoundationProfile(db, foundationProfile)
+    : await getCachedFoundationProfileByUsername(db, resolved.username);
 
-  return {
-    ...resolved,
-    accountAddress: normalizeProfileAddress(foundationProfile.accountAddress),
-    username: foundationProfile.username ?? resolved.username,
-    name: foundationProfile.name ?? resolved.name ?? null,
-    profileImageUrl:
-      foundationProfile.profileImageUrl ?? resolved.profileImageUrl,
-    bio: foundationProfile.bio ?? resolved.bio ?? null,
-    coverImageUrl:
-      foundationProfile.coverImageUrl ?? resolved.coverImageUrl ?? null,
-  };
+  return mergeResolvedProfile(resolved, profile);
 }
 
 export function normalizeProfileView(view: string | undefined): ProfileView {

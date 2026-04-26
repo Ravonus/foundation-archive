@@ -211,6 +211,46 @@ model Artwork {
   @@index([foundationContractType])
 }
 
+model FoundationProfile {
+  id              String    @id @default(cuid())
+  accountAddress  String    @unique
+  username        String?
+  name            String?
+  bio             String?
+  foundationUrl   String?
+  profileImageUrl String?
+  coverImageUrl   String?
+  lastFetchedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assets FoundationProfileAsset[]
+
+  @@index([username])
+  @@index([updatedAt])
+}
+
+model FoundationProfileAsset {
+  id               String       @id @default(cuid())
+  profileId        String
+  kind             String
+  sourceUrl        String
+  localPath        String?
+  mimeType         String?
+  byteSize         Int?
+  status           BackupStatus @default(PENDING)
+  lastDownloadedAt DateTime?
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  profile FoundationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, kind, sourceUrl])
+  @@index([kind])
+  @@index([status])
+}
+
 model BackupRun {
   id              String       @id @default(cuid())
   artworkId       String
@@ -440,31 +480,31 @@ model RelayPairing {
 }
 
 model RelayDevice {
-  id                 String    @id @default(cuid())
-  ownerToken         String
-  deviceLabel        String
-  deviceSecret       String    @unique
-  relayEnabled       Boolean   @default(true)
-  lastSeenAt         DateTime?
-  lastError          String?
-  lastCompletedJobAt DateTime?
-  tunnelEnabled      Boolean   @default(false)
-  tunnelId           String?
-  tunnelHostname     String?
-  tunnelSubdomain    String?
-  tunnelDnsRecordId  String?
-  tunnelToken        String?
+  id                  String    @id @default(cuid())
+  ownerToken          String
+  deviceLabel         String
+  deviceSecret        String    @unique
+  relayEnabled        Boolean   @default(true)
+  lastSeenAt          DateTime?
+  lastError           String?
+  lastCompletedJobAt  DateTime?
+  tunnelEnabled       Boolean   @default(false)
+  tunnelId            String?
+  tunnelHostname      String?
+  tunnelSubdomain     String?
+  tunnelDnsRecordId   String?
+  tunnelToken         String?
   tunnelProvisionedAt DateTime?
-  tunnelLastError    String?
+  tunnelLastError     String?
   // Second subdomain on the same cloudflared tunnel that proxies WSS to the
   // bridge's Kubo WebSocket listener. Makes the desktop node publicly
   // dialable over libp2p/ws so ipfs.io / dweb.link can fetch pinned
   // content instead of timing out on NAT-bound TCP/UDP 4001 swarm addrs.
-  libp2pHostname     String?
-  libp2pSubdomain    String?
-  libp2pDnsRecordId  String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  libp2pHostname      String?
+  libp2pSubdomain     String?
+  libp2pDnsRecordId   String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   claimedPairings RelayPairing[]
   jobs            RelayJob[]
@@ -496,24 +536,24 @@ model RelayJob {
 }
 
 model PinHost {
-  id              String          @id @default(cuid())
-  ownerToken      String
-  label           String
-  presetKey       String
-  kind            PinHostKind
-  endpointUrl     String
+  id               String          @id @default(cuid())
+  ownerToken       String
+  label            String
+  presetKey        String
+  kind             PinHostKind
+  endpointUrl      String
   publicGatewayUrl String?
-  authMode        PinHostAuthMode @default(BEARER)
-  authToken       String?
-  authUsername    String?
-  authPassword    String?
-  authHeaderName  String?
-  enabled         Boolean         @default(true)
-  autoPin         Boolean         @default(true)
-  lastPinnedAt    DateTime?
-  lastError       String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  authMode         PinHostAuthMode @default(BEARER)
+  authToken        String?
+  authUsername     String?
+  authPassword     String?
+  authHeaderName   String?
+  enabled          Boolean         @default(true)
+  autoPin          Boolean         @default(true)
+  lastPinnedAt     DateTime?
+  lastError        String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   pins HostedPin[]
 
