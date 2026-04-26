@@ -3,7 +3,6 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { ChevronLeft, ChevronRight, Filter, LoaderCircle } from "lucide-react";
-import { motion } from "motion/react";
 
 import type {
   BridgePinInventoryItem,
@@ -262,8 +261,6 @@ export function SavedWorksBrowser({
     pushParams({ pinCursor: clamped === 0 ? null : String(clamped) });
   };
 
-  const largeGrid = pageItems.length > 9;
-
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3 sm:p-4">
@@ -277,21 +274,7 @@ export function SavedWorksBrowser({
             : "No pins match this filter. Try a different one or go back to All."}
         </div>
       ) : (
-        <motion.div
-          className="grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3"
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-40px" }}
-          variants={{
-            hidden: {},
-            visible: {
-              transition: {
-                staggerChildren: largeGrid ? 0 : 0.06,
-                delayChildren: 0.05,
-              },
-            },
-          }}
-        >
+        <div className="grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
           {pageItems.map((item) => (
             <PinWorkCard
               key={item.cid}
@@ -299,10 +282,9 @@ export function SavedWorksBrowser({
               matches={pinMatchesForItem(item, pinEnrichment)}
               verification={pinVerificationForItem(item, pinVerifications)}
               verifying={verifying}
-              largeGrid={largeGrid}
             />
           ))}
-        </motion.div>
+        </div>
       )}
 
       <Pagination

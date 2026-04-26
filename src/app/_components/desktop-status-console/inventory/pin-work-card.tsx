@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { motion } from "motion/react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -32,8 +31,6 @@ import {
 } from "../types";
 
 export type PinHealth = "saved" | "unreachable" | "checking" | "missing";
-
-const EASE = [0.22, 1, 0.36, 1] as const;
 
 function healthClass(health: PinHealth) {
   switch (health) {
@@ -204,7 +201,8 @@ function CardPoster({
   if (active.kind === "MODEL") {
     const modelCandidateUrls = candidates
       .filter(
-        (candidate) => candidate.kind === "MODEL" && candidate.url !== active.url,
+        (candidate) =>
+          candidate.kind === "MODEL" && candidate.url !== active.url,
       )
       .map((candidate) => candidate.url);
     return (
@@ -292,20 +290,6 @@ function buildSubtitle(
   if (primaryMatch?.artistUsername) return `@${primaryMatch.artistUsername}`;
   if (primaryMatch?.artistName) return primaryMatch.artistName;
   return itemContext(item);
-}
-
-function cardVariants(largeGrid: boolean) {
-  return {
-    hidden: largeGrid ? { opacity: 1, y: 0 } : { opacity: 0, y: 14 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: largeGrid ? 0.2 : 0.6,
-        ease: EASE,
-      },
-    },
-  };
 }
 
 function CardMetaRow({
@@ -419,13 +403,11 @@ export function PinWorkCard({
   matches,
   verification,
   verifying,
-  largeGrid = false,
 }: {
   item: BridgePinInventoryItem;
   matches: PinMatch[];
   verification: PinVerificationSummary | null;
   verifying: boolean;
-  largeGrid?: boolean;
 }) {
   const primaryMatch = matches[0] ?? null;
   const title = buildTitle(item, primaryMatch);
@@ -445,14 +427,7 @@ export function PinWorkCard({
   );
 
   return (
-    <motion.article
-      variants={cardVariants(largeGrid)}
-      className="group flex flex-col"
-      style={{
-        contentVisibility: "auto",
-        containIntrinsicSize: "420px 540px",
-      }}
-    >
+    <article className="group flex flex-col">
       {href ? (
         <Link
           href={href}
@@ -491,6 +466,6 @@ export function PinWorkCard({
         />
         <CardActions item={item} primaryMatch={primaryMatch} />
       </div>
-    </motion.article>
+    </article>
   );
 }
