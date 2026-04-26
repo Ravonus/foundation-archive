@@ -71,6 +71,93 @@ function stripQueryAndHash(url: string) {
   return url.split(/[?#]/, 1)[0] ?? url;
 }
 
+function normalizeHostname(hostname: string) {
+  return hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+}
+
+const PRIVATE_IPV4_RANGES = [
+  [0x00000000, 0x00ffffff],
+  [0x0a000000, 0x0affffff],
+  [0x7f000000, 0x7fffffff],
+  [0xa9fe0000, 0xa9feffff],
+  [0xac100000, 0xac1fffff],
+  [0xc0a80000, 0xc0a8ffff],
+] as const;
+
+function parseIpv4Host(hostname: string) {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return null;
+
+  let value = 0;
+  for (const part of parts) {
+    if (!/^(0|[1-9]\d{0,2})$/.test(part)) return null;
+
+    const octet = Number(part);
+    if (octet > 255) return null;
+
+    value = value * 256 + octet;
+  }
+
+  return value;
+}
+
+function isPrivateIpv4Host(hostname: string) {
+  const host = parseIpv4Host(hostname);
+  return (
+    host !== null &&
+    PRIVATE_IPV4_RANGES.some(([start, end]) => host >= start && host <= end)
+  );
+}
+
+function isLocalNetworkHost(hostname: string) {
+  const normalized = normalizeHostname(hostname);
+  if (!normalized) return false;
+
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local") ||
+    normalized === "::1" ||
+    normalized.startsWith("fe80:") ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    isPrivateIpv4Host(normalized)
+  );
+}
+
+export function canAutoLoadPreviewUrl(url: string) {
+  if (typeof window === "undefined") return true;
+
+  let currentUrl: URL;
+  let previewUrl: URL;
+  try {
+    currentUrl = new URL(window.location.href);
+    previewUrl = new URL(url, currentUrl.href);
+  } catch {
+    return true;
+  }
+
+  const currentHostIsLocal = isLocalNetworkHost(currentUrl.hostname);
+  const previewHostIsLocal = isLocalNetworkHost(previewUrl.hostname);
+
+  if (previewHostIsLocal && !currentHostIsLocal) {
+    return false;
+  }
+
+  if (
+    currentUrl.protocol === "https:" &&
+    previewUrl.protocol === "http:" &&
+    !currentHostIsLocal
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export function normalizePreviewKind(
   value: string | null | undefined,
 ): PreviewKind {
@@ -113,6 +200,7 @@ export function gatewayPreviewCandidate(
   fallbackKind: PreviewKind,
 ) {
   if (!url) return null;
+  if (!canAutoLoadPreviewUrl(url)) return null;
 
   const fromUrl = previewKindFromUrl(url);
   return {
@@ -127,6 +215,7 @@ export function previewImageCandidate(
   openUrl: string | null,
 ) {
   if (!url) return null;
+  if (!canAutoLoadPreviewUrl(url)) return null;
 
   return {
     url,
@@ -172,6 +261,13 @@ export function orderPreviewCandidates(
   );
 }
 
+function posterPreviewCandidate(url: string | null) {
+  if (!url) return null;
+  if (!canAutoLoadPreviewUrl(url)) return null;
+
+  return { url, kind: "IMAGE" } satisfies PreviewCandidate;
+}
+
 export function buildInventoryPreviewCandidates(input: {
   mediaKind: PreviewKind;
   posterUrl: string | null;
@@ -186,7 +282,7 @@ export function buildInventoryPreviewCandidates(input: {
     input.mediaKind !== "IMAGE" && input.mediaKind !== "UNKNOWN";
 
   if (!richMediaFirst && input.posterUrl) {
-    candidates.push({ url: input.posterUrl, kind: "IMAGE" });
+    candidates.push(posterPreviewCandidate(input.posterUrl));
   }
 
   candidates.push(
@@ -206,7 +302,7 @@ export function buildInventoryPreviewCandidates(input: {
   );
 
   if (richMediaFirst && input.posterUrl) {
-    candidates.push({ url: input.posterUrl, kind: "IMAGE" });
+    candidates.push(posterPreviewCandidate(input.posterUrl));
   }
 
   return orderPreviewCandidates(
