@@ -216,6 +216,10 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.archiver
+      # Match the app image builds: this node's BuildKit sandbox DNS can
+      # fail resolving deb.debian.org, while the host namespace resolves
+      # through the working host resolver.
+      network: host
     env_file:
       - .env.production
     restart: unless-stopped
