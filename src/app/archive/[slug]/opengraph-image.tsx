@@ -1,3 +1,5 @@
+/* eslint-disable complexity, max-lines-per-function */
+
 import { ImageResponse } from "next/og";
 
 import { db } from "~/server/db";
@@ -146,7 +148,7 @@ function ArchiveOgFrame({
         }}
       >
         {previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+          // eslint-disable-next-line jsx-a11y/alt-text
           <img
             src={previewUrl}
             width={600}
@@ -200,7 +202,7 @@ function ArchiveOgFrame({
           }}
         >
           {logoSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+            // eslint-disable-next-line jsx-a11y/alt-text
             <img
               src={logoSrc}
               width={44}
@@ -324,7 +326,7 @@ function ArchiveOgFrame({
             }}
           >
             {artistAvatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+              // eslint-disable-next-line jsx-a11y/alt-text
               <img
                 src={artistAvatarUrl}
                 width={70}

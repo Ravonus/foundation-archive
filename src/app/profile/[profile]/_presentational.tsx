@@ -12,14 +12,21 @@ type ProfileHeaderProps = {
   marketSummary?: { listedCount: number; rescuableCount: number };
 };
 
+// eslint-disable-next-line complexity
 export function ProfileHeader({
   resolved,
   counts,
   foundationUrl,
   marketSummary,
 }: ProfileHeaderProps) {
-  const { accountAddress, username, name, profileImageUrl, bio, coverImageUrl } =
-    resolved;
+  const {
+    accountAddress,
+    username,
+    name,
+    profileImageUrl,
+    bio,
+    coverImageUrl,
+  } = resolved;
   const displayName =
     name ?? (username ? `@${username}` : shortAddress(accountAddress));
 
@@ -129,7 +136,7 @@ function ProfileStat({
 
   return (
     <div className="rounded-[1.1rem] border border-[var(--color-line)] bg-[var(--color-surface-quiet)] px-4 py-3">
-      <p className="text-[0.68rem] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+      <p className="text-[0.68rem] tracking-[0.2em] text-[var(--color-muted)] uppercase">
         {label}
       </p>
       <p className={`mt-2 font-serif text-3xl ${toneClass}`}>{value}</p>
@@ -143,11 +150,7 @@ type ViewTabsProps = {
   counts: ProfileItemCounts;
 };
 
-export function ViewTabs({
-  profile,
-  view,
-  counts,
-}: ViewTabsProps) {
+export function ViewTabs({ profile, view, counts }: ViewTabsProps) {
   const options = [
     {
       value: "all",

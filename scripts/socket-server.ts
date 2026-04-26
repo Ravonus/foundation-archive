@@ -28,6 +28,7 @@ import {
   requireRelayDeviceByToken,
   touchRelayDevice,
 } from "~/server/relay/service";
+import { syncRelayDevicePinInventory } from "~/server/relay/pin-routing";
 
 type CachedRelayInventory = {
   generatedAt: string;
@@ -335,6 +336,13 @@ async function main() {
         items: payload.items,
       } satisfies CachedRelayInventory;
       cachedInventory.set(client.deviceId, snapshot);
+      await syncRelayDevicePinInventory(db, {
+        ownerToken: client.ownerToken,
+        deviceId: client.deviceId,
+        items: snapshot.items,
+      }).catch((error) => {
+        logSocketError("Unable to sync relay device pin routes.", error);
+      });
       broadcastToOwner(client.ownerToken, {
         type: "owner.inventory",
         deviceId: client.deviceId,

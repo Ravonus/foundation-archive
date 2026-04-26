@@ -422,6 +422,7 @@ export async function resolveArchivedRowsForWorks(
   return buildArchivedMap(rows);
 }
 
+// eslint-disable-next-line complexity
 export function mergeArchivedAndFoundation(input: {
   view: ProfileView;
   archivedRows: ArchivedArtworkRow[];

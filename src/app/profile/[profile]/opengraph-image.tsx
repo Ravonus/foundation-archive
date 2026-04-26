@@ -1,3 +1,5 @@
+/* eslint-disable complexity, max-lines-per-function */
+
 import { ImageResponse } from "next/og";
 import { getAddress } from "viem";
 
@@ -246,7 +248,7 @@ function OgFrame({
         }}
       >
         {bannerUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+          // eslint-disable-next-line jsx-a11y/alt-text
           <img
             src={bannerUrl}
             width={1200}
@@ -285,7 +287,7 @@ function OgFrame({
           }}
         >
           {logoSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+            // eslint-disable-next-line jsx-a11y/alt-text
             <img
               src={logoSrc}
               width={44}
@@ -350,7 +352,7 @@ function OgFrame({
           }}
         >
           {avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+            // eslint-disable-next-line jsx-a11y/alt-text
             <img
               src={avatarUrl}
               width={184}

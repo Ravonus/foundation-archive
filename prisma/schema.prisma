@@ -508,10 +508,34 @@ model RelayDevice {
 
   claimedPairings RelayPairing[]
   jobs            RelayJob[]
+  pins            RelayDevicePin[]
 
   @@unique([tunnelSubdomain])
   @@unique([libp2pSubdomain])
   @@index([ownerToken, lastSeenAt])
+}
+
+model RelayDevicePin {
+  id            String    @id @default(cuid())
+  ownerToken    String
+  deviceId      String
+  cid           String
+  pinned        Boolean   @default(true)
+  sourceKind    String?
+  title         String?
+  lastSeenAt    DateTime  @default(now())
+  lastSuccessAt DateTime?
+  lastFailedAt  DateTime?
+  failCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  device RelayDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, cid])
+  @@index([cid, pinned, lastSeenAt])
+  @@index([cid, pinned, failCount, lastSuccessAt])
+  @@index([deviceId, lastSeenAt])
 }
 
 model RelayJob {

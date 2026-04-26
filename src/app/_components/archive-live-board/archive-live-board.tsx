@@ -8,21 +8,15 @@ import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
 import { ActivityPanel } from "./activity-panel";
-import {
-  BoardHeader,
-  type BoardHeaderControlsProps,
-} from "./board-header";
+import { BoardHeader, type BoardHeaderControlsProps } from "./board-header";
 import { CrawlerPanel } from "./crawler-panel";
 import { LiveFeedPanel } from "./live-feed-panel";
 import { PipelinePanel, StatusRow } from "./pipeline-panel";
-import { QueueWaitingBanner, StatsGrid } from "./stats-grid";
+import { StatsGrid } from "./stats-grid";
 import { buildStatCards } from "./stats";
 import { resolveSocketBadge } from "./socket-badge";
 import { useArchiveLiveSnapshot } from "./use-archive-live-snapshot";
-import {
-  useBoardDerived,
-  useWorkerStatus,
-} from "./use-board-derived";
+import { useBoardDerived, useWorkerStatus } from "./use-board-derived";
 
 export interface ArchiveLiveBoardProps {
   initialSnapshot: ArchiveLiveSnapshot;
@@ -117,20 +111,16 @@ function BoardPrimaryCard({
   statusRowProps,
   stats,
   reduce,
-  queueWaitingOnWorker,
-  pendingJobs,
 }: {
   headerProps: Parameters<typeof BoardHeader>[0];
   derived: ReturnType<typeof useBoardDerived>;
   statusRowProps: Parameters<typeof StatusRow>[0];
   stats: ReturnType<typeof buildStatCards>;
   reduce: boolean;
-  queueWaitingOnWorker: boolean;
-  pendingJobs: number;
 }) {
   const drainCopy = buildDrainCopy(derived.drainMode, derived.backlogGuard);
   return (
-    <div className="w-full max-w-full min-w-0 rounded-2xl border border-[var(--color-line)] bg-[linear-gradient(180deg,var(--color-surface),var(--color-surface-quiet))] p-4 shadow-[0_30px_90px_-70px_rgba(17,17,17,0.35)] overflow-x-hidden sm:rounded-3xl sm:p-6">
+    <div className="w-full max-w-full min-w-0 overflow-x-hidden rounded-2xl border border-[var(--color-line)] bg-[linear-gradient(180deg,var(--color-surface),var(--color-surface-quiet))] p-4 shadow-[0_30px_90px_-70px_rgba(17,17,17,0.35)] sm:rounded-3xl sm:p-6">
       <BoardHeader {...headerProps} />
       <StatusRow {...statusRowProps} />
       <PipelinePanel
@@ -265,8 +255,6 @@ export function ArchiveLiveBoard({
         statusRowProps={statusRowProps}
         stats={stats}
         reduce={Boolean(reduce)}
-        queueWaitingOnWorker={workerStatus.queueWaitingOnWorker}
-        pendingJobs={snapshot.stats.pendingJobs}
       />
       <BoardSecondaryGrid
         compact={compact}

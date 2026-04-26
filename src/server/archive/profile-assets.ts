@@ -1,3 +1,5 @@
+/* eslint-disable complexity, max-lines, @typescript-eslint/no-unnecessary-condition */
+
 import { createHash } from "node:crypto";
 import { mkdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -328,7 +330,10 @@ async function resolveFoundationProfileForBackfillArtist(
   }
 
   const storedByUsername = normalizedArtistUsername
-    ? await getStoredFoundationProfileByUsername(client, normalizedArtistUsername)
+    ? await getStoredFoundationProfileByUsername(
+        client,
+        normalizedArtistUsername,
+      )
     : null;
   if (
     storedByUsername &&

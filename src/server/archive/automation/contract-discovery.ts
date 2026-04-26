@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function, @typescript-eslint/no-unnecessary-condition */
+
 import { archiveIngressGuardForPendingJobs } from "~/lib/archive-pace";
 import {
   fetchFoundationDropCollectionsPage,
@@ -511,7 +513,7 @@ export async function runAutomaticContractDiscoveryTick(
 
   let upsertResult: DiscoveryUpsertResult;
   let progressResult: { completedFoundationPass: boolean };
-  let lastDiscovery = batch[batch.length - 1] ?? discoveries[0];
+  const lastDiscovery = batch[batch.length - 1] ?? discoveries[0];
   if (!lastDiscovery) {
     // Should be impossible — DISCOVERY_PAGES_PER_TICK > 0 — but keep
     // the type-checker happy and the worker stable.

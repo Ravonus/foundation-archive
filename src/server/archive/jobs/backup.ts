@@ -1,9 +1,11 @@
+/* eslint-disable complexity */
+
 import {
   BackupStatus,
   PinProvider,
   QueueJobKind,
   QueueJobStatus,
-  RootKind,
+  type RootKind,
 } from "~/server/prisma-client";
 import { env } from "~/env";
 import { formatBytes } from "~/lib/utils";

@@ -118,7 +118,8 @@ function relayDevicesWithLocalBridge(input: {
           ...device,
           connected: reachable,
           relayEnabled: true,
-          deviceLabel: device.deviceLabel.length > 0 ? device.deviceLabel : label,
+          deviceLabel:
+            device.deviceLabel.length > 0 ? device.deviceLabel : label,
           lastSeenAt: device.lastSeenAt ?? connectionTime,
           lastError: null,
         }
@@ -191,11 +192,16 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     networkStatus,
     probeEnabled: localBridgeProbeEnabled,
     retryNow: retryNetwork,
-  } = useBridgeHealthProbe(bridgeUrl, session, config, {
-    setHealth,
-    setConfig,
-    setReachable,
-    setStatus,
+  } = useBridgeHealthProbe({
+    bridgeUrl,
+    session,
+    config,
+    setters: {
+      setHealth,
+      setConfig,
+      setReachable,
+      setStatus,
+    },
   });
 
   useRelaySocket(ownerToken, relaySocketRef, {

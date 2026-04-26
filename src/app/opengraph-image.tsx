@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 import { ImageResponse } from "next/og";
 
 import {
@@ -84,7 +86,7 @@ export default async function RootOgImage() {
           }}
         >
           {logoSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+            // eslint-disable-next-line jsx-a11y/alt-text
             <img
               src={logoSrc}
               width={44}

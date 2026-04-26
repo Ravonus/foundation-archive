@@ -1,3 +1,5 @@
+/* eslint-disable complexity, max-lines-per-function */
+
 import { randomBytes } from "crypto";
 
 import type { PrismaClient } from "~/server/prisma-client";
@@ -105,7 +107,7 @@ export async function provisionTunnelForDevice(
     device.libp2pSubdomain ??
     (await allocateSubdomain(db, LIBP2P_SUBDOMAIN_PREFIX, "libp2pSubdomain"));
   const libp2pHostname = `${libp2pSubdomain}.${domain}`;
-  const gatewayService = input.localService?.trim() || DEFAULT_LOCAL_SERVICE;
+  const gatewayService = input.localService?.trim() ?? DEFAULT_LOCAL_SERVICE;
   const libp2pService = `http://localhost:${DEFAULT_LIBP2P_WS_PORT}`;
 
   let tunnelId = device.tunnelId;
@@ -189,7 +191,9 @@ export async function revokeTunnelForDevice(
     try {
       await deleteDnsRecord(recordId);
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "DNS delete failed.");
+      errors.push(
+        error instanceof Error ? error.message : "DNS delete failed.",
+      );
     }
   }
 
@@ -197,7 +201,9 @@ export async function revokeTunnelForDevice(
     try {
       await deleteTunnel(device.tunnelId);
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "Tunnel delete failed.");
+      errors.push(
+        error instanceof Error ? error.message : "Tunnel delete failed.",
+      );
     }
   }
 

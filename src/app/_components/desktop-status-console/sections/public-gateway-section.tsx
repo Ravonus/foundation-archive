@@ -13,6 +13,7 @@ type PublicGatewayProps = {
   saveConfig: () => void;
 };
 
+// eslint-disable-next-line complexity
 export function PublicGatewaySection(props: PublicGatewayProps) {
   const hostname = props.configDraft.tunnelHostname?.trim() ?? "";
   const publicUrl = hostname.length > 0 ? `https://${hostname}` : null;
@@ -69,7 +70,10 @@ export function PublicGatewaySection(props: PublicGatewayProps) {
               {enabled ? "Public gateway is enabled" : "Public gateway is off"}
             </p>
             {props.isSavingConfig ? (
-              <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-[var(--color-muted)]" />
+              <LoaderCircle
+                aria-hidden
+                className="h-4 w-4 animate-spin text-[var(--color-muted)]"
+              />
             ) : null}
           </div>
 

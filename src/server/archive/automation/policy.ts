@@ -131,24 +131,6 @@ function nextSmartPinBudgetTier(currentBytes: number, ceilingBytes: number) {
   return ceilingBytes;
 }
 
-async function automaticCrawlerScanCompleted(client: DatabaseClient) {
-  const [totalAutoCrawlers, unfinishedAutoCrawlers] = await Promise.all([
-    client.contractCrawlerState.count({
-      where: {
-        autoEnabled: true,
-      },
-    }),
-    client.contractCrawlerState.count({
-      where: {
-        autoEnabled: true,
-        completed: false,
-      },
-    }),
-  ]);
-
-  return totalAutoCrawlers > 0 && unfinishedAutoCrawlers === 0;
-}
-
 async function hasActiveAutomationBacklog(client: DatabaseClient) {
   const pendingAutomationJobs = await client.queueJob.count({
     where: {

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
+
 import { env } from "~/env";
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
@@ -41,8 +43,10 @@ async function cf<T>(
   const raw = (await response.json()) as CfResponse<T>;
 
   if (!raw.success) {
-    const detail = raw.errors?.map((error) => `${error.code}: ${error.message}`).join(", ") ??
-      `HTTP ${response.status}`;
+    const detail =
+      raw.errors
+        ?.map((error) => `${error.code}: ${error.message}`)
+        .join(", ") ?? `HTTP ${response.status}`;
     throw new Error(`Cloudflare API error (${path}): ${detail}`);
   }
 
@@ -55,7 +59,9 @@ type CreateTunnelResult = {
   token: string;
 };
 
-export async function createNamedTunnel(name: string): Promise<CreateTunnelResult> {
+export async function createNamedTunnel(
+  name: string,
+): Promise<CreateTunnelResult> {
   const { token, accountId } = requireCloudflareConfig();
 
   const tunnelSecret = generateTunnelSecret();

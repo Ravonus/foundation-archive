@@ -89,9 +89,7 @@ function setBridgeConnected(input: {
   setters.setStatus(session ? "connected" : "disconnected");
 }
 
-function shouldProbeBridge(
-  bridgeUrl: string,
-) {
+function shouldProbeBridge(bridgeUrl: string) {
   if (typeof window === "undefined") return true;
 
   try {
@@ -216,12 +214,13 @@ function useBridgeProbeLoop(input: {
   ]);
 }
 
-export function useBridgeHealthProbe(
-  bridgeUrl: string,
-  session: BridgeSession | null,
-  config: BridgeConfig | null,
-  setters: HealthProbeSetters,
-) {
+export function useBridgeHealthProbe(input: {
+  bridgeUrl: string;
+  session: BridgeSession | null;
+  config: BridgeConfig | null;
+  setters: HealthProbeSetters;
+}) {
+  const { bridgeUrl, session, config, setters } = input;
   const [networkStatus, setNetworkStatus] = useState<BridgeNetworkStatus>(
     INITIAL_NETWORK_STATUS,
   );
@@ -229,7 +228,10 @@ export function useBridgeHealthProbe(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const probeEnabled = shouldProbeBridge(bridgeUrl);
   const configRef = useRef<BridgeConfig | null>(config);
-  configRef.current = config;
+
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   useBridgeProbeLoop({
     bridgeUrl,

@@ -36,7 +36,7 @@ function isArweaveUrl(url: string | null | undefined): boolean {
 }
 
 function isInlineDataUrl(url: string | null | undefined): boolean {
-  return Boolean(url && url.trim().toLowerCase().startsWith("data:"));
+  return Boolean(url?.trim().toLowerCase().startsWith("data:"));
 }
 
 function isCentralizedHttpUrl(url: string | null | undefined): boolean {

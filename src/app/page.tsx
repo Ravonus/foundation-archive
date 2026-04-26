@@ -11,7 +11,10 @@ import {
 } from "lucide-react";
 
 import { ArchiveLiveBoard } from "~/app/_components/archive-live-board";
-import { ArtworkGrid, type ArtworkGridItem } from "~/app/_components/artwork-grid";
+import {
+  ArtworkGrid,
+  type ArtworkGridItem,
+} from "~/app/_components/artwork-grid";
 import { HeroStats } from "~/app/_components/hero-stats";
 import {
   BracketFrame,
@@ -134,12 +137,11 @@ function pickDiverseRecent<
   return chosen;
 }
 
-
 function HeroIntro() {
   return (
     <>
       <FadeUp delay={0} duration={0.4}>
-        <p className="flex items-center gap-3 font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+        <p className="flex items-center gap-3 font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
           <span
             aria-hidden
             className="inline-block h-px w-8 bg-[var(--color-line-strong)]"
@@ -160,8 +162,8 @@ function HeroIntro() {
         <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--color-body)] sm:text-lg">
           Recent news made the risk plain, so Agorix is running this public
           Foundation archive to automatically find and save artwork before more
-          of it slips away. Search what&apos;s been saved, or submit a work to be
-          saved.
+          of it slips away. Search what&apos;s been saved, or submit a work to
+          be saved.
         </p>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--color-muted)] sm:text-base">
           Artists and collectors can also run our desktop app to keep an extra
@@ -195,7 +197,7 @@ function HeroArt() {
               { label: "Cid", value: "bafyb…c0f1" },
             ]}
           />
-          <span className="font-mono text-[0.55rem] uppercase tracking-[0.22em] text-[var(--color-brand-green)]">
+          <span className="font-mono text-[0.55rem] tracking-[0.22em] text-[var(--color-brand-green)] uppercase">
             Preserved
           </span>
         </div>
@@ -246,12 +248,12 @@ const HOME_FEATURES = [
   },
 ];
 
-function FeatureGridSection() {
+function _FeatureGridSection() {
   return (
     <section className="mt-14 sm:mt-20">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <FadeUp inView>
-          <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+          <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
             Built for people. Powered by purpose.
           </p>
           <h2 className="mt-1.5 font-serif text-2xl leading-tight text-[var(--color-ink)] sm:text-3xl">
@@ -316,7 +318,7 @@ function RecentSection({ items }: { items: ArtworkGridItem[] }) {
     <section className="mt-12 pb-16 sm:mt-16">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <FadeUp inView>
-          <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+          <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
             Recent additions
           </p>
           <h2 className="mt-1.5 flex items-center gap-2 font-serif text-2xl text-[var(--color-ink)] sm:text-3xl">

@@ -1,3 +1,5 @@
+/* eslint-disable complexity, @typescript-eslint/no-unnecessary-condition */
+
 import fs from "node:fs";
 import path from "node:path";
 
@@ -16,11 +18,7 @@ const MAX_IMAGE_DIMENSION = 1024;
 /// render. Returns null if the file is missing.
 function readPublicAsDataUrl(relativePath: string, mime: string) {
   try {
-    const filePath = path.join(
-      process.cwd(),
-      "public",
-      relativePath,
-    );
+    const filePath = path.join(process.cwd(), "public", relativePath);
     const buffer = fs.readFileSync(filePath);
     return `data:${mime};base64,${buffer.toString("base64")}`;
   } catch {
@@ -146,10 +144,7 @@ export async function fetchAnimatedSource(
   if (!url) return null;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      IMAGE_FETCH_TIMEOUT_MS,
-    );
+    const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { "user-agent": "Agorix OG Bot/1.0" },
@@ -192,10 +187,7 @@ export async function inlineImage(
   if (!url) return null;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      IMAGE_FETCH_TIMEOUT_MS,
-    );
+    const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { "user-agent": "Agorix OG Bot/1.0" },
@@ -228,11 +220,7 @@ export async function inlineImage(
 
     let brightness = 128;
     try {
-      const stats = await pipeline
-        .clone()
-        .removeAlpha()
-        .greyscale()
-        .stats();
+      const stats = await pipeline.clone().removeAlpha().greyscale().stats();
       const channel = stats.channels[0];
       if (channel) brightness = Math.round(channel.mean);
     } catch {
@@ -270,9 +258,7 @@ export function palettesFor(brightness: number) {
     ctaBg: isDark ? OG_THEME.gold : OG_THEME.ink,
     ctaText: isDark ? OG_THEME.ink : OG_THEME.background,
     brandBg: isDark ? "rgba(19,18,16,0.78)" : OG_THEME.surface,
-    brandBorder: isDark
-      ? "rgba(255,255,255,0.18)"
-      : OG_THEME.line,
+    brandBorder: isDark ? "rgba(255,255,255,0.18)" : OG_THEME.line,
     line: isDark ? "rgba(255,255,255,0.18)" : OG_THEME.line,
   };
 }

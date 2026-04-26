@@ -31,6 +31,7 @@ type ProfileHeroProps = {
 /// and the og:image URL without needing JS. The ProfileAvatar child is a
 /// client island only for the image-error fallback; the surrounding layout
 /// is static markup.
+// eslint-disable-next-line complexity
 export function ProfileHero(props: ProfileHeroProps) {
   const {
     name,
@@ -51,6 +52,7 @@ export function ProfileHero(props: ProfileHeroProps) {
   } = props;
 
   const resolvedSeed = seed ?? name;
+  const hasProfileBadges = Boolean(usernameBadge) || Boolean(subtitle);
 
   return (
     <section
@@ -93,7 +95,7 @@ export function ProfileHero(props: ProfileHeroProps) {
               textClassName="text-lg"
             />
             <div className="min-w-0 pt-2">
-              <div className="flex flex-wrap items-center gap-3 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--color-muted)]">
+              <div className="flex flex-wrap items-center gap-3 text-[0.68rem] tracking-[0.24em] text-[var(--color-muted)] uppercase">
                 {eyebrow ? <span>{eyebrow}</span> : null}
                 {foundationUrl ? (
                   <Link
@@ -121,7 +123,7 @@ export function ProfileHero(props: ProfileHeroProps) {
                 )}
               </h1>
 
-              {(usernameBadge || subtitle) && (
+              {hasProfileBadges ? (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-muted)]">
                   {usernameBadge ? (
                     <span className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface-quiet)] px-3 py-1.5">
@@ -134,7 +136,7 @@ export function ProfileHero(props: ProfileHeroProps) {
                     </span>
                   ) : null}
                 </div>
-              )}
+              ) : null}
 
               {bio ? (
                 <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--color-body)]">
@@ -147,9 +149,7 @@ export function ProfileHero(props: ProfileHeroProps) {
           {footer ? <div className="mt-6">{footer}</div> : null}
         </div>
 
-        {aside ? (
-          <div className="relative lg:pt-2">{aside}</div>
-        ) : null}
+        {aside ? <div className="relative lg:pt-2">{aside}</div> : null}
       </div>
     </section>
   );
