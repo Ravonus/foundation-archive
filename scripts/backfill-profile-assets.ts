@@ -259,8 +259,8 @@ async function processBatch(args: {
 }
 
 async function main() {
-  const batchSize = readNumberFlag("--batch-size", 250);
-  const concurrency = readNumberFlag("--concurrency", 12);
+  const batchSize = readNumberFlag("--batch-size", 120);
+  const concurrency = readNumberFlag("--concurrency", 6);
   const reset = hasFlag("--reset");
   const statusOnly = hasFlag("--status");
   const checkpointFile = checkpointPath();

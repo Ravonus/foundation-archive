@@ -5,8 +5,12 @@ import path from "node:path";
 import { getAddress } from "viem";
 
 import { env } from "~/env";
-import { buildFoundationProfileUrl } from "~/server/archive/foundation";
 import {
+  buildFoundationProfileUrl,
+  tryFetchFoundationProfileByUsername,
+} from "~/server/archive/foundation";
+import {
+  fetchFoundationWorksByCreator,
   fetchFoundationUserByUsername,
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
@@ -15,6 +19,8 @@ import { type DatabaseClient } from "./jobs/shared";
 
 const PROFILE_ASSET_TIMEOUT_MS = 45_000;
 const PROFILE_ASSET_MAX_BYTES = 25 * 1024 * 1024;
+const FOUNDATION_PROFILE_RETRY_LIMIT = 4;
+const FOUNDATION_PROFILE_RETRY_BASE_MS = 1_000;
 
 type ProfileAssetKind = "avatar" | "cover";
 
@@ -40,8 +46,148 @@ function profileAssetPublicPath(assetId: string) {
   return `/api/archive/profile-assets/${assetId}`;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function normalizeAccountAddress(accountAddress: string) {
   return getAddress(accountAddress).toLowerCase();
+}
+
+function normalizeUsername(username: string | null | undefined) {
+  const trimmed = username?.trim().replace(/^@+/, "");
+  if (!trimmed) return null;
+  return trimmed;
+}
+
+function isRetryableFoundationLookupError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /Foundation API request failed: (408|409|425|429|5\d\d)/i.test(message) ||
+    /Unable to fetch Foundation .*: (408|409|425|429|5\d\d)/i.test(message) ||
+    /timed out|timeout|network|fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(
+      message,
+    )
+  );
+}
+
+async function withFoundationLookupRetries<T>(
+  label: string,
+  run: () => Promise<T>,
+) {
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= FOUNDATION_PROFILE_RETRY_LIMIT;
+    attempt += 1
+  ) {
+    try {
+      return await run();
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= FOUNDATION_PROFILE_RETRY_LIMIT ||
+        !isRetryableFoundationLookupError(error)
+      ) {
+        break;
+      }
+
+      const backoffMs =
+        FOUNDATION_PROFILE_RETRY_BASE_MS * 2 ** (attempt - 1) +
+        Math.floor(Math.random() * 250);
+      console.warn(
+        `[profiles] retrying ${label} in ${backoffMs}ms after ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await sleep(backoffMs);
+    }
+  }
+
+  throw lastError;
+}
+
+function scrapedProfileToUserProfile(
+  profile: Awaited<ReturnType<typeof tryFetchFoundationProfileByUsername>>,
+): FoundationUserProfile | null {
+  if (!profile) return null;
+  return {
+    accountAddress: profile.accountAddress,
+    name: profile.name,
+    profileImageUrl: profile.profileImageUrl,
+    coverImageUrl: profile.coverImageUrl,
+    bio: profile.bio,
+    username: profile.username,
+  };
+}
+
+async function lookupFoundationProfileByUsername(username: string) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+
+  const direct = await withFoundationLookupRetries(
+    `graphql profile @${normalized}`,
+    () => fetchFoundationUserByUsername(normalized),
+  ).catch(() => null);
+  if (direct) return direct;
+
+  const scraped = await withFoundationLookupRetries(
+    `scraped profile @${normalized}`,
+    () => tryFetchFoundationProfileByUsername(normalized),
+  ).catch(() => null);
+  return scrapedProfileToUserProfile(scraped);
+}
+
+async function lookupFoundationProfileByWallet(accountAddress: string) {
+  const normalizedAddress = normalizeAccountAddress(accountAddress);
+  const works = await withFoundationLookupRetries(
+    `creator works ${normalizedAddress}`,
+    () => fetchFoundationWorksByCreator(normalizedAddress, 1, 0),
+  ).catch(() => []);
+
+  const creator = works.find(
+    (work) => work.artistWallet?.toLowerCase() === normalizedAddress,
+  );
+  const username = normalizeUsername(creator?.artistUsername);
+  if (!username) return null;
+
+  const resolved = await lookupFoundationProfileByUsername(username);
+  if (resolved) return resolved;
+
+  return {
+    accountAddress: normalizedAddress,
+    name: creator?.artistName ?? null,
+    profileImageUrl: null,
+    coverImageUrl: null,
+    bio: null,
+    username,
+  };
+}
+
+async function resolveFoundationProfileForBackfillArtist(
+  artist: FoundationProfileBackfillArtist,
+) {
+  const normalizedArtistUsername = normalizeUsername(artist.artistUsername);
+  const normalizedArtistWallet = normalizeAccountAddress(artist.artistWallet);
+
+  const byUsername = normalizedArtistUsername
+    ? await lookupFoundationProfileByUsername(normalizedArtistUsername)
+    : null;
+  if (
+    byUsername &&
+    normalizeAccountAddress(byUsername.accountAddress) ===
+      normalizedArtistWallet
+  ) {
+    return byUsername;
+  }
+
+  const byWallet = await lookupFoundationProfileByWallet(
+    normalizedArtistWallet,
+  );
+  if (byWallet) {
+    return byWallet;
+  }
+
+  return null;
 }
 
 function hashUrl(sourceUrl: string) {
@@ -425,7 +571,7 @@ export async function archiveFoundationProfileBackfillArtist(
   client: DatabaseClient,
   artist: FoundationProfileBackfillArtist,
 ) {
-  const profile = await fetchFoundationUserByUsername(artist.artistUsername);
+  const profile = await resolveFoundationProfileForBackfillArtist(artist);
   if (!profile) {
     return {
       status: "missing" as const,
