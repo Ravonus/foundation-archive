@@ -19,6 +19,7 @@ import type {
 
 export type RelayOwnerDeps = {
   ownerToken: string | null;
+  relaySocketConnected: boolean;
   relayDevices: RelayOwnerDevice[];
   pinEnrichment: Record<string, RelayPinEnrichmentMatch[]>;
   setRelayDevices: (devices: RelayOwnerDevice[]) => void;
@@ -297,6 +298,9 @@ export function createQueueWorkToRelay(
   refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
   requestRelayInventory: (deviceId: string) => void,
 ) {
+  // Waiting for relay completion is intentionally branchy because we support
+  // both live-connected devices and offline queued delivery.
+  // eslint-disable-next-line complexity
   return async (work: DesktopShareableWork, deviceId?: string | null) => {
     const ownerToken = requireOwnerToken(deps.ownerToken);
     const targetDevice = await resolveRelayTargetDevice(
@@ -337,6 +341,15 @@ export function createQueueWorkToRelay(
     }
 
     const payload = (await response.json()) as RelayQueuedJob;
+    const shouldWaitForOutcome =
+      deps.relaySocketConnected && targetDevice.connected;
+
+    if (!shouldWaitForOutcome) {
+      await refreshRelayDevices().catch(() => undefined);
+      requestRelayInventory(targetDevice.id);
+      return payload;
+    }
+
     const outcome = await waitForRelayJobOutcome(
       payload.jobId,
       RELAY_JOB_TIMEOUT_MS,

@@ -322,6 +322,7 @@ function createShareWork(
           artist_username: work.artistUsername ?? null,
         }),
         fallback: "Desktop app share failed.",
+        timeoutMs: 15_000,
       });
 
       deps.setError(null);

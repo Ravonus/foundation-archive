@@ -38,17 +38,39 @@ export async function requestBridgeJson<T>({
   path,
   init,
   fallback,
+  timeoutMs,
 }: {
   bridgeUrl: string;
   path: string;
   init: RequestInit;
   fallback: string;
+  timeoutMs?: number;
 }) {
-  const response = await fetch(`${trimTrailingSlash(bridgeUrl)}${path}`, init);
+  const controller = new AbortController();
+  const timeoutHandle =
+    typeof window !== "undefined" && timeoutMs
+      ? window.setTimeout(() => controller.abort(), timeoutMs)
+      : null;
 
-  if (!response.ok) {
-    throw new Error(await parseBridgeError(response, fallback));
+  try {
+    const response = await fetch(`${trimTrailingSlash(bridgeUrl)}${path}`, {
+      ...init,
+      signal: init.signal ?? controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseBridgeError(response, fallback));
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Desktop app timed out before responding.");
+    }
+    throw error;
+  } finally {
+    if (timeoutHandle) {
+      window.clearTimeout(timeoutHandle);
+    }
   }
-
-  return (await response.json()) as T;
 }

@@ -237,6 +237,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
 
   const relayOwnerDeps: RelayOwnerDeps = {
     ownerToken,
+    relaySocketConnected,
     relayDevices: visibleRelayDevices,
     pinEnrichment,
     setRelayDevices,
