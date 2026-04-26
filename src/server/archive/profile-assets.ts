@@ -129,6 +129,10 @@ function failureMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isForbiddenFoundationApiError(error: unknown) {
+  return /Foundation API request failed: 403/i.test(failureMessage(error));
+}
+
 function isMissingFoundationProfileError(error: unknown) {
   const message = failureMessage(error);
   return (
@@ -146,36 +150,6 @@ async function lookupFoundationProfileByUsername(
   let sawFailure: string | null = null;
 
   try {
-    const direct = await withFoundationLookupRetries(
-      `graphql profile @${normalized}`,
-      () => fetchFoundationUserByUsername(normalized),
-    );
-    if (direct) {
-      return { status: "found", profile: direct };
-    }
-  } catch (error) {
-    sawFailure = failureMessage(error);
-  }
-
-  try {
-    const searchMatches = await withFoundationLookupRetries(
-      `user search @${normalized}`,
-      () => searchFoundationUsers(normalized, 5),
-    );
-    const exactMatch =
-      searchMatches.find(
-        (profile) => normalizeUsername(profile.username) === normalized,
-      ) ??
-      searchMatches[0] ??
-      null;
-    if (exactMatch) {
-      return { status: "found", profile: exactMatch };
-    }
-  } catch (error) {
-    sawFailure ??= failureMessage(error);
-  }
-
-  try {
     const scraped = await withFoundationLookupRetries(
       `scraped profile @${normalized}`,
       () => fetchFoundationProfileByUsername(normalized),
@@ -186,6 +160,38 @@ async function lookupFoundationProfileByUsername(
     }
   } catch (error) {
     if (!isMissingFoundationProfileError(error)) {
+      sawFailure = failureMessage(error);
+    }
+  }
+
+  try {
+    const direct = await withFoundationLookupRetries(
+      `graphql profile @${normalized}`,
+      () => fetchFoundationUserByUsername(normalized),
+    );
+    if (direct) {
+      return { status: "found", profile: direct };
+    }
+  } catch (error) {
+    sawFailure ??= failureMessage(error);
+  }
+
+  if (!sawFailure || !isForbiddenFoundationApiError(sawFailure)) {
+    try {
+      const searchMatches = await withFoundationLookupRetries(
+        `user search @${normalized}`,
+        () => searchFoundationUsers(normalized, 5),
+      );
+      const exactMatch =
+        searchMatches.find(
+          (profile) => normalizeUsername(profile.username) === normalized,
+        ) ??
+        searchMatches[0] ??
+        null;
+      if (exactMatch) {
+        return { status: "found", profile: exactMatch };
+      }
+    } catch (error) {
       sawFailure ??= failureMessage(error);
     }
   }
@@ -193,6 +199,59 @@ async function lookupFoundationProfileByUsername(
   return sawFailure
     ? { status: "failed", message: sawFailure }
     : { status: "missing" };
+}
+
+function storedProfileToUserProfile(
+  profile: CachedProfileRecord,
+): FoundationUserProfile {
+  return {
+    accountAddress: profile.accountAddress,
+    username: profile.username,
+    name: profile.name,
+    bio: profile.bio,
+    profileImageUrl: profile.profileImageUrl,
+    coverImageUrl: profile.coverImageUrl,
+  };
+}
+
+async function getStoredFoundationProfileByUsername(
+  client: DatabaseClient,
+  username: string,
+) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+
+  const profile = await client.foundationProfile.findFirst({
+    where: { username: { equals: normalized, mode: "insensitive" } },
+    select: {
+      accountAddress: true,
+      username: true,
+      name: true,
+      profileImageUrl: true,
+      coverImageUrl: true,
+      bio: true,
+    },
+  });
+  return profile ? storedProfileToUserProfile(profile) : null;
+}
+
+async function getStoredFoundationProfileByAddress(
+  client: DatabaseClient,
+  accountAddress: string,
+) {
+  const normalized = normalizeAccountAddress(accountAddress);
+  const profile = await client.foundationProfile.findUnique({
+    where: { accountAddress: normalized },
+    select: {
+      accountAddress: true,
+      username: true,
+      name: true,
+      profileImageUrl: true,
+      coverImageUrl: true,
+      bio: true,
+    },
+  });
+  return profile ? storedProfileToUserProfile(profile) : null;
 }
 
 async function lookupFoundationProfileByWallet(
@@ -251,10 +310,30 @@ async function lookupFoundationProfileByWallet(
 }
 
 async function resolveFoundationProfileForBackfillArtist(
+  client: DatabaseClient,
   artist: FoundationProfileBackfillArtist,
 ) {
   const normalizedArtistUsername = normalizeUsername(artist.artistUsername);
   const normalizedArtistWallet = normalizeAccountAddress(artist.artistWallet);
+
+  const storedByAddress = await getStoredFoundationProfileByAddress(
+    client,
+    normalizedArtistWallet,
+  );
+  if (storedByAddress) {
+    return storedByAddress;
+  }
+
+  const storedByUsername = normalizedArtistUsername
+    ? await getStoredFoundationProfileByUsername(client, normalizedArtistUsername)
+    : null;
+  if (
+    storedByUsername &&
+    normalizeAccountAddress(storedByUsername.accountAddress) ===
+      normalizedArtistWallet
+  ) {
+    return storedByUsername;
+  }
 
   const byUsername = normalizedArtistUsername
     ? await lookupFoundationProfileByUsername(normalizedArtistUsername)
@@ -664,7 +743,10 @@ export async function archiveFoundationProfileBackfillArtist(
   client: DatabaseClient,
   artist: FoundationProfileBackfillArtist,
 ) {
-  const profile = await resolveFoundationProfileForBackfillArtist(artist);
+  const profile = await resolveFoundationProfileForBackfillArtist(
+    client,
+    artist,
+  );
   if (!profile) {
     return {
       status: "missing" as const,
