@@ -17,17 +17,20 @@ import {
   ERC721_OWNER_OF_ABI,
   FOUNDATION_NFT_MARKET_ABI,
 } from "./foundation-contract-abi";
+import { OwnerSurface } from "./owner-listing-controls";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 type ActiveBuyPrice = {
   marketContract: string;
+  seller: string;
   price: string;
 };
 
 type LiveAuction = {
   marketContract: string;
   auctionId: string;
+  seller: string;
   status: string;
   endTime: string | null;
   highestBid: string | null;
@@ -39,6 +42,7 @@ export type ArtworkActionsPanelProps = {
   contractAddress: string;
   tokenId: string;
   title: string | null;
+  marketContract: string;
   activeBuyPrice: ActiveBuyPrice | null;
   liveAuction: LiveAuction | null;
   isRescuable: boolean;
@@ -79,6 +83,7 @@ export function ArtworkActionsPanel(props: ArtworkActionsPanelProps) {
   const { address: connectedAddress, isConnected } = useAccount();
   const activeChainId = useChainId();
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
+  const marketContractAddress = safeAddress(props.marketContract);
 
   const ownerQuery = useReadContract({
     address: safeAddress(props.contractAddress),
@@ -100,6 +105,18 @@ export function ArtworkActionsPanel(props: ArtworkActionsPanelProps) {
       return false;
     }
   }, [connectedAddress, isConnected, ownerQuery.data]);
+
+  const isBuyPriceSeller = addressesMatch(
+    connectedAddress,
+    props.activeBuyPrice?.seller ?? null,
+  );
+
+  const isAuctionSeller = addressesMatch(
+    connectedAddress,
+    props.liveAuction?.seller ?? null,
+  );
+
+  const canManageListing = isOwner || isBuyPriceSeller || isAuctionSeller;
 
   const onWrongNetwork = isConnected && activeChainId !== props.chainId;
 
@@ -142,13 +159,26 @@ export function ArtworkActionsPanel(props: ArtworkActionsPanelProps) {
 
   return (
     <ActionsShell>
-      <ActionsBody {...props} isOwner={isOwner} />
+      <ActionsBody
+        {...props}
+        isOwner={isOwner}
+        isBuyPriceSeller={isBuyPriceSeller}
+        isAuctionSeller={isAuctionSeller}
+        canManageListing={canManageListing}
+        marketContractAddress={marketContractAddress}
+      />
     </ActionsShell>
   );
 }
 
 function ActionsBody(
-  props: ArtworkActionsPanelProps & { isOwner: boolean },
+  props: ArtworkActionsPanelProps & {
+    isOwner: boolean;
+    isBuyPriceSeller: boolean;
+    isAuctionSeller: boolean;
+    canManageListing: boolean;
+    marketContractAddress?: `0x${string}`;
+  },
 ) {
   if (props.isRescuable && props.liveAuction) {
     return (
@@ -162,7 +192,7 @@ function ActionsBody(
     );
   }
 
-  if (props.activeBuyPrice && !props.isOwner) {
+  if (props.activeBuyPrice && !props.canManageListing) {
     return (
       <BuyNowAction
         chainId={props.chainId}
@@ -174,7 +204,7 @@ function ActionsBody(
     );
   }
 
-  if (props.liveAuction && !props.isOwner) {
+  if (props.liveAuction && !props.canManageListing) {
     return (
       <AuctionLiveInfo
         endsAt={props.liveAuction.endTime ? new Date(props.liveAuction.endTime) : null}
@@ -184,8 +214,19 @@ function ActionsBody(
     );
   }
 
-  if (props.isOwner) {
-    return <OwnerSurface hasActiveListing={Boolean(props.activeBuyPrice)} />;
+  if (props.canManageListing) {
+    return (
+      <OwnerSurface
+        chainId={props.chainId}
+        contractAddress={props.contractAddress}
+        tokenId={props.tokenId}
+        marketContract={props.marketContractAddress}
+        isWalletOwner={props.isOwner}
+        activeBuyPrice={props.activeBuyPrice}
+        liveAuction={props.liveAuction}
+        title={props.title}
+      />
+    );
   }
 
   return (
@@ -354,32 +395,6 @@ function AuctionLiveInfo({
   );
 }
 
-function OwnerSurface({ hasActiveListing }: { hasActiveListing: boolean }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <StateLine
-        state="You own this work"
-        subline={
-          hasActiveListing
-            ? "It is currently listed on Foundation's market."
-            : "It is not currently listed for sale."
-        }
-      />
-      <button
-        type="button"
-        disabled
-        className="inline-flex w-fit cursor-not-allowed items-center gap-2 rounded-full border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface-alt)] px-4 py-2 text-xs font-medium text-[var(--color-ink)]/60"
-      >
-        List through Agorix · coming soon
-      </button>
-      <p className="text-xs leading-relaxed text-[var(--color-ink)]/60">
-        We&apos;re shipping a wrapped listing flow that pays creators directly while
-        funding the archive. Until then, list on Foundation as usual — we&apos;ll
-        index it here.
-      </p>
-    </div>
-  );
-}
 
 function ActionsShell({ children }: { children: React.ReactNode }) {
   return (
@@ -461,6 +476,18 @@ function chainNameFor(chainId: number) {
   if (chainId === 1) return "Ethereum";
   if (chainId === 8453) return "Base";
   return `chain ${chainId}`;
+}
+
+function addressesMatch(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
+  if (!left || !right) return false;
+  try {
+    return isAddressEqual(getAddress(left), getAddress(right));
+  } catch {
+    return false;
+  }
 }
 
 function shortenError(error: unknown) {

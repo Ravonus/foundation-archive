@@ -14,6 +14,7 @@ import { BlurImage, FadeUp } from "~/app/_components/motion";
 import { ProfileHero } from "~/app/_components/profile/profile-hero";
 import { ArtworkActionsPanelShell } from "~/app/_components/web3/artwork-actions-panel-shell";
 import { getCachedFoundationProfileByUsername } from "~/server/archive/profile-assets";
+import { FOUNDATION_PLATFORM_CONTRACTS } from "~/server/archive/chains";
 import { chainExplorerAddressUrl, chainLabel } from "~/lib/chain-label";
 import { formatDate, shortAddress } from "~/lib/utils";
 import {
@@ -434,9 +435,14 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
     contractAddress: artwork.contractAddress,
     tokenId: artwork.tokenId,
     title: artwork.title,
+    marketContract:
+      marketState.activeBuyPrice?.marketContract ??
+      marketState.liveAuction?.marketContract ??
+      FOUNDATION_PLATFORM_CONTRACTS[artwork.chainId as 1 | 8453].nftMarket,
     activeBuyPrice: marketState.activeBuyPrice
       ? {
           marketContract: marketState.activeBuyPrice.marketContract,
+          seller: marketState.activeBuyPrice.seller,
           price: marketState.activeBuyPrice.price,
         }
       : null,
@@ -444,6 +450,7 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
       ? {
           marketContract: marketState.liveAuction.marketContract,
           auctionId: marketState.liveAuction.auctionId,
+          seller: marketState.liveAuction.seller,
           status: marketState.liveAuction.status,
           endTime: marketState.liveAuction.endTime
             ? marketState.liveAuction.endTime.toISOString()
