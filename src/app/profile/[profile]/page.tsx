@@ -5,20 +5,15 @@ import {
   attachMarketStateToGridItems,
   summarizeProfileMarketState,
 } from "~/server/archive/foundation-market";
-import { persistDiscoveredFoundationWorks } from "~/server/archive/jobs";
 import { db } from "~/server/db";
 
 import {
   computeArtistCounts,
-  enrichProfileFromWorks,
-  fetchFoundationArtistPage,
   foundationUrlFor,
-  hasMoreFoundationPages,
-  hydrateProfileFromFoundation,
+  hydrateProfileFromCache,
   loadArchivedArtistPage,
   mergeArchivedAndFoundation,
   normalizeProfileView,
-  resolveArchivedRowsForWorks,
   resolveProfileFromKey,
 } from "./_data";
 import { ProfileBrowser } from "./_browser";
@@ -44,9 +39,10 @@ export async function generateMetadata({
     const baseDescription = bioPart
       ? `${bioPart} · Preserved in Agorix, a public Foundation archive.`
       : `Works by ${displayName}${handle ? ` (${handle})` : ""} preserved in Agorix — a public, IPFS-backed Foundation archive.`;
-    const description = baseDescription.length > 155
-      ? `${baseDescription.slice(0, 154).trimEnd()}…`
-      : baseDescription;
+    const description =
+      baseDescription.length > 155
+        ? `${baseDescription.slice(0, 154).trimEnd()}…`
+        : baseDescription;
 
     // og:image / twitter:image come from `opengraph-image.tsx` — a
     // dynamically generated PNG composed server-side + cached.
@@ -84,30 +80,7 @@ export default async function ProfilePage({
   const activeView = normalizeProfileView(view);
 
   const initialProfile = await resolveProfileFromKey(key);
-
-  const foundationPage = await fetchFoundationArtistPage(
-    initialProfile.accountAddress,
-    0,
-  ).catch(() => ({
-    items: [],
-    page: 0,
-    totalItems: 0,
-    rawItemCount: 0,
-  }));
-
-  if (foundationPage.items.length > 0) {
-    await persistDiscoveredFoundationWorks(db, foundationPage.items, {
-      indexedFrom: "foundation-profile",
-    });
-  }
-
-  let resolved = enrichProfileFromWorks(initialProfile, foundationPage.items);
-  resolved = await hydrateProfileFromFoundation(resolved);
-
-  const archivedByKey = await resolveArchivedRowsForWorks(
-    resolved,
-    foundationPage.items,
-  );
+  const resolved = await hydrateProfileFromCache(initialProfile);
 
   const archivedPage = await loadArchivedArtistPage({
     accountAddress: resolved.accountAddress,
@@ -119,20 +92,14 @@ export default async function ProfilePage({
   const { items: mergedItems, seenKeys } = mergeArchivedAndFoundation({
     view: activeView,
     archivedRows: archivedPage.rows,
-    foundationWorks: foundationPage.items,
-    archivedByKey,
+    foundationWorks: [],
+    archivedByKey: new Map(),
   });
 
   const counts = await computeArtistCounts({
     accountAddress: resolved.accountAddress,
     username: resolved.username,
   });
-
-  const foundationExhausted = !hasMoreFoundationPages(
-    foundationPage.page,
-    foundationPage.totalItems,
-    foundationPage.rawItemCount,
-  );
 
   const [enrichedItems, marketSummary] = await Promise.all([
     attachMarketStateToGridItems(db, mergedItems).catch(() => mergedItems),
@@ -165,8 +132,8 @@ export default async function ProfilePage({
             initialSeenKeys={Array.from(seenKeys)}
             initialCursor={{
               dbCursor: archivedPage.nextCursor,
-              foundationPage: foundationPage.page + 1,
-              foundationExhausted,
+              foundationPage: 0,
+              foundationExhausted: true,
             }}
             emptyFallback={
               <ArtworkGrid

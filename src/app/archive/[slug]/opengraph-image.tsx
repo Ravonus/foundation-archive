@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 import { db } from "~/server/db";
-import { resolveFoundationProfileByUsername } from "~/server/archive/profile-assets";
+import { getCachedFoundationProfileByUsername } from "~/server/archive/profile-assets";
 import { resolveArchivedLocalUrl } from "~/server/archive/dependencies";
 import { buildArchivePublicPath } from "~/server/archive/ipfs";
 import {
@@ -79,7 +79,7 @@ async function loadArchiveOgData(slug: string) {
       : (localPreview ?? artwork.staticPreviewUrl ?? artwork.previewUrl);
 
   const artistProfile = artwork.artistUsername
-    ? await resolveFoundationProfileByUsername(
+    ? await getCachedFoundationProfileByUsername(
         db,
         artwork.artistUsername,
       ).catch(() => null)

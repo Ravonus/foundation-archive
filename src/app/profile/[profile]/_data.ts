@@ -11,22 +11,13 @@ import {
   artworkKey,
   hasCapturedServerRoot,
 } from "~/app/archive/_types";
+import { buildFoundationProfileUrl } from "~/server/archive/foundation";
 import {
-  buildFoundationProfileUrl,
-  tryFetchFoundationProfileByUsername,
-} from "~/server/archive/foundation";
-import {
-  archiveFoundationProfile,
   getCachedFoundationProfileByAddress,
   getCachedFoundationProfileByUsername,
-  resolveFoundationProfileByUsername,
 } from "~/server/archive/profile-assets";
-import {
-  discoverFoundationWorks,
-  fetchAllFoundationWorksByCreator,
-  fetchFoundationWorksByCreatorPage,
-  type FoundationLookupWork,
-} from "~/server/archive/foundation-api";
+import { type FoundationLookupWork } from "~/server/archive/foundation-api";
+import { detectWorkStorageProtocol } from "~/server/archive/foundation-api/client";
 import { db } from "~/server/db";
 import { BackupStatus, type Prisma } from "~/server/prisma-client";
 
@@ -37,7 +28,6 @@ import {
 } from "./_types";
 
 export const PROFILE_PAGE_SIZE = 24;
-export const PROFILE_FOUNDATION_PAGE_SIZE = 24;
 
 const ARCHIVED_SELECT = {
   id: true,
@@ -173,28 +163,23 @@ async function resolveProfileFromAddressKey(
   };
 }
 
-// eslint-disable-next-line complexity
 async function resolveProfileFromUsernameKey(
   key: string,
 ): Promise<ResolvedProfile> {
   const normalizedKey = key.replace(/^@+/, "");
   const foundProfile =
-    (await resolveFoundationProfileByUsername(db, normalizedKey)) ??
-    (await discoverFoundationWorks(normalizedKey)).profiles[0] ??
-    (await getCachedFoundationProfileByUsername(db, normalizedKey)) ??
-    null;
+    (await getCachedFoundationProfileByUsername(db, normalizedKey)) ?? null;
 
   if (foundProfile) {
-    const archivedProfile = await archiveFoundationProfile(db, foundProfile);
     return {
       ...emptyResolvedProfile(
-        normalizeProfileAddress(archivedProfile.accountAddress),
+        normalizeProfileAddress(foundProfile.accountAddress),
       ),
-      username: archivedProfile.username ?? normalizedKey,
-      name: archivedProfile.name ?? null,
-      profileImageUrl: archivedProfile.profileImageUrl ?? null,
-      coverImageUrl: archivedProfile.coverImageUrl ?? null,
-      bio: archivedProfile.bio ?? null,
+      username: foundProfile.username ?? normalizedKey,
+      name: foundProfile.name ?? null,
+      profileImageUrl: foundProfile.profileImageUrl ?? null,
+      coverImageUrl: foundProfile.coverImageUrl ?? null,
+      bio: foundProfile.bio ?? null,
     };
   }
 
@@ -239,17 +224,12 @@ function mergeResolvedProfile(
   };
 }
 
-export async function hydrateProfileFromFoundation(
+export async function hydrateProfileFromCache(
   resolved: ResolvedProfile,
 ): Promise<ResolvedProfile> {
-  if (!resolved.username) return resolved;
-
-  const foundationProfile = await tryFetchFoundationProfileByUsername(
-    resolved.username,
-  ).catch(() => null);
-  const profile = foundationProfile
-    ? await archiveFoundationProfile(db, foundationProfile)
-    : await getCachedFoundationProfileByUsername(db, resolved.username);
+  const profile = resolved.username
+    ? await getCachedFoundationProfileByUsername(db, resolved.username)
+    : await getCachedFoundationProfileByAddress(db, resolved.accountAddress);
 
   return mergeResolvedProfile(resolved, profile);
 }
@@ -291,7 +271,7 @@ function buildArtistArchivedWhere(input: {
     case "syncing":
       return { AND: [artistWhere, SYNCING_WHERE] };
     case "all":
-      return { AND: [artistWhere, HAS_ROOTS_WHERE] };
+      return artistWhere;
     case "found":
       return { AND: [artistWhere, { NOT: HAS_ROOTS_WHERE }] };
   }
@@ -371,32 +351,36 @@ export async function loadArchivedArtistPage(input: {
 export async function computeArtistCounts(input: {
   accountAddress: string;
   username: string | null;
-  foundationWorks?: FoundationLookupWork[];
 }): Promise<ProfileItemCounts> {
   const artistWhere = buildArtistWhere(input);
-  const [withRootsCount, savedCount, syncingCount] = await Promise.all([
-    db.artwork.count({ where: { AND: [artistWhere, HAS_ROOTS_WHERE] } }),
-    db.artwork.count({ where: { AND: [artistWhere, SAVED_WHERE] } }),
-    db.artwork.count({ where: { AND: [artistWhere, SYNCING_WHERE] } }),
-  ]);
+  const [withRootsCount, savedCount, syncingCount, localRows] =
+    await Promise.all([
+      db.artwork.count({ where: { AND: [artistWhere, HAS_ROOTS_WHERE] } }),
+      db.artwork.count({ where: { AND: [artistWhere, SAVED_WHERE] } }),
+      db.artwork.count({ where: { AND: [artistWhere, SYNCING_WHERE] } }),
+      db.artwork.findMany({
+        where: artistWhere,
+        select: {
+          metadataUrl: true,
+          sourceUrl: true,
+          previewUrl: true,
+          staticPreviewUrl: true,
+          metadataRootId: true,
+          mediaRootId: true,
+        },
+      }),
+    ]);
 
-  const allWorks =
-    input.foundationWorks ??
-    (await fetchAllFoundationWorksByCreator(input.accountAddress, 24, 12).catch(
-      () => [] as FoundationLookupWork[],
-    ));
-  const archivableFoundationCount = allWorks.filter(
-    (work) => work.storageProtocol === "ipfs",
-  ).length;
-  const offChain = Math.max(0, allWorks.length - archivableFoundationCount);
-
-  // `found` = IPFS-archivable works Foundation knows about that we don't yet
-  // have captured in the DB. Off-chain/centralized/arweave works are counted
-  // separately in `offChain` so the primary numbers only reflect what we can
-  // actually pin. `total` is the full Foundation catalog so the header stat
-  // matches what's rendered in the grid.
-  const found = Math.max(0, archivableFoundationCount - withRootsCount);
-  const total = Math.max(allWorks.length, withRootsCount + found + offChain);
+  const total = localRows.length;
+  const offChain = localRows.filter((row) => {
+    const protocol = detectWorkStorageProtocol({
+      metadataUrl: row.metadataUrl,
+      sourceUrl: row.sourceUrl,
+      mediaUrl: row.staticPreviewUrl ?? row.previewUrl,
+    });
+    return protocol !== "ipfs";
+  }).length;
+  const found = Math.max(0, total - withRootsCount - offChain);
 
   return {
     total,
@@ -405,27 +389,6 @@ export async function computeArtistCounts(input: {
     found,
     offChain,
   };
-}
-
-export async function fetchFoundationArtistPage(
-  accountAddress: string,
-  page: number,
-) {
-  return fetchFoundationWorksByCreatorPage(
-    accountAddress,
-    page,
-    PROFILE_FOUNDATION_PAGE_SIZE,
-  );
-}
-
-export function hasMoreFoundationPages(
-  page: number,
-  totalItems: number,
-  rawItemCount: number,
-) {
-  const fetched = (page + 1) * PROFILE_FOUNDATION_PAGE_SIZE;
-  if (rawItemCount < PROFILE_FOUNDATION_PAGE_SIZE) return false;
-  return fetched < totalItems;
 }
 
 function buildArchivedMap(archived: ArchivedArtworkRow[]) {

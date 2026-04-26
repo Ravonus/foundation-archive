@@ -13,7 +13,7 @@ import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
 import { ProfileHero } from "~/app/_components/profile/profile-hero";
 import { ArtworkActionsPanelShell } from "~/app/_components/web3/artwork-actions-panel-shell";
-import { resolveFoundationProfileByUsername } from "~/server/archive/profile-assets";
+import { getCachedFoundationProfileByUsername } from "~/server/archive/profile-assets";
 import { chainExplorerAddressUrl, chainLabel } from "~/lib/chain-label";
 import { formatDate, shortAddress } from "~/lib/utils";
 import {
@@ -422,9 +422,10 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
         { limit: 50 },
       ),
       artwork.artistUsername
-        ? resolveFoundationProfileByUsername(db, artwork.artistUsername).catch(
-            () => null,
-          )
+        ? getCachedFoundationProfileByUsername(
+            db,
+            artwork.artistUsername,
+          ).catch(() => null)
         : Promise.resolve(null),
     ]);
 

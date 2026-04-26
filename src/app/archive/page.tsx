@@ -4,17 +4,12 @@ import { type ArtworkGridItem } from "~/app/_components/artwork-grid";
 import { FadeUp } from "~/app/_components/motion";
 import { ProfileArchiveCards } from "~/app/_components/profile/profile-archive-cards";
 import {
-  discoverFoundationWorks,
   type FoundationLookupWork,
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
 import { getArchiveLiveSnapshot } from "~/server/archive/dashboard";
 import { attachMarketStateToGridItems } from "~/server/archive/foundation-market";
-import { archiveFoundationProfile } from "~/server/archive/profile-assets";
-import {
-  persistDiscoveredFoundationWorks,
-  PUBLIC_QUEUE_PRIORITY,
-} from "~/server/archive/jobs";
+import { PUBLIC_QUEUE_PRIORITY } from "~/server/archive/jobs";
 import { db } from "~/server/db";
 import {
   archiveItemMatchesFilters,
@@ -54,17 +49,9 @@ type DiscoveryResult = {
 
 const EMPTY_DISCOVERY: DiscoveryResult = { profiles: [], works: [] };
 
-async function runDiscovery(query: string): Promise<DiscoveryResult> {
-  if (!query) return EMPTY_DISCOVERY;
-  const discovery = await discoverFoundationWorks(query).catch(
-    () => EMPTY_DISCOVERY,
-  );
-  const profiles = await Promise.all(
-    discovery.profiles.map((profile) =>
-      archiveFoundationProfile(db, profile).catch(() => profile),
-    ),
-  );
-  return { ...discovery, profiles };
+function runDiscovery(query: string): DiscoveryResult {
+  void query;
+  return EMPTY_DISCOVERY;
 }
 
 type MergeGridItemsInput = {
@@ -208,13 +195,7 @@ async function loadDiscoveredArchivedByKey(
 
 export default async function ArchivePage(props: ArchivePageProps) {
   const params = await parseSearchParams(props);
-  const discovery = await runDiscovery(params.query);
-
-  if (params.query && discovery.works.length > 0) {
-    await persistDiscoveredFoundationWorks(db, discovery.works, {
-      indexedFrom: "foundation-search",
-    });
-  }
+  const discovery = runDiscovery(params.query);
 
   const hasFilter = hasExplicitFilterInput(params);
   const [

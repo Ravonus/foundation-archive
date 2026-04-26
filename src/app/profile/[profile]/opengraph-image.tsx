@@ -2,9 +2,7 @@ import { ImageResponse } from "next/og";
 import { getAddress } from "viem";
 
 import { db } from "~/server/db";
-import { fetchFoundationUserByUsername } from "~/server/archive/foundation-api";
 import {
-  archiveFoundationProfile,
   getCachedFoundationProfileByAddress,
   getCachedFoundationProfileByUsername,
 } from "~/server/archive/profile-assets";
@@ -39,7 +37,6 @@ type OgProfile = {
   accountAddress: string | null;
 };
 
-const FOUNDATION_LOOKUP_TIMEOUT_MS = 1_800;
 const SITE_URL = (() => {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (raw && /^https?:/.test(raw)) return raw.replace(/\/$/, "");
@@ -75,18 +72,6 @@ function toOgProfile(input: {
       safeGetAddress(input.profile.accountAddress)?.toLowerCase() ??
       input.fallbackAddress,
   };
-}
-
-async function fetchLiveOgProfile(username: string | null) {
-  if (!username) return null;
-  const foundationProfile = await withTimeout(
-    fetchFoundationUserByUsername(username),
-    FOUNDATION_LOOKUP_TIMEOUT_MS,
-  ).catch(() => null);
-  if (!foundationProfile) return null;
-  return archiveFoundationProfile(db, foundationProfile).catch(
-    () => foundationProfile,
-  );
 }
 
 async function fetchCachedOgProfile(input: {
@@ -146,12 +131,8 @@ async function archivedOgProfileFallback(input: {
   };
 }
 
-/// Lean profile lookup for the OG route — skips the
-/// `resolveProfileFromKey` path used by the full page render because its
-/// discovery fallback can take >5 s and blow past Caddy's timeout. We
-/// race a direct Foundation user lookup against a hard timeout and fall
-/// back to DB-only data (name + username from any artwork row) so the
-/// card always renders quickly.
+/// Keep OG resolution DB/cached-only so it still works after Foundation
+/// shuts down.
 async function resolveOgProfile(profile: string): Promise<OgProfile | null> {
   const key = decodeURIComponent(profile).trim();
   if (!key) return null;
@@ -161,15 +142,6 @@ async function resolveOgProfile(profile: string): Promise<OgProfile | null> {
   const normalizedAddress = isAddress
     ? (safeGetAddress(key)?.toLowerCase() ?? null)
     : null;
-
-  const liveProfile = await fetchLiveOgProfile(normalizedUsername);
-  if (liveProfile) {
-    return toOgProfile({
-      profile: liveProfile,
-      fallbackUsername: normalizedUsername,
-      fallbackAddress: normalizedAddress,
-    });
-  }
 
   const cachedProfile = await fetchCachedOgProfile({
     normalizedUsername,
@@ -196,22 +168,6 @@ function safeGetAddress(value: string) {
   } catch {
     return null;
   }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("timeout")), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      },
-    );
-  });
 }
 
 function shortAddress(accountAddress: string) {
