@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 
 import {
-  DesktopBridgeProvider,
   useDesktopBridge,
   type DesktopShareableWork,
 } from "~/app/_components/desktop-bridge-provider";
-import { DesktopShareButton } from "~/app/_components/desktop-share-button";
+import { useArchiveSaveManager } from "~/app/_components/archive-save-manager";
 import { FadeUp } from "~/app/_components/motion";
+import { SaveTargetMenu } from "~/app/_components/save-target-menu";
 
 type DesktopSharePanelProps = {
   hasShareableRoots: boolean;
-  work: DesktopShareableWork;
+  work: DesktopShareableWork & { chainId: number };
 };
 
 const AUTO_POLL_MS = 15_000;
@@ -22,6 +22,7 @@ function DesktopSharePanelBody({
   work,
 }: DesktopSharePanelProps) {
   const { reachable, relayDevices, refreshRelayDevices } = useDesktopBridge();
+  const { pinHosts } = useArchiveSaveManager();
 
   // Visibility is intentionally loose: once we've *ever* seen a paired device
   // (either from live socket or the localStorage bootstrap cache), keep the
@@ -29,15 +30,23 @@ function DesktopSharePanelBody({
   // used to make the button vanish mid-save and swallow the result toast.
   const hasPairedDevice = relayDevices.length > 0;
   const hasConnectedDevice = relayDevices.some((device) => device.connected);
+  const hasPinnedHosts = pinHosts.some((host) => host.enabled);
   const canSave = reachable || hasConnectedDevice;
 
   // Once shown, stay shown for the lifetime of this component. The button
   // itself surfaces connection errors on click, so hiding it transiently
   // just confuses the user.
-  const everVisibleRef = useRef(false);
-  if (hasPairedDevice || canSave) {
-    everVisibleRef.current = true;
-  }
+  const [everVisible, setEverVisible] = useState(
+    hasPairedDevice || canSave || hasPinnedHosts,
+  );
+
+  useEffect(() => {
+    if (hasPairedDevice || canSave || hasPinnedHosts) {
+      const id = window.setTimeout(() => setEverVisible(true), 0);
+      return () => window.clearTimeout(id);
+    }
+    return undefined;
+  }, [canSave, hasPairedDevice, hasPinnedHosts]);
 
   // Gently re-poll when we know there's a saved pairing but the live socket
   // hasn't confirmed it yet — covers the "bridge restarted, tab refreshed"
@@ -52,7 +61,7 @@ function DesktopSharePanelBody({
   }, [hasPairedDevice, canSave, refreshRelayDevices]);
 
   if (!hasShareableRoots) return null;
-  if (!everVisibleRef.current) return null;
+  if (!everVisible) return null;
 
   return (
     <FadeUp delay={0.85} duration={0.6} className="block">
@@ -61,11 +70,11 @@ function DesktopSharePanelBody({
           Optional: keep a copy on your own computer
         </p>
         <p className="mt-2 text-sm text-[var(--color-body)]">
-          This work is already saved in the archive. Pin it to your desktop app
-          to keep an extra copy on your own computer.
+          This work is already saved in the archive. Send it to your desktop
+          app, your own pin hosts, or both without leaving the page.
         </p>
         <div className="mt-4">
-          <DesktopShareButton work={work} />
+          <SaveTargetMenu work={work} variant="inline" />
         </div>
       </div>
     </FadeUp>
@@ -73,9 +82,5 @@ function DesktopSharePanelBody({
 }
 
 export function DesktopSharePanel(props: DesktopSharePanelProps) {
-  return (
-    <DesktopBridgeProvider>
-      <DesktopSharePanelBody {...props} />
-    </DesktopBridgeProvider>
-  );
+  return <DesktopSharePanelBody {...props} />;
 }

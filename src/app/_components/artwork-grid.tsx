@@ -1,9 +1,10 @@
+/* eslint-disable max-lines, react-hooks/set-state-in-effect */
+
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   ArrowRight,
   Box,
@@ -11,16 +12,19 @@ import {
   LoaderCircle,
   Play,
   Plus,
-  X,
 } from "lucide-react";
 
+import {
+  useArchiveSaveManager,
+  type ArchiveSaveWork,
+} from "~/app/_components/archive-save-manager";
 import { ModelMediaPreview } from "~/app/_components/model-media-preview";
 import { BlurImage } from "~/app/_components/motion";
+import { SaveTargetMenu } from "~/app/_components/save-target-menu";
 import { VirtualizedArtworkGrid } from "~/app/_components/artwork-grid-virtualized";
 import { ChainBadge } from "~/app/_components/chain-badge";
 import { archiveItemStatus } from "~/lib/archive-browse";
 import { cn } from "~/lib/utils";
-import { api } from "~/trpc/react";
 
 export type ArtworkMarketState = "listed" | "auction" | "rescuable";
 
@@ -76,9 +80,12 @@ function offChainLabel(protocol: ArtworkStorageProtocol): string {
       return "Off-chain";
     case "inline":
       return "Inline data";
-    default:
+    case "ipfs":
+    case "unknown":
       return "Not on IPFS";
-  }
+    default:
+      return protocol satisfies never;
+    }
 }
 
 function offChainExplanation(protocol: ArtworkStorageProtocol): string {
@@ -89,8 +96,11 @@ function offChainExplanation(protocol: ArtworkStorageProtocol): string {
       return "Stored on a centralized server. We can't pin this to IPFS, so we don't include it in the archive.";
     case "inline":
       return "The media is embedded directly in the token's on-chain data — nothing to pin.";
-    default:
+    case "ipfs":
+    case "unknown":
       return "This work isn't stored on IPFS, so we can't pin it to the archive.";
+    default:
+      return protocol satisfies never;
   }
 }
 
@@ -215,7 +225,18 @@ function cardVariants(largeGrid: boolean, offset: number) {
   };
 }
 
-type OptimisticStatus = "pending";
+function toArchiveSaveWork(item: ArtworkGridItem): ArchiveSaveWork {
+  return {
+    title: item.title,
+    chainId: item.chainId,
+    contractAddress: item.contractAddress,
+    tokenId: item.tokenId,
+    foundationUrl: item.foundationUrl,
+    artistUsername: item.artistUsername,
+    metadataCid: item.metadataCid,
+    mediaCid: item.mediaCid,
+  };
+}
 
 export function ArtworkGrid({
   items,
@@ -228,67 +249,8 @@ export function ArtworkGrid({
   emptyBody: string;
   virtualize?: boolean;
 }) {
-  const router = useRouter();
   const reduce = useReducedMotion();
-  const [isRefreshing, startRefresh] = useTransition();
-  const [feedback, setFeedback] = useState<{
-    tone: "success" | "error";
-    message: string;
-  } | null>(null);
-  const [activeItemId, setActiveItemId] = useState<string | null>(null);
-  const [optimisticStatus, setOptimisticStatus] = useState<
-    Record<string, OptimisticStatus>
-  >({});
-
-  useEffect(() => {
-    if (!feedback) return;
-    const id = window.setTimeout(() => setFeedback(null), 6000);
-    return () => window.clearTimeout(id);
-  }, [feedback]);
-
-  const refresh = () =>
-    startRefresh(() => {
-      router.refresh();
-    });
-
-  const archiveMutation = api.archive.requestArtworkArchive.useMutation({
-    onSuccess: (result, variables) => {
-      if (result.state === "already-pinned") {
-        setFeedback({
-          tone: "success",
-          message:
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- result.title crosses the tRPC boundary; server may omit it on older clients despite the current schema typing it non-null.
-            `${result.title ?? "This work"} is already saved.`,
-        });
-      } else {
-        setFeedback({
-          tone: "success",
-          message: `Added to the line. You're ${
-            result.jobsAhead === 0 ? "next up" : `#${result.jobsAhead + 1}`
-          }.`,
-        });
-        const matchingId = items.find(
-          (candidate) =>
-            candidate.contractAddress.toLowerCase() ===
-              variables.contractAddress.toLowerCase() &&
-            candidate.tokenId === variables.tokenId &&
-            candidate.chainId === variables.chainId,
-        )?.id;
-        if (matchingId) {
-          setOptimisticStatus((prev) => ({ ...prev, [matchingId]: "pending" }));
-        }
-      }
-      setActiveItemId(null);
-      refresh();
-    },
-    onError: (error) => {
-      setFeedback({
-        tone: "error",
-        message: error.message || "Something went wrong. Please try again.",
-      });
-      setActiveItemId(null);
-    },
-  });
+  const { requestArchiveSave, getWorkState } = useArchiveSaveManager();
 
   if (items.length === 0) {
     return <EmptyGridState title={emptyTitle} body={emptyBody} />;
@@ -300,31 +262,34 @@ export function ArtworkGrid({
   const shouldVirtualize = virtualize && items.length > VIRTUALIZE_AFTER_ITEMS;
 
   const handleRequest = (item: ArtworkGridItem) => {
-    setActiveItemId(item.id);
-    archiveMutation.mutate({
-      chainId: item.chainId,
-      contractAddress: item.contractAddress,
-      tokenId: item.tokenId,
-      foundationUrl: item.foundationUrl ?? undefined,
-    });
+    void requestArchiveSave(toArchiveSaveWork(item));
   };
 
-  const isItemSubmitting = (itemId: string) =>
-    activeItemId === itemId && (archiveMutation.isPending || isRefreshing);
+  const isItemSubmitting = (item: ArtworkGridItem) =>
+    getWorkState(toArchiveSaveWork(item)).archive === "pending";
+
+  const hasSaveState = (item: ArtworkGridItem) => {
+    const state = getWorkState(toArchiveSaveWork(item));
+    return (
+      state.archive !== "idle" ||
+      state.desktop !== "idle" ||
+      Object.values(state.hosts).some((entry) => entry.status !== "idle")
+    );
+  };
 
   const overrideFor = (item: ArtworkGridItem): ArtworkGridItem => {
-    const override = optimisticStatus[item.id];
-    if (!override) return item;
-    return { ...item, metadataStatus: "PENDING", mediaStatus: "PENDING" };
+    const state = getWorkState(toArchiveSaveWork(item));
+    if (state.archive === "pending") {
+      return { ...item, metadataStatus: "PENDING", mediaStatus: "PENDING" };
+    }
+    if (state.archive === "saved") {
+      return { ...item, metadataStatus: "PINNED", mediaStatus: "PINNED" };
+    }
+    return item;
   };
 
   return (
     <div className="space-y-6">
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {feedback?.message ?? ""}
-      </div>
-      <FeedbackToast feedback={feedback} onDismiss={() => setFeedback(null)} />
-
       {shouldVirtualize ? (
         <VirtualizedArtworkGrid
           items={items}
@@ -335,7 +300,8 @@ export function ArtworkGrid({
               index={index}
               largeGrid
               offset={0}
-              isSubmitting={isItemSubmitting(item.id)}
+              isSubmitting={isItemSubmitting(item)}
+              showPinnedMenu={hasSaveState(item)}
               onRequest={handleRequest}
             />
           )}
@@ -363,7 +329,8 @@ export function ArtworkGrid({
               index={index}
               largeGrid={largeGrid}
               offset={offset}
-              isSubmitting={isItemSubmitting(item.id)}
+              isSubmitting={isItemSubmitting(item)}
+              showPinnedMenu={hasSaveState(item)}
               onRequest={handleRequest}
             />
           ))}
@@ -441,19 +408,16 @@ function AutoplayVideo({
       // .play() imperatively when the element scrolls back into view
       // after we paused it — the browser treats that as a continuation
       // of the same session, not a denied autoplay.
-      const promise = node.play();
-      if (promise && typeof promise.catch === "function") {
-        promise.catch((error: unknown) => {
-          if (process.env.NODE_ENV !== "production") {
-            console.warn("[AutoplayVideo] play() rejected", {
-              src,
-              readyState: node.readyState,
-              networkState: node.networkState,
-              error,
-            });
-          }
-        });
-      }
+      void node.play().catch((error: unknown) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[AutoplayVideo] play() rejected", {
+            src,
+            readyState: node.readyState,
+            networkState: node.networkState,
+            error,
+          });
+        }
+      });
     } else {
       node.pause();
     }
@@ -719,7 +683,7 @@ function ItemAction({
         ) : (
           <Plus className="h-3.5 w-3.5" />
         )}
-        {requestLabelFor(health)}
+        {isSubmitting ? "Queued" : requestLabelFor(health)}
       </button>
     );
   }
@@ -740,6 +704,7 @@ function ItemCard({
   largeGrid,
   offset,
   isSubmitting,
+  showPinnedMenu,
   onRequest,
 }: {
   item: ArtworkGridItem;
@@ -747,6 +712,7 @@ function ItemCard({
   largeGrid: boolean;
   offset: number;
   isSubmitting: boolean;
+  showPinnedMenu: boolean;
   onRequest: (item: ArtworkGridItem) => void;
 }) {
   const href = resolveHref(item);
@@ -760,12 +726,24 @@ function ItemCard({
   return (
     <motion.article
       variants={cardVariants(largeGrid, offset)}
-      className="group flex flex-col"
+      className="group relative flex flex-col"
       style={{
         contentVisibility: "auto",
         containIntrinsicSize: "420px 540px",
       }}
     >
+      {isArchivableProtocol(item.storageProtocol) ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute top-3 right-3 z-20 transition duration-200 group-hover:opacity-100 group-focus-within:opacity-100",
+            showPinnedMenu ? "opacity-100" : "opacity-0",
+          )}
+        >
+          <div className="pointer-events-auto">
+            <SaveTargetMenu work={toArchiveSaveWork(item)} />
+          </div>
+        </div>
+      ) : null}
       <Link
         href={href}
         {...targetProps}
@@ -850,46 +828,5 @@ function EmptyGridState({ title, body }: { title: string; body: string }) {
         </Link>
       </div>
     </motion.div>
-  );
-}
-
-type FeedbackTone = "success" | "error";
-
-function FeedbackToast({
-  feedback,
-  onDismiss,
-}: {
-  feedback: { tone: FeedbackTone; message: string } | null;
-  onDismiss: () => void;
-}) {
-  return (
-    <AnimatePresence initial={false}>
-      {feedback ? (
-        <motion.div
-          key="feedback"
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.3, ease: EASE }}
-          role={feedback.tone === "error" ? "alert" : "status"}
-          className={cn(
-            "flex items-start justify-between gap-3 rounded-sm border px-5 py-3 text-sm",
-            feedback.tone === "error"
-              ? "border-[var(--color-err)]/40 bg-[var(--tint-err)] text-[var(--color-err)]"
-              : "border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-body)]",
-          )}
-        >
-          <span className="flex-1">{feedback.message}</span>
-          <button
-            type="button"
-            aria-label="Dismiss message"
-            onClick={onDismiss}
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-current hover:opacity-70"
-          >
-            <X aria-hidden className="h-3.5 w-3.5" />
-          </button>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
   );
 }

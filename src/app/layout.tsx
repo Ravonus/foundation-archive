@@ -5,7 +5,9 @@ import Link from "next/link";
 import { Fraunces, Inter } from "next/font/google";
 
 import { UmamiScript } from "~/app/_components/analytics/umami-script";
+import { ArchiveSaveManagerProvider } from "~/app/_components/archive-save-manager";
 import { LogoMark } from "~/app/_components/brand";
+import { DesktopBridgeProvider } from "~/app/_components/desktop-bridge-provider";
 import { PageFade } from "~/app/_components/motion";
 import { SiteFooter } from "~/app/_components/site-footer";
 import { SiteNav } from "~/app/_components/site-nav";
@@ -128,48 +130,52 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider>
           <TRPCReactProvider>
-            <a
-              href="#main"
-              className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-[var(--color-ink)] focus:px-3 focus:py-2 focus:text-sm focus:text-[var(--color-bg)]"
-            >
-              Skip to main content
-            </a>
-          <div className="relative z-10 min-h-screen">
-            <header className="sticky top-0 z-40 border-b border-[var(--color-line)] bg-[var(--color-bg)]/85 backdrop-blur-sm">
-              <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
-                <Link
-                  href="/"
-                  className="group inline-flex min-w-0 items-center gap-2.5 sm:gap-3"
-                  aria-label="Agorix home"
+            <DesktopBridgeProvider>
+              <ArchiveSaveManagerProvider>
+                <a
+                  href="#main"
+                  className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-[var(--color-ink)] focus:px-3 focus:py-2 focus:text-sm focus:text-[var(--color-bg)]"
                 >
-                  <span
-                    aria-hidden
-                    className="inline-flex shrink-0 items-center justify-center transition group-hover:-rotate-12"
-                  >
-                    <LogoMark size={28} />
-                  </span>
-                  <span className="block whitespace-nowrap pb-[0.08em] font-serif text-[1.05rem] leading-[1.08] tracking-tight text-[var(--color-ink)] sm:text-[1.2rem]">
-                    Agorix
-                  </span>
-                </Link>
+                  Skip to main content
+                </a>
+                <div className="relative z-10 min-h-screen">
+                  <header className="sticky top-0 z-40 border-b border-[var(--color-line)] bg-[var(--color-bg)]/85 backdrop-blur-sm">
+                    <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
+                      <Link
+                        href="/"
+                        className="group inline-flex min-w-0 items-center gap-2.5 sm:gap-3"
+                        aria-label="Agorix home"
+                      >
+                        <span
+                          aria-hidden
+                          className="inline-flex shrink-0 items-center justify-center transition group-hover:-rotate-12"
+                        >
+                          <LogoMark size={28} />
+                        </span>
+                        <span className="block whitespace-nowrap pb-[0.08em] font-serif text-[1.05rem] leading-[1.08] tracking-tight text-[var(--color-ink)] sm:text-[1.2rem]">
+                          Agorix
+                        </span>
+                      </Link>
 
-                <div className="flex items-center gap-3 sm:gap-5">
-                  <SiteNav />
-                  <span
-                    aria-hidden
-                    className="hidden h-4 w-px bg-[var(--color-line)] sm:inline-block"
-                  />
-                  <ThemeToggle />
+                      <div className="flex items-center gap-3 sm:gap-5">
+                        <SiteNav />
+                        <span
+                          aria-hidden
+                          className="hidden h-4 w-px bg-[var(--color-line)] sm:inline-block"
+                        />
+                        <ThemeToggle />
+                      </div>
+                    </div>
+                  </header>
+
+                  <div id="main">
+                    <PageFade>{children}</PageFade>
+                  </div>
+
+                  <SiteFooter />
                 </div>
-              </div>
-            </header>
-
-            <div id="main">
-              <PageFade>{children}</PageFade>
-            </div>
-
-            <SiteFooter />
-          </div>
+              </ArchiveSaveManagerProvider>
+            </DesktopBridgeProvider>
           </TRPCReactProvider>
         </ThemeProvider>
         <UmamiScript />

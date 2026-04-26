@@ -12,6 +12,7 @@ import { AdvancedSettingsSection } from "./sections/advanced-settings-section";
 import { BridgeStatusHeader } from "./sections/bridge-status-header";
 import { ConnectSection } from "./sections/connect-section";
 import { LinkedDevicesSection } from "./sections/linked-devices-section";
+import { PinnedHostsSection } from "./sections/pinned-hosts-section";
 import { PublicGatewaySection } from "./sections/public-gateway-section";
 import { SavedWorksSection } from "./sections/saved-works-section";
 import { UploadSection } from "./sections/upload-section";
@@ -198,6 +199,8 @@ export function DesktopStatusConsole() {
         runRepair={actions.runRepair}
         runSync={actions.runSync}
       />
+
+      <PinnedHostsSection />
     </section>
   );
 }

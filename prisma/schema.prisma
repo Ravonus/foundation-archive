@@ -76,6 +76,24 @@ enum RelayJobKind {
   SYNC_PINS
 }
 
+enum PinHostKind {
+  PSA
+  KUBO_RPC
+}
+
+enum PinHostAuthMode {
+  NONE
+  BEARER
+  BASIC
+  CUSTOM_HEADER
+}
+
+enum HostedPinStatus {
+  PENDING
+  PINNED
+  FAILED
+}
+
 enum ContractKind {
   FOUNDATION_GENESIS
   FOUNDATION_COLLECTION
@@ -475,4 +493,55 @@ model RelayJob {
 
   @@index([deviceId, status, availableAt])
   @@index([ownerToken, createdAt])
+}
+
+model PinHost {
+  id              String          @id @default(cuid())
+  ownerToken      String
+  label           String
+  presetKey       String
+  kind            PinHostKind
+  endpointUrl     String
+  publicGatewayUrl String?
+  authMode        PinHostAuthMode @default(BEARER)
+  authToken       String?
+  authUsername    String?
+  authPassword    String?
+  authHeaderName  String?
+  enabled         Boolean         @default(true)
+  autoPin         Boolean         @default(true)
+  lastPinnedAt    DateTime?
+  lastError       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  pins HostedPin[]
+
+  @@index([ownerToken, enabled])
+  @@index([ownerToken, autoPin])
+}
+
+model HostedPin {
+  id              String          @id @default(cuid())
+  ownerToken      String
+  hostId          String
+  chainId         Int
+  contractAddress String
+  tokenId         String
+  rootCid         String
+  rootKind        RootKind        @default(UNKNOWN)
+  title           String?
+  status          HostedPinStatus @default(PENDING)
+  pinReference    String?
+  errorMessage    String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  completedAt     DateTime?
+
+  host PinHost @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@unique([hostId, rootCid])
+  @@index([ownerToken, chainId, contractAddress, tokenId])
+  @@index([ownerToken, rootCid])
+  @@index([hostId, status, updatedAt])
 }

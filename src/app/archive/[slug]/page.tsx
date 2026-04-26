@@ -1,3 +1,5 @@
+/* eslint-disable complexity */
+
 /* eslint-disable max-lines */
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
@@ -72,24 +74,6 @@ function metadataDescription(artwork: MetadataArtwork) {
     artwork.description ??
     `Preserved by Agorix's Foundation archive. ${artwork.collectionName ? `Part of ${artwork.collectionName}. ` : ""}A free, open archive of Foundation artists' work.`
   );
-}
-
-async function metadataImageUrl(artwork: MetadataArtwork) {
-  const localMediaUrl =
-    artwork.mediaRoot && isLocalStatus(artwork.mediaStatus)
-      ? buildArchivePublicPath(
-          artwork.mediaRoot.cid,
-          artwork.mediaRoot.relativePath,
-        )
-      : null;
-  const localPreviewUrl = await resolveArchivedLocalUrl([
-    artwork.staticPreviewUrl,
-    artwork.previewUrl,
-  ]);
-
-  return artwork.mediaKind === "IMAGE"
-    ? (localMediaUrl ?? localPreviewUrl)
-    : localPreviewUrl;
 }
 
 export async function generateMetadata(
@@ -715,6 +699,7 @@ function ArtworkHeader({ artwork, view }: SectionProps) {
         {canRetry ? (
           <div className="mt-4">
             <RetrySaveButton
+              title={artwork.title}
               chainId={artwork.chainId}
               contractAddress={artwork.contractAddress}
               tokenId={artwork.tokenId}
@@ -828,6 +813,7 @@ function DesktopSharePanel({ artwork, view }: SectionProps) {
       hasShareableRoots={hasShareableRoots}
       work={{
         title: artwork.title,
+        chainId: artwork.chainId,
         contractAddress: artwork.contractAddress,
         tokenId: artwork.tokenId,
         foundationUrl: artwork.foundationUrl,

@@ -2,7 +2,6 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { DesktopBridgeProvider } from "~/app/_components/desktop-bridge-provider";
 import { DesktopStatusConsole } from "~/app/_components/desktop-status-console";
 
 function ConsoleFallback() {
@@ -29,11 +28,9 @@ export default function DesktopPage() {
       </Link>
 
       <section className="mt-6 space-y-6">
-        <DesktopBridgeProvider>
-          <Suspense fallback={<ConsoleFallback />}>
-            <DesktopStatusConsole />
-          </Suspense>
-        </DesktopBridgeProvider>
+        <Suspense fallback={<ConsoleFallback />}>
+          <DesktopStatusConsole />
+        </Suspense>
       </section>
     </main>
   );
