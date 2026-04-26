@@ -26,6 +26,7 @@ import { backupArtwork } from "./backup";
 import {
   artworkBlockedBySmartBudget,
   type SmartBudgetArtworkSnapshot,
+  unsatisfiedSmartBudgetRootIds,
 } from "./smart-budget";
 import {
   ingestContractToken,
@@ -181,6 +182,7 @@ async function loadSmartBudgetArtworks(
       id: true,
       metadataRoot: {
         select: {
+          id: true,
           backupStatus: true,
           pinStatus: true,
           localDirectory: true,
@@ -190,6 +192,7 @@ async function loadSmartBudgetArtworks(
       },
       mediaRoot: {
         select: {
+          id: true,
           backupStatus: true,
           pinStatus: true,
           localDirectory: true,
@@ -231,6 +234,7 @@ async function selectProcessableJobs(client: DatabaseClient, limit: number) {
     loadSmartBudgetArtworks(client, jobs),
   ]);
   const selected: QueueJob[] = [];
+  const selectedRootIds = new Set<string>();
 
   for (const job of jobs) {
     if (selected.length >= limit) break;
@@ -241,6 +245,12 @@ async function selectProcessableJobs(client: DatabaseClient, limit: number) {
       continue;
     }
 
+    const rootIds = unsatisfiedSmartBudgetRootIds(artwork);
+    if (rootIds.some((rootId) => selectedRootIds.has(rootId))) {
+      continue;
+    }
+
+    for (const rootId of rootIds) selectedRootIds.add(rootId);
     selected.push(job);
   }
 

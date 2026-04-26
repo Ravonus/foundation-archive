@@ -3,6 +3,7 @@ import { BackupStatus } from "~/server/prisma-client";
 import { archivePinningEnabled } from "./shared";
 
 export type SmartBudgetRootSnapshot = {
+  id?: string;
   backupStatus: BackupStatus;
   pinStatus: BackupStatus;
   localDirectory: string | null;
@@ -42,10 +43,7 @@ export function artworkBlockedBySmartBudget(
     return false;
   }
 
-  const unsatisfiedRoots = [artwork.metadataRoot, artwork.mediaRoot].filter(
-    (root): root is Exclude<SmartBudgetRootSnapshot, null> =>
-      !rootAlreadySatisfied(root),
-  );
+  const unsatisfiedRoots = unsatisfiedSmartBudgetRoots(artwork);
 
   if (unsatisfiedRoots.length === 0) {
     return false;
@@ -54,6 +52,27 @@ export function artworkBlockedBySmartBudget(
   return unsatisfiedRoots.every((root) =>
     rootKnownTooLarge(root, smartPinMaxBytes),
   );
+}
+
+export function unsatisfiedSmartBudgetRoots(
+  artwork: SmartBudgetArtworkSnapshot,
+) {
+  if (!artwork) {
+    return [];
+  }
+
+  return [artwork.metadataRoot, artwork.mediaRoot].filter(
+    (root): root is Exclude<SmartBudgetRootSnapshot, null> =>
+      !rootAlreadySatisfied(root),
+  );
+}
+
+export function unsatisfiedSmartBudgetRootIds(
+  artwork: SmartBudgetArtworkSnapshot,
+) {
+  return unsatisfiedSmartBudgetRoots(artwork)
+    .map((root) => root.id)
+    .filter((value): value is string => Boolean(value));
 }
 
 export function nextProcessableRootPriority(
@@ -70,15 +89,7 @@ export function nextProcessableRootPriority(
   let sawUnknownSize = false;
   let smallestKnownSize: number | null = null;
 
-  for (const root of [artwork.metadataRoot, artwork.mediaRoot]) {
-    if (rootAlreadySatisfied(root)) {
-      continue;
-    }
-
-    if (!root) {
-      continue;
-    }
-
+  for (const root of unsatisfiedSmartBudgetRoots(artwork)) {
     const size = root.estimatedByteSize ?? root.byteSize;
     if (size === null) {
       sawUnknownSize = true;

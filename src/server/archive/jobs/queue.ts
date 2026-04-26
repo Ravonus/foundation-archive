@@ -23,9 +23,11 @@ import {
 import {
   artworkBlockedBySmartBudget,
   nextProcessableRootPriority,
+  unsatisfiedSmartBudgetRootIds,
 } from "./smart-budget";
 
 const SMART_BUDGET_ROOT_SELECT = {
+  id: true,
   backupStatus: true,
   pinStatus: true,
   localDirectory: true,
@@ -661,9 +663,13 @@ async function refillAutomaticBackups(args: {
     });
 
   let refilledCount = 0;
+  const refilledRootIds = new Set<string>();
   for (const { artwork } of orderedCandidates) {
     if (activeDedupeKeys.has(artwork.id)) continue;
     if (artworkBlockedBySmartBudget(artwork, smartPinMaxBytes)) continue;
+
+    const rootIds = unsatisfiedSmartBudgetRootIds(artwork);
+    if (rootIds.some((rootId) => refilledRootIds.has(rootId))) continue;
 
     await queueArtworkBackup({
       client,
@@ -671,6 +677,7 @@ async function refillAutomaticBackups(args: {
       priority: BACKUP_PRIORITY,
     });
     activeDedupeKeys.add(artwork.id);
+    for (const rootId of rootIds) refilledRootIds.add(rootId);
     refilledCount += 1;
 
     if (refilledCount >= refillSlots) break;
