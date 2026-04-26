@@ -42,6 +42,7 @@ const ARCHIVED_SELECT = {
   collectionName: true,
   tokenId: true,
   contractAddress: true,
+  metadataUrl: true,
   foundationContractType: true,
   mediaKind: true,
   metadataStatus: true,
