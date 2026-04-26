@@ -27,7 +27,7 @@ export interface FoundationLookupWork {
   contractAddress: string;
   description: string | null;
   foundationContractType: string | null;
-  foundationUrl: string;
+  foundationUrl: string | null;
   id: string;
   mediaKind: MediaKind;
   mediaUrl: string | null;

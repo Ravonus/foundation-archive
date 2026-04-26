@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LoaderCircle, Play, Radar, Sparkles } from "lucide-react";
+import { LoaderCircle, Play, Radar } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { api } from "~/trpc/react";
@@ -16,20 +16,16 @@ const inputClass =
 const labelClass =
   "block font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[var(--color-muted)]";
 
-const primaryBtn =
-  "inline-flex items-center gap-1.5 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm font-medium text-[var(--color-bg)] hover:opacity-90 disabled:opacity-50";
-
 const secondaryBtn =
   "inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-ink)] hover:text-[var(--color-bg)] disabled:opacity-50";
 
 const DEFAULT_STATUS =
-  "Let the scrape run in the live board above, or use these fallback tools for a manual rescue.";
+  "Use the contract scanner and queue worker to rescue work from on-chain metadata and IPFS.";
 
 export function AdminConsole() {
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [foundationUrl, setFoundationUrl] = useState("");
   const [contractAddress, setContractAddress] = useState("");
   const [label, setLabel] = useState("");
   const [foundationContractType, setFoundationContractType] = useState("");
@@ -42,15 +38,6 @@ export function AdminConsole() {
     startRefresh(() => {
       router.refresh();
     });
-
-  const foundationMutation = api.archive.enqueueFoundationUrl.useMutation({
-    onSuccess: () => {
-      setFeedback("Foundation mint queued.");
-      setFoundationUrl("");
-      refresh();
-    },
-    onError: (error) => setFeedback(error.message),
-  });
 
   const contractMutation = api.archive.enqueueContractScan.useMutation({
     onSuccess: () => {
@@ -75,11 +62,6 @@ export function AdminConsole() {
     onError: (error) => setFeedback(error.message),
   });
 
-  const submitFoundation = (event: React.FormEvent) => {
-    event.preventDefault();
-    foundationMutation.mutate({ url: foundationUrl });
-  };
-
   const submitContract = (event: React.FormEvent) => {
     event.preventDefault();
     contractMutation.mutate({
@@ -96,12 +78,6 @@ export function AdminConsole() {
   return (
     <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
       <div className="space-y-4">
-        <FoundationForm
-          url={foundationUrl}
-          setUrl={setFoundationUrl}
-          onSubmit={submitFoundation}
-          pending={foundationMutation.isPending}
-        />
         <ContractForm
           contractAddress={contractAddress}
           setContractAddress={setContractAddress}
@@ -133,45 +109,6 @@ export function AdminConsole() {
   );
 }
 
-function FoundationForm(props: {
-  url: string;
-  setUrl: (value: string) => void;
-  onSubmit: (event: React.FormEvent) => void;
-  pending: boolean;
-}) {
-  const { url, setUrl, onSubmit, pending } = props;
-  return (
-    <form
-      className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4 sm:p-5"
-      onSubmit={onSubmit}
-    >
-      <SectionHeader
-        title="Single-work rescue"
-        description="Force a one-off Foundation work into the archive immediately."
-      />
-      <div className="mt-3 space-y-2">
-        <label className="block">
-          <span className={labelClass}>Mint URL</span>
-          <input
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://foundation.app/mint/eth/0x.../123"
-            className={`${inputClass} mt-1.5`}
-          />
-        </label>
-        <button type="submit" disabled={pending} className={primaryBtn}>
-          {pending ? (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
-          )}
-          Queue ingest
-        </button>
-      </div>
-    </form>
-  );
-}
-
 interface ContractFormProps {
   contractAddress: string;
   setContractAddress: (value: string) => void;
@@ -199,7 +136,7 @@ function ContractForm(props: ContractFormProps) {
     >
       <SectionHeader
         title="Contract import"
-        description="Fallback for imported or edge-case contracts the auto-scraper hasn't picked up."
+        description="Import work directly from chain logs or token IDs."
       />
       <ContractFields {...props} />
       <button

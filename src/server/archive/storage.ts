@@ -255,7 +255,7 @@ async function downloadFileToArchiveWithJs(input: {
 
   const response = await fetch(sourceUrl, {
     headers: {
-      "user-agent": "foundation-archive/0.1 (+https://foundation.app)",
+      "user-agent": "foundation-archive/0.1 (+https://foundation.agorix.io)",
     },
     signal: AbortSignal.timeout(ARCHIVE_DOWNLOAD_TIMEOUT_MS),
   });

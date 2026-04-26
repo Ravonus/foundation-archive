@@ -102,16 +102,20 @@ export function inferFoundationMediaKind(input: {
   return MediaKind.UNKNOWN;
 }
 
-function buildFoundationBaseUrl() {
-  return (env.FOUNDATION_BASE_URL ?? "https://foundation.app").replace(
-    /\/+$/g,
-    "",
-  );
+function configuredFoundationBaseUrl() {
+  return env.FOUNDATION_BASE_URL?.replace(/\/+$/g, "") ?? null;
+}
+
+function requireFoundationBaseUrl(action: string) {
+  const baseUrl = configuredFoundationBaseUrl();
+  if (baseUrl) return baseUrl;
+  throw new Error(`${action} requires FOUNDATION_BASE_URL to be configured.`);
 }
 
 export function buildFoundationProfileUrl(username: string) {
   const normalized = username.replace(/^@+/, "");
-  return `${buildFoundationBaseUrl()}/@${normalized}`;
+  const baseUrl = configuredFoundationBaseUrl();
+  return baseUrl ? `${baseUrl}/@${normalized}` : null;
 }
 
 export function buildFoundationMintUrl(
@@ -119,7 +123,10 @@ export function buildFoundationMintUrl(
   tokenId: string | number | bigint,
   chainId = 1,
 ) {
-  return `${buildFoundationBaseUrl()}/mint/${chainSlug(chainId)}/${contractAddress}/${tokenId.toString()}`;
+  const baseUrl = configuredFoundationBaseUrl();
+  return baseUrl
+    ? `${baseUrl}/mint/${chainSlug(chainId)}/${contractAddress}/${tokenId.toString()}`
+    : null;
 }
 
 // Foundation stores creator asset paths against f8n-production.s3.amazonaws.com,
@@ -136,7 +143,7 @@ export function rewriteFoundationAssetUrl(
 }
 
 const FOUNDATION_USER_AGENT =
-  "foundation-archive/0.1 (+https://foundation.app)";
+  "foundation-archive/0.1 (+https://foundation.agorix.io)";
 const NEXT_DATA_PATTERN =
   /<script id="__NEXT_DATA__" type="application\/json">(?<payload>.*?)<\/script>/s;
 
@@ -283,7 +290,8 @@ function mapFoundationProfile(json: FoundationProfileNextData, url: string) {
 }
 
 export async function fetchFoundationProfileByUsername(username: string) {
-  const url = buildFoundationProfileUrl(username);
+  const normalized = username.replace(/^@+/, "");
+  const url = `${requireFoundationBaseUrl("Fetching Foundation profile page")}/@${normalized}`;
   const html = await fetchFoundationHtml(url, "profile page");
   const json = extractNextData(
     html,

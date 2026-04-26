@@ -20,7 +20,7 @@ export interface ProfileArchivePinnedWork {
 
 export interface ProfileArchiveItem {
   accountAddress: string;
-  foundationUrl: string;
+  foundationUrl: string | null;
   name: string | null;
   profileImageUrl: string | null;
   username: string | null;
@@ -197,14 +197,16 @@ function ProfileCard({
             >
               Open profile
             </Link>
-            <Link
-              href={profile.foundationUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="link-editorial hover:text-[var(--color-ink)]"
-            >
-              View on Foundation
-            </Link>
+            {profile.foundationUrl ? (
+              <Link
+                href={profile.foundationUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="link-editorial hover:text-[var(--color-ink)]"
+              >
+                View on Foundation
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>

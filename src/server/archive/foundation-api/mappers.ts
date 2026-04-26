@@ -127,7 +127,7 @@ function mapFoundationCollection(
 
 function mapFoundationMintEvent(
   work: Pick<FoundationWork, "contractAddress" | "tokenId" | "chainId">,
-): string {
+): string | null {
   return buildFoundationMintUrl(
     work.contractAddress,
     work.tokenId,

@@ -72,11 +72,7 @@ function refineContractScanInput<T extends z.ZodRawShape>(
 export const foundationMintUrlSchema = z
   .string()
   .trim()
-  .url()
-  .regex(
-    /^https:\/\/foundation\.app\/mint\/(?:eth|base)\/0x[a-fA-F0-9]{40}\/\d+$/,
-    "Enter a Foundation mint URL",
-  );
+  .url("Enter a valid URL");
 
 export const contractScanInputSchema =
   refineContractScanInput(contractScanBaseSchema);

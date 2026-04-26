@@ -8,7 +8,7 @@ import { type ProfileItemCounts, type ResolvedProfile } from "./_types";
 type ProfileHeaderProps = {
   resolved: ResolvedProfile;
   counts: ProfileItemCounts;
-  foundationUrl: string;
+  foundationUrl: string | null;
   marketSummary?: { listedCount: number; rescuableCount: number };
 };
 

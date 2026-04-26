@@ -48,75 +48,10 @@ export const OG_THEME = {
   green: "#2d704a",
 } as const;
 
-/// Fetch a font once per cold start. Noto Sans (Latin) + Noto Sans
-/// Symbols 2 covers the vast majority of display names and artist bios
-/// including things like "☆Chris☆" — Latin doesn't carry U+2606 etc.,
-/// so Symbols 2 is registered as a fallback font and Satori swaps in
-/// the correct file per codepoint. Falls back to undefined (system
-/// font) if fonts.googleapis.com is unavailable.
-let cachedNotoSans: Promise<ArrayBuffer | null> | null = null;
-let cachedNotoSansBold: Promise<ArrayBuffer | null> | null = null;
-let cachedNotoSymbols: Promise<ArrayBuffer | null> | null = null;
-
-async function fetchFont(cssUrl: string): Promise<ArrayBuffer | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3_000);
-    const cssResponse = await fetch(cssUrl, {
-      signal: controller.signal,
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; AgorixOG/1.0) AppleWebKit/537.36",
-      },
-    });
-    clearTimeout(timer);
-    if (!cssResponse.ok) return null;
-    const css = await cssResponse.text();
-    const match = /url\((https:\/\/[^)]+)\)/.exec(css);
-    if (!match?.[1]) return null;
-    const fontController = new AbortController();
-    const fontTimer = setTimeout(() => fontController.abort(), 3_000);
-    const fontResponse = await fetch(match[1], {
-      signal: fontController.signal,
-    });
-    clearTimeout(fontTimer);
-    if (!fontResponse.ok) return null;
-    return await fontResponse.arrayBuffer();
-  } catch {
-    return null;
-  }
-}
-
-let cachedInter: Promise<ArrayBuffer | null> | null = null;
-let cachedInterBold: Promise<ArrayBuffer | null> | null = null;
-let cachedFraunces: Promise<ArrayBuffer | null> | null = null;
-
-/// Match the site's typography: Inter for body (layout.tsx/globals.css
-/// ships Inter via next/font), Fraunces for the serif headings, and
-/// Noto Sans Symbols 2 as a fallback so Misc Symbols like "☆" still
-/// render. The old Noto Sans cache keys are kept as compatibility
-/// stubs in case anything else imports them.
 export function loadOgFonts() {
-  cachedInter ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap",
-  );
-  cachedInterBold ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap",
-  );
-  cachedFraunces ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Fraunces:wght@600&display=swap",
-  );
-  cachedNotoSans ??= cachedInter;
-  cachedNotoSansBold ??= cachedInterBold;
-  cachedNotoSymbols ??= fetchFont(
-    "https://fonts.googleapis.com/css2?family=Noto+Sans+Symbols+2&display=swap",
-  );
-  return Promise.all([
-    cachedInter,
-    cachedInterBold,
-    cachedFraunces,
-    cachedNotoSymbols,
-  ]);
+  return Promise.resolve<
+    [ArrayBuffer | null, ArrayBuffer | null, ArrayBuffer | null, ArrayBuffer | null]
+  >([null, null, null, null]);
 }
 
 export type InlinedImage = {

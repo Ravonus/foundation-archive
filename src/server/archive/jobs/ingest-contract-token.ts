@@ -41,7 +41,7 @@ type ContractTokenContext = {
   chainId: number;
   contractAddress: string;
   tokenId: string;
-  foundationUrl: string;
+  foundationUrl: string | null;
   tokenUri: string;
   metadata: TokenMetadata;
   foundationToken: FoundationMintMaybe;
@@ -70,7 +70,9 @@ async function fetchContractTokenContext(
     tokenId: input.tokenId,
   });
   const metadata = await fetchTokenMetadata(tokenUri);
-  const foundationToken = await tryFetchFoundationMintByUrl(foundationUrl);
+  const foundationToken = foundationUrl
+    ? await tryFetchFoundationMintByUrl(foundationUrl)
+    : null;
 
   return {
     chainId,
@@ -415,6 +417,9 @@ export async function ingestContractToken(
         input.tokenId,
         input.chainId ?? 1,
       );
+      if (!foundationUrl) {
+        throw error;
+      }
       return ingestFoundationMintUrl(
         client,
         foundationUrl,

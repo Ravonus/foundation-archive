@@ -74,7 +74,7 @@ export async function fetchFoundationGraphql<T>(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "user-agent": "foundation-archive/0.1 (+https://foundation.app)",
+      "user-agent": "foundation-archive/0.1 (+https://foundation.agorix.io)",
     },
     body: JSON.stringify({
       query,

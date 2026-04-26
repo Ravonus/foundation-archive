@@ -48,7 +48,7 @@ export function getRpcClient(chainId: number) {
   });
 }
 
-// Foundation platform anchors per chain (sourced 2026-04-18 from foundation.app production bundle).
+// Foundation platform anchors per chain (sourced 2026-04-18 from the historical production bundle).
 export const FOUNDATION_PLATFORM_CONTRACTS = {
   [ETHEREUM_CHAIN_ID]: {
     nft721: "0x3b3ee1931dc30c1957379fac9aba94d1c48a5405",

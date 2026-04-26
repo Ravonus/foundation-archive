@@ -429,7 +429,7 @@ async function downloadProfileAsset(input: {
 }) {
   const response = await fetch(input.sourceUrl, {
     headers: {
-      "user-agent": "foundation-archive/0.1 (+https://foundation.app)",
+      "user-agent": "foundation-archive/0.1 (+https://foundation.agorix.io)",
     },
     signal: AbortSignal.timeout(PROFILE_ASSET_TIMEOUT_MS),
   });
@@ -586,7 +586,7 @@ export async function archiveFoundationProfile(
       bio: profile.bio,
       foundationUrl: normalizedUsername
         ? buildFoundationProfileUrl(normalizedUsername)
-        : undefined,
+        : null,
       profileImageUrl: profile.profileImageUrl,
       coverImageUrl: profile.coverImageUrl,
       lastFetchedAt: new Date(),

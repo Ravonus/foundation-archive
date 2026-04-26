@@ -193,9 +193,9 @@ function toPinnedWork(artwork: ArchivedArtworkRow) {
   };
 }
 
-function profileFoundationUrl(profile: FoundationUserProfile) {
+function profileFoundationUrl(profile: FoundationUserProfile): string | null {
   if (profile.username) return buildFoundationProfileUrl(profile.username);
-  return `https://foundation.app/${profile.accountAddress}`;
+  return null;
 }
 
 function buildProfileItem(

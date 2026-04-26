@@ -467,8 +467,8 @@ export function mergeArchivedAndFoundation(input: {
   return { items, seenKeys: seen };
 }
 
-export function foundationUrlFor(resolved: ResolvedProfile) {
+export function foundationUrlFor(resolved: ResolvedProfile): string | null {
   return resolved.username
     ? buildFoundationProfileUrl(resolved.username)
-    : `https://foundation.app/${resolved.accountAddress}`;
+    : null;
 }

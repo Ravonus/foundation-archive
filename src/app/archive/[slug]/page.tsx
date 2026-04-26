@@ -13,6 +13,7 @@ import { ShareLinkButton } from "~/app/_components/share-link-button";
 import { BlurImage, FadeUp } from "~/app/_components/motion";
 import { ProfileHero } from "~/app/_components/profile/profile-hero";
 import { ArtworkActionsPanelShell } from "~/app/_components/web3/artwork-actions-panel-shell";
+import { buildFoundationProfileUrl } from "~/server/archive/foundation";
 import { getCachedFoundationProfileByUsername } from "~/server/archive/profile-assets";
 import { FOUNDATION_PLATFORM_CONTRACTS } from "~/server/archive/chains";
 import { chainExplorerAddressUrl, chainLabel } from "~/lib/chain-label";
@@ -576,9 +577,7 @@ function ArtistHero({
       bannerUrl={profile.coverImageUrl}
       bio={profile.bio}
       foundationUrl={
-        profile.username
-          ? `https://foundation.app/@${profile.username}`
-          : undefined
+        profile.username ? buildFoundationProfileUrl(profile.username) : null
       }
       aside={aside}
     />

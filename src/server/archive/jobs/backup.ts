@@ -147,7 +147,7 @@ async function headProbeRoot(root: RootRecord) {
       const headResponse = await fetch(sourceUrl, {
         method: "HEAD",
         headers: {
-          "user-agent": "foundation-archive/0.1 (+https://foundation.app)",
+          "user-agent": "foundation-archive/0.1 (+https://foundation.agorix.io)",
         },
         signal: AbortSignal.timeout(15_000),
       });

@@ -2,7 +2,6 @@ import "~/styles/globals.css";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Fraunces, Inter } from "next/font/google";
 
 import { UmamiScript } from "~/app/_components/analytics/umami-script";
 import { ArchiveSaveManagerProvider } from "~/app/_components/archive-save-manager";
@@ -105,28 +104,11 @@ export const metadata: Metadata = {
   },
 };
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
-  display: "swap",
-  axes: ["opsz"],
-});
-
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${inter.variable} ${fraunces.variable}`}
-    >
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider>
           <TRPCReactProvider>

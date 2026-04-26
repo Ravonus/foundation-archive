@@ -19,7 +19,7 @@ type ProfileHeroProps = {
   seed?: string;
   bannerUrl: string | null;
   bio?: string | null;
-  foundationUrl?: string;
+  foundationUrl?: string | null;
   foundationLabel?: string;
   footer?: ReactNode;
   aside?: ReactNode;
