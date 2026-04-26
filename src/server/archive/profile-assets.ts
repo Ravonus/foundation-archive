@@ -12,6 +12,7 @@ import {
 import {
   fetchFoundationWorksByCreator,
   fetchFoundationUserByUsername,
+  searchFoundationUsers,
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
 import { BackupStatus, Prisma } from "~/server/prisma-client";
@@ -130,6 +131,18 @@ async function lookupFoundationProfileByUsername(username: string) {
   ).catch(() => null);
   if (direct) return direct;
 
+  const searchMatches = await withFoundationLookupRetries(
+    `user search @${normalized}`,
+    () => searchFoundationUsers(normalized, 5),
+  ).catch(() => []);
+  const exactMatch =
+    searchMatches.find(
+      (profile) => normalizeUsername(profile.username) === normalized,
+    ) ??
+    searchMatches[0] ??
+    null;
+  if (exactMatch) return exactMatch;
+
   const scraped = await withFoundationLookupRetries(
     `scraped profile @${normalized}`,
     () => tryFetchFoundationProfileByUsername(normalized),
@@ -148,7 +161,17 @@ async function lookupFoundationProfileByWallet(accountAddress: string) {
     (work) => work.artistWallet?.toLowerCase() === normalizedAddress,
   );
   const username = normalizeUsername(creator?.artistUsername);
-  if (!username) return null;
+  if (!username) {
+    if (!creator?.artistProfileImageUrl) return null;
+    return {
+      accountAddress: normalizedAddress,
+      name: creator.artistName ?? null,
+      profileImageUrl: creator.artistProfileImageUrl,
+      coverImageUrl: null,
+      bio: null,
+      username: null,
+    };
+  }
 
   const resolved = await lookupFoundationProfileByUsername(username);
   if (resolved) return resolved;
@@ -156,7 +179,7 @@ async function lookupFoundationProfileByWallet(accountAddress: string) {
   return {
     accountAddress: normalizedAddress,
     name: creator?.artistName ?? null,
-    profileImageUrl: null,
+    profileImageUrl: creator?.artistProfileImageUrl ?? null,
     coverImageUrl: null,
     bio: null,
     username,

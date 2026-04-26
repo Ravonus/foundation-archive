@@ -44,6 +44,7 @@ interface OwnerSlots {
 
 interface ArtistSlots {
   artistName: string | null;
+  artistProfileImageUrl: string | null;
   artistUsername: string | null;
   artistWallet: string;
 }
@@ -96,12 +97,15 @@ function resolveDirectSourceUrl(work: FoundationWork): string | null {
 function mapFoundationArtist(creator: FoundationUser): ArtistSlots {
   return {
     artistName: creator.name ?? null,
+    artistProfileImageUrl: rewriteFoundationAssetUrl(creator.profileImageUrl),
     artistUsername: creator.username ?? null,
     artistWallet: creator.accountAddress.toLowerCase(),
   };
 }
 
-function mapFoundationOwner(owner: FoundationUser | null | undefined): OwnerSlots {
+function mapFoundationOwner(
+  owner: FoundationUser | null | undefined,
+): OwnerSlots {
   return {
     ownerName: owner?.name ?? null,
     ownerUsername: owner?.username ?? null,
@@ -193,6 +197,7 @@ export function toLookupWorkFromMintPage(
 ): FoundationLookupWork {
   return {
     ...mint,
+    artistProfileImageUrl: null,
     contractAddress: mint.contractAddress.toLowerCase(),
     artistWallet: mint.artistWallet?.toLowerCase() ?? null,
     ownerWallet: mint.ownerWallet?.toLowerCase() ?? null,
@@ -209,12 +214,17 @@ function resolveDiscoveredContractLabel(
   contract: FoundationCollectionDiscovery,
   contractAddress: string,
 ): string {
-  return contract.name ?? contract.slug ?? `Contract ${contractAddress.slice(0, 10)}`;
+  return (
+    contract.name ?? contract.slug ?? `Contract ${contractAddress.slice(0, 10)}`
+  );
 }
 
 function mapDiscoveredContractCreator(
   creator: FoundationUser | null | undefined,
-): Pick<FoundationDiscoveredContract, "artistName" | "artistUsername" | "artistWallet"> {
+): Pick<
+  FoundationDiscoveredContract,
+  "artistName" | "artistUsername" | "artistWallet"
+> {
   return {
     artistName: creator?.name ?? null,
     artistUsername: creator?.username ?? null,

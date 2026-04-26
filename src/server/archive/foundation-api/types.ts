@@ -18,6 +18,7 @@ export interface FoundationUserProfile {
 
 export interface FoundationLookupWork {
   artistName: string | null;
+  artistProfileImageUrl: string | null;
   artistUsername: string | null;
   artistWallet: string | null;
   chainId: number;
