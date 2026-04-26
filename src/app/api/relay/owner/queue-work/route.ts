@@ -19,6 +19,9 @@ const schema = z.object({
     artistUsername: z.string().nullable().optional(),
     metadataCid: z.string().nullable().optional(),
     mediaCid: z.string().nullable().optional(),
+    metadataUrl: z.string().url().nullable().optional(),
+    sourceUrl: z.string().url().nullable().optional(),
+    mediaUrl: z.string().url().nullable().optional(),
   }),
 });
 
@@ -36,6 +39,9 @@ export async function POST(request: Request) {
         artistUsername: input.work.artistUsername ?? null,
         metadataCid: input.work.metadataCid ?? null,
         mediaCid: input.work.mediaCid ?? null,
+        metadataUrl: input.work.metadataUrl ?? null,
+        sourceUrl: input.work.sourceUrl ?? null,
+        mediaUrl: input.work.mediaUrl ?? null,
       },
     });
 

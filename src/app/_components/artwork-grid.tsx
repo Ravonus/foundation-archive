@@ -57,6 +57,8 @@ export interface ArtworkGridItem {
   publicGatewayUrl: string | null;
   metadataCid: string | null;
   mediaCid: string | null;
+  metadataUrl: string | null;
+  sourceUrl: string | null;
   lookupSource: "ARCHIVED" | "FOUNDATION_LIVE";
   storageProtocol: ArtworkStorageProtocol;
   marketState?: ArtworkMarketState | null;
@@ -235,6 +237,9 @@ function toArchiveSaveWork(item: ArtworkGridItem): ArchiveSaveWork {
     artistUsername: item.artistUsername,
     metadataCid: item.metadataCid,
     mediaCid: item.mediaCid,
+    metadataUrl: item.metadataUrl,
+    sourceUrl: item.sourceUrl,
+    mediaUrl: item.mediaUrl,
   };
 }
 

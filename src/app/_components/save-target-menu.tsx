@@ -18,7 +18,11 @@ import {
   useArchiveSaveManager,
   type ArchiveSaveWork,
 } from "~/app/_components/archive-save-manager";
-import { useDesktopBridge } from "~/app/_components/desktop-bridge-provider";
+import {
+  hasDesktopShareSource,
+  hasHostedPinRoots,
+  useDesktopBridge,
+} from "~/app/_components/desktop-bridge-provider";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 
@@ -87,7 +91,8 @@ export function SaveTargetMenu({
   const [open, setOpen] = useState(false);
   const optimisticState = getWorkState(work);
   const autoHosts = pinHosts.filter((host) => host.enabled && host.autoPin);
-  const canDesktopSave = Boolean(work.metadataCid ?? work.mediaCid);
+  const canDesktopSave = hasDesktopShareSource(work);
+  const canHostPin = hasHostedPinRoots(work);
   const hasDesktopRoute = bridge.reachable || bridge.relayDevices.length > 0;
 
   const workStateQuery = api.pinHosts.getWorkStates.useQuery(
@@ -221,16 +226,25 @@ export function SaveTargetMenu({
             {autoHosts.length > 0 ? (
               <button
                 type="button"
+                disabled={!canHostPin}
                 onClick={() => {
                   void saveToHosts(work, autoHosts.map((host) => host.id));
                   setOpen(false);
                 }}
-                className="text-xs text-[var(--color-ink)]"
+                className="text-xs text-[var(--color-ink)] disabled:opacity-45"
               >
-                Pin all enabled
+                {canHostPin ? "Pin all enabled" : "Needs IPFS roots"}
               </button>
             ) : null}
           </div>
+
+          {!canHostPin ? (
+            <p className="rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-muted)]">
+              This work can go to your desktop app now. Your pinned hosts need IPFS
+              roots first, so import it onto your machine before sending it to
+              those hosts.
+            </p>
+          ) : null}
 
           {pinHosts.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-muted)]">
@@ -277,7 +291,7 @@ export function SaveTargetMenu({
                     ) : null}
                     <button
                       type="button"
-                      disabled={!host.enabled}
+                      disabled={!host.enabled || !canHostPin}
                       onClick={() => {
                         void saveToHosts(work, [host.id]);
                         setOpen(false);
@@ -285,7 +299,11 @@ export function SaveTargetMenu({
                       className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs text-[var(--color-body)] hover:text-[var(--color-ink)] disabled:opacity-45"
                     >
                       <Server className="h-3.5 w-3.5" />
-                      {derivedStatus === "PINNED" ? "Pin again" : "Pin"}
+                      {canHostPin
+                        ? derivedStatus === "PINNED"
+                          ? "Pin again"
+                          : "Pin"
+                        : "Needs IPFS"}
                     </button>
                   </div>
                 </div>

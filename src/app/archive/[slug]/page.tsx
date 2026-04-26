@@ -807,10 +807,8 @@ function ActionRow({ artwork, view }: SectionProps) {
 }
 
 function DesktopSharePanel({ artwork, view }: SectionProps) {
-  const { hasShareableRoots } = view;
   return (
     <ArtworkDesktopSharePanel
-      hasShareableRoots={hasShareableRoots}
       work={{
         title: artwork.title,
         chainId: artwork.chainId,
@@ -819,6 +817,14 @@ function DesktopSharePanel({ artwork, view }: SectionProps) {
         foundationUrl: artwork.foundationUrl,
         artistUsername: artwork.artistUsername,
         metadataCid: artwork.metadataRoot?.cid,
+        metadataUrl: artwork.metadataUrl,
+        sourceUrl: artwork.sourceUrl,
+        mediaUrl:
+          artwork.sourceUrl ??
+          view.gatewayMediaUrl ??
+          view.browserMediaUrl ??
+          artwork.previewUrl ??
+          artwork.staticPreviewUrl,
         mediaCid: artwork.mediaRoot?.cid,
       }}
     />

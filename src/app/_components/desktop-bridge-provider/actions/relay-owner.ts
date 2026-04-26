@@ -71,6 +71,24 @@ function requireOwnerToken(token: string | null): string {
   return token;
 }
 
+async function resolveRelayTargetDevice(
+  deps: RelayOwnerDeps,
+  refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
+  deviceId?: string | null,
+) {
+  const devices =
+    deps.relayDevices.length > 0
+      ? deps.relayDevices
+      : await refreshRelayDevices();
+  const targetDevice = pickRelayDevice(devices, deviceId);
+
+  if (!targetDevice) {
+    throw new Error("No linked desktop device is available yet.");
+  }
+
+  return targetDevice;
+}
+
 function waitForRelayJobOutcome(
   jobId: string,
   timeoutMs: number,
@@ -281,31 +299,31 @@ export function createQueueWorkToRelay(
 ) {
   return async (work: DesktopShareableWork, deviceId?: string | null) => {
     const ownerToken = requireOwnerToken(deps.ownerToken);
+    const targetDevice = await resolveRelayTargetDevice(
+      deps,
+      refreshRelayDevices,
+      deviceId,
+    );
 
-    const devices =
-      deps.relayDevices.length > 0
-        ? deps.relayDevices
-        : await refreshRelayDevices();
-    const targetDevice = pickRelayDevice(devices, deviceId);
-
-    if (!targetDevice) {
-      throw new Error("No linked desktop device is available yet.");
-    }
+    const relayWorkPayload = {
+      title: work.title,
+      contractAddress: work.contractAddress,
+      tokenId: work.tokenId,
+      foundationUrl: work.foundationUrl ?? null,
+      artistUsername: work.artistUsername ?? null,
+      metadataCid: work.metadataCid ?? null,
+      mediaCid: work.mediaCid ?? null,
+      metadataUrl: work.metadataUrl ?? null,
+      sourceUrl: work.sourceUrl ?? null,
+      mediaUrl: work.mediaUrl ?? null,
+    };
 
     const response = await fetch(
       "/api/relay/owner/queue-work",
       withJsonHeaders({
         ownerToken,
         deviceId: targetDevice.id,
-        work: {
-          title: work.title,
-          contractAddress: work.contractAddress,
-          tokenId: work.tokenId,
-          foundationUrl: work.foundationUrl ?? null,
-          artistUsername: work.artistUsername ?? null,
-          metadataCid: work.metadataCid ?? null,
-          mediaCid: work.mediaCid ?? null,
-        },
+        work: relayWorkPayload,
       }),
     );
 

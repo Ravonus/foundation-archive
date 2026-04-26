@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from "motion/react";
 
 import {
   useDesktopBridge,
+  hasHostedPinRoots,
   type DesktopShareableWork,
 } from "~/app/_components/desktop-bridge-provider";
 import { api, type RouterOutputs } from "~/trpc/react";
@@ -452,7 +453,7 @@ export function ArchiveSaveManagerProvider({
       tasks.push(saveToDesktop(work));
     }
 
-    if (enabledHosts.length > 0 && ownerToken) {
+    if (enabledHosts.length > 0 && ownerToken && hasHostedPinRoots(work)) {
       tasks.push(saveToHosts(work, enabledHosts.map((host) => host.id)));
     }
 

@@ -75,6 +75,8 @@ export function toArchivedGridItem(
     publicGatewayUrl: artwork.mediaRoot?.gatewayUrl ?? null,
     metadataCid: artwork.metadataRoot?.cid ?? null,
     mediaCid: artwork.mediaRoot?.cid ?? null,
+    metadataUrl: artwork.metadataUrl,
+    sourceUrl: artwork.sourceUrl,
     lookupSource: "ARCHIVED",
     storageProtocol: "ipfs",
   } satisfies ArtworkGridItem;
@@ -139,6 +141,8 @@ export function toDiscoveredGridItem(
     publicGatewayUrl: null,
     metadataCid: null,
     mediaCid: null,
+    metadataUrl: work.metadataUrl,
+    sourceUrl: work.sourceUrl,
     lookupSource: "FOUNDATION_LIVE",
     storageProtocol: work.storageProtocol,
   } satisfies ArtworkGridItem;

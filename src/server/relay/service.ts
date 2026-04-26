@@ -18,6 +18,9 @@ export type RelayShareWorkPayload = {
   artistUsername: string | null;
   metadataCid: string | null;
   mediaCid: string | null;
+  metadataUrl: string | null;
+  sourceUrl: string | null;
+  mediaUrl: string | null;
 };
 
 export type RelayUpdateConfigPayload = {

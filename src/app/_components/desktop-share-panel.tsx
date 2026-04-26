@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  hasDesktopShareSource,
   useDesktopBridge,
   type DesktopShareableWork,
 } from "~/app/_components/desktop-bridge-provider";
@@ -11,14 +12,12 @@ import { FadeUp } from "~/app/_components/motion";
 import { SaveTargetMenu } from "~/app/_components/save-target-menu";
 
 type DesktopSharePanelProps = {
-  hasShareableRoots: boolean;
   work: DesktopShareableWork & { chainId: number };
 };
 
 const AUTO_POLL_MS = 15_000;
 
 function DesktopSharePanelBody({
-  hasShareableRoots,
   work,
 }: DesktopSharePanelProps) {
   const { reachable, relayDevices, refreshRelayDevices } = useDesktopBridge();
@@ -60,7 +59,7 @@ function DesktopSharePanelBody({
     return () => window.clearInterval(id);
   }, [hasPairedDevice, canSave, refreshRelayDevices]);
 
-  if (!hasShareableRoots) return null;
+  if (!hasDesktopShareSource(work)) return null;
   if (!everVisible) return null;
 
   return (

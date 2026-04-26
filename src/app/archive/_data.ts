@@ -26,6 +26,7 @@ const ARCHIVED_SELECT = {
   contractAddress: true,
   foundationContractType: true,
   mediaKind: true,
+  metadataUrl: true,
   metadataStatus: true,
   mediaStatus: true,
   sourceUrl: true,

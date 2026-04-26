@@ -143,7 +143,37 @@ export type DesktopShareableWork = {
   artistUsername?: string | null;
   metadataCid?: string | null;
   mediaCid?: string | null;
+  metadataUrl?: string | null;
+  sourceUrl?: string | null;
+  mediaUrl?: string | null;
 };
+
+export function hasDesktopShareSource(
+  work: Pick<
+    DesktopShareableWork,
+    | "foundationUrl"
+    | "metadataCid"
+    | "mediaCid"
+    | "metadataUrl"
+    | "sourceUrl"
+    | "mediaUrl"
+  >,
+) {
+  return Boolean(
+    work.metadataCid ??
+      work.mediaCid ??
+      work.metadataUrl ??
+      work.sourceUrl ??
+      work.mediaUrl ??
+      work.foundationUrl,
+  );
+}
+
+export function hasHostedPinRoots(
+  work: Pick<DesktopShareableWork, "metadataCid" | "mediaCid">,
+) {
+  return Boolean(work.metadataCid ?? work.mediaCid);
+}
 
 export type UploadFileEntry = {
   name: string;

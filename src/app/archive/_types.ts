@@ -21,6 +21,7 @@ export type ArchivedArtworkRow = {
   contractAddress: string;
   foundationContractType: string | null;
   mediaKind: string;
+  metadataUrl: string | null;
   metadataStatus: string;
   mediaStatus: string;
   sourceUrl: string | null;

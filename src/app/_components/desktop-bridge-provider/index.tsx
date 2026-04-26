@@ -2,6 +2,7 @@
 
 export { DesktopBridgeProvider } from "./desktop-bridge-provider";
 export { useDesktopBridge } from "./context";
+export { hasDesktopShareSource, hasHostedPinRoots } from "./types";
 export type {
   BridgeConfig,
   BridgeHealth,

@@ -122,6 +122,9 @@ export function buildWorkShareUrl(
   }
   if (work.metadataCid) url.searchParams.set("metadata_cid", work.metadataCid);
   if (work.mediaCid) url.searchParams.set("media_cid", work.mediaCid);
+  if (work.metadataUrl) url.searchParams.set("metadata_url", work.metadataUrl);
+  if (work.sourceUrl) url.searchParams.set("source_url", work.sourceUrl);
+  if (work.mediaUrl) url.searchParams.set("media_url", work.mediaUrl);
 
   return url.toString();
 }
