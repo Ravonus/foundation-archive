@@ -6,6 +6,10 @@ import {
   fetchFoundationEditionCollectionsPage,
   searchFoundationCollectionsPage,
 } from "~/server/archive/foundation-api";
+import {
+  assertFoundationLiveLookupsEnabled,
+  foundationLiveLookupsEnabled,
+} from "~/server/archive/foundation-live";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { getArchivePolicyState } from "~/server/archive/state";
 
@@ -102,6 +106,8 @@ export async function fetchDiscoveryPage(input: {
   discoveryQueryIndex: number;
   discoverySource: string;
 }) {
+  assertFoundationLiveLookupsEnabled("Foundation contract discovery");
+
   const source = normalizeDiscoverySource(input.discoverySource);
 
   if (source === "drops") {
@@ -450,7 +456,7 @@ export async function runAutomaticContractDiscoveryTick(
   client: DatabaseClient,
 ) {
   const policy = await getArchivePolicyState(client);
-  if (!policy.autoCrawlerEnabled) {
+  if (!foundationLiveLookupsEnabled() || !policy.autoCrawlerEnabled) {
     return disabledDiscoveryResult(policy);
   }
 

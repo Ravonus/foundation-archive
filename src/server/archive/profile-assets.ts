@@ -11,6 +11,7 @@ import {
   buildFoundationProfileUrl,
   fetchFoundationProfileByUsername,
 } from "~/server/archive/foundation";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import {
   fetchFoundationWorksByCreator,
   fetchFoundationUserByUsername,
@@ -148,6 +149,7 @@ async function lookupFoundationProfileByUsername(
 ): Promise<ProfileLookupResult> {
   const normalized = normalizeUsername(username);
   if (!normalized) return { status: "missing" };
+  if (!foundationLiveLookupsEnabled()) return { status: "missing" };
 
   let sawFailure: string | null = null;
 
@@ -263,6 +265,8 @@ async function lookupFoundationProfileByWallet(
   accountAddress: string,
 ): Promise<ProfileLookupResult> {
   const normalizedAddress = normalizeAccountAddress(accountAddress);
+  if (!foundationLiveLookupsEnabled()) return { status: "missing" };
+
   let works;
   try {
     works = await withFoundationLookupRetries(
@@ -341,6 +345,10 @@ async function resolveFoundationProfileForBackfillArtist(
       normalizedArtistWallet
   ) {
     return storedByUsername;
+  }
+
+  if (!foundationLiveLookupsEnabled()) {
+    return null;
   }
 
   const byUsername = normalizedArtistUsername
@@ -585,6 +593,13 @@ export async function archiveFoundationProfile(
     },
   });
 
+  if (!foundationLiveLookupsEnabled()) {
+    const assets = await client.foundationProfileAsset.findMany({
+      where: { profileId: saved.id },
+    });
+    return profileWithCachedAssetUrls(saved, assets);
+  }
+
   const assets = await Promise.all([
     upsertAndDownloadAsset({
       client,
@@ -640,6 +655,10 @@ export async function resolveFoundationProfileByUsername(
   client: DatabaseClient,
   username: string,
 ) {
+  if (!foundationLiveLookupsEnabled()) {
+    return getCachedFoundationProfileByUsername(client, username);
+  }
+
   const liveProfile = await fetchFoundationUserByUsername(username).catch(
     () => null,
   );
@@ -666,6 +685,15 @@ export async function backfillFoundationProfileAssets(
       artistWallet: true,
     },
   });
+
+  if (!foundationLiveLookupsEnabled()) {
+    return {
+      discoveredArtists: artists.length,
+      attempted: 0,
+      archived: 0,
+      failed: 0,
+    };
+  }
 
   let attempted = 0;
   let archived = 0;

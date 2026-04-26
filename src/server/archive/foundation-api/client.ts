@@ -1,5 +1,6 @@
 import { env } from "~/env";
 import { RootKind } from "~/server/prisma-client";
+import { assertFoundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import { firstIpfsReference } from "~/server/archive/ipfs";
 import { foundationGraphqlEnvelopeSchema } from "./schemas";
 import { type FoundationLookupWork, type WorkStorageProtocol } from "./types";
@@ -61,6 +62,14 @@ export async function fetchFoundationGraphql<T>(
   query: string,
   variables: Record<string, unknown>,
 ) {
+  assertFoundationLiveLookupsEnabled("Foundation GraphQL");
+
+  if (!env.FOUNDATION_GRAPHQL_API_URL) {
+    throw new Error(
+      "FOUNDATION_GRAPHQL_API_URL is required when Foundation live lookups are enabled.",
+    );
+  }
+
   const response = await fetch(env.FOUNDATION_GRAPHQL_API_URL, {
     method: "POST",
     headers: {

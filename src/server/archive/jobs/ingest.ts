@@ -1,6 +1,11 @@
-import { BackupStatus, QueueJobStatus } from "~/server/prisma-client";
+import {
+  BackupStatus,
+  QueueJobStatus,
+  type Prisma,
+} from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { fetchAllFoundationWorksByCreator } from "~/server/archive/foundation-api";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import { resolveFoundationProfileByUsername } from "~/server/archive/profile-assets";
 import {
   contractScanJobPayloadSchema,
@@ -187,12 +192,90 @@ function profileArchiveLabel(input: {
   );
 }
 
+type ProfileArchiveInput = {
+  accountAddress: string;
+  username?: string;
+  label?: string;
+};
+
+type ProfileArchiveTarget = {
+  chainId: number;
+  contractAddress: string;
+  tokenId: string;
+  foundationUrl: string | null;
+};
+
+function normalizedProfileUsername(username: string | undefined) {
+  const normalized = username?.trim().replace(/^@+/, "");
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function profileArchiveArtistFilters(
+  input: ProfileArchiveInput,
+): Prisma.ArtworkWhereInput[] {
+  const filters: Prisma.ArtworkWhereInput[] = [
+    { artistWallet: normalizeAddress(input.accountAddress) },
+  ];
+  const username = normalizedProfileUsername(input.username);
+  if (username) {
+    filters.push({
+      artistUsername: {
+        equals: username,
+        mode: "insensitive",
+      },
+    });
+  }
+  return filters;
+}
+
+function archivedIpfsRootFilters(): Prisma.ArtworkWhereInput[] {
+  return [
+    { metadataRootId: { not: null } },
+    { mediaRootId: { not: null } },
+    {
+      metadataUrl: {
+        contains: "ipfs",
+        mode: "insensitive",
+      },
+    },
+    {
+      sourceUrl: {
+        contains: "ipfs",
+        mode: "insensitive",
+      },
+    },
+  ];
+}
+
+async function loadCachedProfileArchiveTargets(
+  client: DatabaseClient,
+  input: ProfileArchiveInput,
+): Promise<ProfileArchiveTarget[]> {
+  return client.artwork.findMany({
+    where: {
+      AND: [
+        { OR: profileArchiveArtistFilters(input) },
+        { OR: archivedIpfsRootFilters() },
+      ],
+    },
+    select: {
+      chainId: true,
+      contractAddress: true,
+      tokenId: true,
+      foundationUrl: true,
+    },
+    orderBy: [{ lastIndexedAt: "desc" }, { updatedAt: "desc" }],
+    take: 1000,
+  });
+}
+
 export async function requestProfileArchive(
   client: DatabaseClient,
   rawInput: unknown,
 ) {
   const input = publicArchiveProfileInputSchema.parse(rawInput);
-  if (input.username) {
+  const foundationLive = foundationLiveLookupsEnabled();
+  if (foundationLive && input.username) {
     await resolveFoundationProfileByUsername(client, input.username).catch(
       () => null,
     );
@@ -209,21 +292,27 @@ export async function requestProfileArchive(
     },
   });
 
-  const works = await fetchAllFoundationWorksByCreator(
-    input.accountAddress,
-    24,
-    20,
-  );
-  // Only try to pin works whose media/metadata live on IPFS. Arweave,
-  // centralized, and inline-data works can't be pinned and would just fail
-  // in the queue — skip them instead of filling the worker with dead jobs.
-  const archivableWorks = works.filter(
-    (work) => work.storageProtocol === "ipfs",
-  );
-  await persistDiscoveredFoundationWorks(client, archivableWorks, {
-    indexedFrom: "foundation-profile-search",
-    queueImmediately: false,
-  });
+  let archivableWorks: ProfileArchiveTarget[];
+  if (foundationLive) {
+    const liveWorks = await fetchAllFoundationWorksByCreator(
+      input.accountAddress,
+      24,
+      20,
+    );
+    // Only try to pin works whose media/metadata live on IPFS. Arweave,
+    // centralized, and inline-data works can't be pinned and would just fail
+    // in the queue — skip them instead of filling the worker with dead jobs.
+    const liveArchivableWorks = liveWorks.filter(
+      (work) => work.storageProtocol === "ipfs",
+    );
+    await persistDiscoveredFoundationWorks(client, liveArchivableWorks, {
+      indexedFrom: "foundation-profile-search",
+      queueImmediately: false,
+    });
+    archivableWorks = liveArchivableWorks;
+  } else {
+    archivableWorks = await loadCachedProfileArchiveTargets(client, input);
+  }
 
   const totals: ProfileArchiveTotals = {
     queuedWorks: 0,
@@ -244,7 +333,7 @@ export async function requestProfileArchive(
   }
 
   return {
-    totalWorks: works.length,
+    totalWorks: archivableWorks.length,
     queuedWorks: totals.queuedWorks,
     alreadyPinnedWorks: totals.alreadyPinnedWorks,
     backupQueuedWorks: totals.backupQueuedWorks,

@@ -2,6 +2,7 @@ import {
   tryFetchFoundationMintByUrl,
   tryFetchFoundationProfileByUsername,
 } from "~/server/archive/foundation";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import { foundationMintUrlSchema } from "~/server/archive/schemas";
 
 import { isFoundationWorkIpfsArchivable, workKey } from "./client";
@@ -187,6 +188,8 @@ function addWorksToMap(
 export async function discoverFoundationWorks(
   query: string,
 ): Promise<DiscoveryResult> {
+  if (!foundationLiveLookupsEnabled()) return emptyDiscoveryResult();
+
   const normalizedQuery = query.trim();
   if (!normalizedQuery) return emptyDiscoveryResult();
 

@@ -1,6 +1,30 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+/**
+ * @param {boolean} defaultValue
+ */
+function booleanFlag(defaultValue) {
+  return z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined) return defaultValue;
+      if (typeof value === "boolean") return value;
+
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) return defaultValue;
+      if (["1", "true", "yes", "on"].includes(normalized)) return true;
+      if (["0", "false", "no", "off"].includes(normalized)) return false;
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Expected a boolean flag (true/false, 1/0, yes/no, on/off)",
+      });
+      return z.NEVER;
+    });
+}
+
 export const env = createEnv({
   server: {
     DATABASE_URL: z.string().min(1),
@@ -10,14 +34,9 @@ export const env = createEnv({
     ARCHIVE_STORAGE_DIR: z.string().min(1).default("./archive-storage"),
     ARCHIVE_HOT_STORAGE_DIR: z.string().min(1).default("./archive-storage-hot"),
     ARCHIVE_ARCHIVER_URL: z.string().url().optional(),
-    FOUNDATION_BASE_URL: z
-      .string()
-      .url()
-      .default("https://foundation.app"),
-    FOUNDATION_GRAPHQL_API_URL: z
-      .string()
-      .url()
-      .default("https://api.prod.foundation.app/graphql"),
+    FOUNDATION_BASE_URL: z.string().url().optional(),
+    FOUNDATION_GRAPHQL_API_URL: z.string().url().optional(),
+    FOUNDATION_LIVE_LOOKUPS_ENABLED: booleanFlag(false),
     IPFS_GATEWAY_BASE_URL: z
       .string()
       .url()
@@ -28,7 +47,7 @@ export const env = createEnv({
     ETHEREUM_RPC_URL: z.string().url().optional(),
     BASE_RPC_URL: z.string().url().optional(),
     INTERNAL_CRON_SECRET: z.string().min(1).optional(),
-    AUTO_CRAWLER_ENABLED: z.coerce.boolean().default(true),
+    AUTO_CRAWLER_ENABLED: booleanFlag(false),
     // Manual flag used during operational windows (e.g. kubo migration)
     // to freeze the automatic discovery/crawl. Accepts 1/true (on) or
     // 0/false/unset (off). z.coerce.boolean() can't do this — it
@@ -85,6 +104,8 @@ export const env = createEnv({
     ARCHIVE_ARCHIVER_URL: process.env.ARCHIVE_ARCHIVER_URL,
     FOUNDATION_BASE_URL: process.env.FOUNDATION_BASE_URL,
     FOUNDATION_GRAPHQL_API_URL: process.env.FOUNDATION_GRAPHQL_API_URL,
+    FOUNDATION_LIVE_LOOKUPS_ENABLED:
+      process.env.FOUNDATION_LIVE_LOOKUPS_ENABLED,
     IPFS_GATEWAY_BASE_URL: process.env.IPFS_GATEWAY_BASE_URL,
     KUBO_API_URL: process.env.KUBO_API_URL,
     KUBO_API_AUTH_HEADER: process.env.KUBO_API_AUTH_HEADER,

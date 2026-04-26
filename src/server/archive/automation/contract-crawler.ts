@@ -1,6 +1,7 @@
 import { archiveIngressGuardForPendingJobs } from "~/lib/archive-pace";
 import { getRpcClient } from "~/server/archive/chains";
 import { fetchFoundationWorksByCollection } from "~/server/archive/foundation-api";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import {
   enqueueContractTokenIngest,
@@ -243,6 +244,17 @@ async function runApiCrawlerForContract({
   policy: PolicyState;
   runStartedAt: Date;
 }) {
+  if (!foundationLiveLookupsEnabled()) {
+    await client.contractCrawlerState.update({
+      where: { id: crawler.id },
+      data: {
+        lastRunFinishedAt: new Date(),
+        lastError: null,
+      },
+    });
+    return { scanned: 0, queuedTokens: 0 };
+  }
+
   const page = crawler.completed ? 0 : crawler.nextFromBlock;
   const works = await fetchFoundationWorksByCollection(
     crawler.contract.address,

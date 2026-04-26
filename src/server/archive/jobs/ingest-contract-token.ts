@@ -7,6 +7,7 @@ import {
   buildFoundationMintUrl,
   tryFetchFoundationMintByUrl,
 } from "~/server/archive/foundation";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import { fetchTokenMetadata } from "~/server/archive/metadata";
 import {
   artworkSlug,
@@ -404,6 +405,10 @@ export async function ingestContractToken(
     return await performContractTokenIngest({ client, input });
   } catch (error) {
     if (error instanceof Error) {
+      if (!foundationLiveLookupsEnabled()) {
+        throw error;
+      }
+
       const contractAddress = normalizeAddress(input.contractAddress);
       const foundationUrl = buildFoundationMintUrl(
         contractAddress,

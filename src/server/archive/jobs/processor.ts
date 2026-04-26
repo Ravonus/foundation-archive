@@ -4,6 +4,7 @@ import {
   foundationJobPayloadSchema,
   ingestContractTokenJobPayloadSchema,
 } from "~/server/archive/schemas";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import {
   BACKUP_PRIORITY,
   type DatabaseClient,
@@ -31,6 +32,15 @@ async function processSingleJob(client: DatabaseClient, job: QueueJob) {
       const payload = foundationJobPayloadSchema.parse(
         JSON.parse(job.payload) as unknown,
       );
+      if (!foundationLiveLookupsEnabled()) {
+        return {
+          skipped: true,
+          reason:
+            "Foundation URL ingest skipped because Foundation live lookups are disabled.",
+          url: payload.url,
+        };
+      }
+
       return ingestFoundationMintUrl(
         client,
         payload.url,

@@ -8,6 +8,7 @@ import {
   type QueueJob,
 } from "~/server/prisma-client";
 import { archivePaceConfigForContractsPerTick } from "~/lib/archive-pace";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { getArchivePolicyState } from "~/server/archive/state";
 import {
@@ -209,6 +210,12 @@ export async function enqueueFoundationMintIngest(
   url: string,
   backupPriority?: number,
 ) {
+  if (!foundationLiveLookupsEnabled()) {
+    throw new Error(
+      "Foundation URL ingest is disabled. Use contract/token archive so the system stays Foundation-independent.",
+    );
+  }
+
   return queueJob(client, {
     kind: QueueJobKind.INGEST_FOUNDATION_URL,
     payload: { url, backupPriority },

@@ -758,7 +758,6 @@ function buildGatewayFallbackUrls(
     urls.push(trimmed);
   };
 
-  push(`https://ipfs.foundation.app/ipfs/${cid}${pathSuffix}`);
   push(primaryGatewayUrl);
 
   if (env.KUBO_API_URL) {

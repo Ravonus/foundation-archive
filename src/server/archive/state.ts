@@ -3,14 +3,10 @@ import {
   ARCHIVE_PACE_CONFIG,
   type ArchivePace,
 } from "~/lib/archive-pace";
+import { foundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import type { PrismaClient } from "~/server/prisma-client";
 
 type DatabaseClient = PrismaClient;
-
-function coerceBoolean(value: boolean | string) {
-  if (typeof value === "boolean") return value;
-  return value === "true";
-}
 
 function coerceNumber(value: number | string) {
   if (typeof value === "number") return value;
@@ -18,8 +14,9 @@ function coerceNumber(value: number | string) {
 }
 
 function archivePolicyDefaults() {
+  const foundationLive = foundationLiveLookupsEnabled();
   return {
-    autoCrawlerEnabled: coerceBoolean(env.AUTO_CRAWLER_ENABLED),
+    autoCrawlerEnabled: foundationLive && env.AUTO_CRAWLER_ENABLED === true,
     smartPinStartBytes: coerceNumber(env.SMART_PIN_START_BYTES),
     smartPinCeilingBytes: coerceNumber(env.SMART_PIN_CEILING_BYTES),
     smartPinGrowthFactor: coerceNumber(env.SMART_PIN_GROWTH_FACTOR),
@@ -49,7 +46,11 @@ export async function getArchivePolicyState(client: DatabaseClient) {
       discoveryPerPage: 24,
       totalDiscoveredContracts: 0,
     },
-    update: {},
+    update: foundationLiveLookupsEnabled()
+      ? {}
+      : {
+          autoCrawlerEnabled: false,
+        },
   });
 }
 
@@ -62,7 +63,7 @@ export async function setArchiveAutoCrawlerEnabled(
   return client.archivePolicyState.update({
     where: { id: "global" },
     data: {
-      autoCrawlerEnabled: enabled,
+      autoCrawlerEnabled: foundationLiveLookupsEnabled() && enabled,
     },
   });
 }

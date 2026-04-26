@@ -3,6 +3,7 @@ import { MediaKind } from "~/server/prisma-client";
 
 import { env } from "~/env";
 import { chainSlug } from "~/server/archive/chains";
+import { assertFoundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 
 const foundationTokenSchema = z.object({
   chainId: z.number().int().nullable().optional(),
@@ -102,7 +103,10 @@ export function inferFoundationMediaKind(input: {
 }
 
 function buildFoundationBaseUrl() {
-  return env.FOUNDATION_BASE_URL.replace(/\/+$/g, "");
+  return (env.FOUNDATION_BASE_URL ?? "https://foundation.app").replace(
+    /\/+$/g,
+    "",
+  );
 }
 
 export function buildFoundationProfileUrl(username: string) {
@@ -137,6 +141,8 @@ const NEXT_DATA_PATTERN =
   /<script id="__NEXT_DATA__" type="application\/json">(?<payload>.*?)<\/script>/s;
 
 async function fetchFoundationHtml(url: string, label: string) {
+  assertFoundationLiveLookupsEnabled(`Fetching Foundation ${label}`);
+
   const response = await fetch(url, {
     headers: { "user-agent": FOUNDATION_USER_AGENT },
     signal: AbortSignal.timeout(20_000),

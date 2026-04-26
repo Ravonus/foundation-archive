@@ -4,6 +4,7 @@ import {
 } from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { fetchFoundationMintByUrl } from "~/server/archive/foundation";
+import { assertFoundationLiveLookupsEnabled } from "~/server/archive/foundation-live";
 import {
   artworkSlug,
   BACKUP_PRIORITY,
@@ -97,6 +98,8 @@ export async function ingestFoundationMintUrl(
   url: string,
   backupPriority = BACKUP_PRIORITY,
 ) {
+  assertFoundationLiveLookupsEnabled("Foundation mint ingest");
+
   const token = await fetchFoundationMintByUrl(url);
   const contractAddress = normalizeAddress(token.contractAddress);
   const metadataUrl = selectArchivableIpfsUrl(RootKind.METADATA, [
