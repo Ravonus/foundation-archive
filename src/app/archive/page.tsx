@@ -20,6 +20,7 @@ import {
 import {
   buildArchivedWhere,
   computeNextCursor,
+  loadArchiveCidArtworkIds,
   loadArchivedMatchesForWorks,
   loadArchivedWorks,
 } from "./_data";
@@ -149,9 +150,17 @@ type CountsInput = {
 };
 
 async function loadArchiveCounts({ params, hasFilter }: CountsInput) {
+  const cidArtworkIds = params.query
+    ? await loadArchiveCidArtworkIds(params.query)
+    : null;
   const filterCountPromise = hasFilter
     ? db.artwork.count({
-        where: buildArchivedWhere(params.query, params.status, params.media),
+        where: buildArchivedWhere({
+          query: params.query,
+          status: params.status,
+          media: params.media,
+          cidArtworkIds,
+        }),
       })
     : Promise.resolve(0);
 
@@ -162,6 +171,7 @@ async function loadArchiveCounts({ params, hasFilter }: CountsInput) {
       status: params.status,
       media: params.media,
       encodedCursor: params.cursor,
+      cidArtworkIds,
     }),
     db.artwork.count({
       where: {

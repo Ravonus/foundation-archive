@@ -9,6 +9,7 @@ import type { DependencyManifest } from "./dependencies";
 import { parseIpfsLookupInput } from "./ipfs";
 
 const ROOT_SOURCE_TYPE = "root";
+const DEFAULT_CID_LOOKUP_LIMIT = 50;
 
 function cleanRelativePath(relativePath: string | null | undefined) {
   return relativePath?.replace(/^\/+|\/+$/g, "") ?? "";
@@ -24,19 +25,63 @@ function cidLookupWhere(query: string) {
   };
 }
 
-export function cidIndexArtworkFilterForQuery(
-  query: string,
-): Prisma.ArtworkWhereInput | null {
-  const where = cidLookupWhere(query);
+function uniqueIds(ids: string[], limit: number) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    output.push(id);
+    if (output.length >= limit) break;
+  }
+
+  return output;
+}
+
+export async function loadCidArtworkIdsForQuery(args: {
+  client: PrismaClient;
+  query: string;
+  limit?: number;
+}) {
+  const where = cidLookupWhere(args.query);
   if (!where) return null;
 
-  return {
-    OR: [
-      { metadataRoot: { is: where } },
-      { mediaRoot: { is: where } },
-      { cidIndexes: { some: where } },
+  const limit = args.limit ?? DEFAULT_CID_LOOKUP_LIMIT;
+  const roots = await args.client.ipfsRoot.findMany({
+    where,
+    take: limit,
+    select: { id: true },
+  });
+
+  const rootIds = roots.map((root) => root.id);
+  const [rootArtworkRows, indexRows] = await Promise.all([
+    rootIds.length > 0
+      ? args.client.artwork.findMany({
+          where: {
+            OR: [
+              { metadataRootId: { in: rootIds } },
+              { mediaRootId: { in: rootIds } },
+            ],
+          },
+          take: limit,
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    args.client.ipfsCidIndex.findMany({
+      where,
+      take: limit,
+      select: { artworkId: true },
+    }),
+  ]);
+
+  return uniqueIds(
+    [
+      ...rootArtworkRows.map((artwork) => artwork.id),
+      ...indexRows.map((row) => row.artworkId),
     ],
-  };
+    limit,
+  );
 }
 
 function rootIndexRow(args: {
@@ -157,11 +202,15 @@ export async function loadCidLookupMatches(args: {
   take?: number;
 }) {
   const parsed = parseIpfsLookupInput(args.query);
-  const where = cidIndexArtworkFilterForQuery(args.query);
-  if (!parsed || !where) return [];
+  const artworkIds = await loadCidArtworkIdsForQuery({
+    client: args.client,
+    query: args.query,
+    limit: args.take ?? DEFAULT_CID_LOOKUP_LIMIT,
+  });
+  if (!parsed || !artworkIds || artworkIds.length === 0) return [];
 
   return args.client.artwork.findMany({
-    where,
+    where: { id: { in: artworkIds } },
     take: args.take ?? 50,
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     select: {

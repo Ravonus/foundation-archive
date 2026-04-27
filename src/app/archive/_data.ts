@@ -4,7 +4,8 @@ import {
   type ArchiveStatusFilter,
 } from "~/lib/archive-browse";
 import { type FoundationLookupWork } from "~/server/archive/foundation-api";
-import { cidIndexArtworkFilterForQuery } from "~/server/archive/cid-index";
+import { loadCidArtworkIdsForQuery } from "~/server/archive/cid-index";
+import { parseIpfsLookupInput } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 import { BackupStatus, MediaKind, type Prisma } from "~/server/prisma-client";
 
@@ -50,6 +51,7 @@ const ARCHIVED_SELECT = {
     },
   },
 } as const;
+const CID_ARCHIVE_SEARCH_LIMIT = 10_000;
 
 function mediaKindFor(media: Exclude<ArchiveMediaFilter, "all">): MediaKind {
   switch (media) {
@@ -66,12 +68,17 @@ function mediaKindFor(media: Exclude<ArchiveMediaFilter, "all">): MediaKind {
   }
 }
 
-function queryFilter(query: string): Prisma.ArtworkWhereInput {
+function queryFilter(
+  query: string,
+  cidArtworkIds: string[] | null = null,
+): Prisma.ArtworkWhereInput {
+  if (parseIpfsLookupInput(query)) {
+    return { id: { in: cidArtworkIds ?? [] } };
+  }
+
   const lowered = query.toLowerCase();
-  const cidFilter = cidIndexArtworkFilterForQuery(query);
   return {
     OR: [
-      ...(cidFilter ? [cidFilter] : []),
       { title: { contains: query, mode: "insensitive" } },
       { artistName: { contains: query, mode: "insensitive" } },
       { artistUsername: { contains: query, mode: "insensitive" } },
@@ -167,11 +174,19 @@ function buildPendingStatusWhere(
   };
 }
 
-export function buildArchivedWhere(
-  query: string,
-  status: ArchiveStatusFilter,
-  media: ArchiveMediaFilter,
-): Prisma.ArtworkWhereInput {
+type BuildArchivedWhereInput = {
+  query: string;
+  status: ArchiveStatusFilter;
+  media: ArchiveMediaFilter;
+  cidArtworkIds?: string[] | null;
+};
+
+export function buildArchivedWhere({
+  query,
+  status,
+  media,
+  cidArtworkIds = null,
+}: BuildArchivedWhereInput): Prisma.ArtworkWhereInput {
   const filters: Prisma.ArtworkWhereInput[] = [];
 
   if (status !== "missing") {
@@ -181,7 +196,7 @@ export function buildArchivedWhere(
   }
 
   if (query) {
-    filters.push(queryFilter(query));
+    filters.push(queryFilter(query, cidArtworkIds));
   }
 
   if (media !== "all") {
@@ -193,6 +208,14 @@ export function buildArchivedWhere(
   }
 
   return { AND: filters };
+}
+
+export function loadArchiveCidArtworkIds(query: string) {
+  return loadCidArtworkIdsForQuery({
+    client: db,
+    query,
+    limit: CID_ARCHIVE_SEARCH_LIMIT,
+  });
 }
 
 export function buildArchiveOrderBy(
@@ -331,14 +354,21 @@ export async function loadArchivedWorks({
   status,
   media,
   encodedCursor,
+  cidArtworkIds,
 }: {
   query: string;
   sort: ArchiveSort;
   status: ArchiveStatusFilter;
   media: ArchiveMediaFilter;
   encodedCursor: string | null;
+  cidArtworkIds?: string[] | null;
 }) {
-  const baseWhere = buildArchivedWhere(query, status, media);
+  const baseWhere = buildArchivedWhere({
+    query,
+    status,
+    media,
+    cidArtworkIds,
+  });
   const cursor = decodeArchiveCursor(encodedCursor, sort);
   const where = cursor
     ? { AND: [baseWhere, buildCursorWhere(sort, cursor)] }
