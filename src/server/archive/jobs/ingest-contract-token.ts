@@ -1,7 +1,4 @@
-import {
-  BackupStatus,
-  RootKind,
-} from "~/server/prisma-client";
+import { BackupStatus, RootKind } from "~/server/prisma-client";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import {
   buildFoundationMintUrl,
@@ -22,7 +19,10 @@ import {
 } from "./shared";
 import { queueArtworkBackup } from "./queue";
 import { upsertContractEntry } from "./contract-upserts";
-import { resolveTokenUriFromContract } from "./ethereum-rpc";
+import {
+  resolveTokenCreatorFromContract,
+  resolveTokenUriFromContract,
+} from "./ethereum-rpc";
 import { ingestFoundationMintUrl } from "./ingest-foundation";
 
 type FoundationMintMaybe = Awaited<
@@ -45,6 +45,7 @@ type ContractTokenContext = {
   tokenUri: string;
   metadata: TokenMetadata;
   foundationToken: FoundationMintMaybe;
+  contractCreatorWallet: string | null;
 };
 
 type ContractTokenRoots = {
@@ -64,11 +65,18 @@ async function fetchContractTokenContext(
     input.tokenId,
     chainId,
   );
-  const tokenUri = await resolveTokenUriFromContract({
-    chainId,
-    contractAddress,
-    tokenId: input.tokenId,
-  });
+  const [tokenUri, contractCreatorWallet] = await Promise.all([
+    resolveTokenUriFromContract({
+      chainId,
+      contractAddress,
+      tokenId: input.tokenId,
+    }),
+    resolveTokenCreatorFromContract({
+      chainId,
+      contractAddress,
+      tokenId: input.tokenId,
+    }),
+  ]);
   const metadata = await fetchTokenMetadata(tokenUri);
   const foundationToken = foundationUrl
     ? await tryFetchFoundationMintByUrl(foundationUrl)
@@ -82,6 +90,7 @@ async function fetchContractTokenContext(
     tokenUri,
     metadata,
     foundationToken,
+    contractCreatorWallet,
   };
 }
 
@@ -165,11 +174,18 @@ function contractTokenIndexedFrom(context: ContractTokenContext) {
     : "contract-rpc";
 }
 
-function buildArtistAttribution(ft: FoundationMintMaybe) {
+function resolvedArtistWallet(context: ContractTokenContext) {
+  return (
+    context.foundationToken?.artistWallet?.toLowerCase() ??
+    context.contractCreatorWallet
+  );
+}
+
+function buildArtistAttribution(context: ContractTokenContext) {
   return {
-    artistName: ft?.artistName ?? null,
-    artistUsername: ft?.artistUsername ?? null,
-    artistWallet: ft?.artistWallet?.toLowerCase() ?? null,
+    artistName: context.foundationToken?.artistName ?? null,
+    artistUsername: context.foundationToken?.artistUsername ?? null,
+    artistWallet: resolvedArtistWallet(context),
   };
 }
 
@@ -202,7 +218,7 @@ function buildMediaAttribution(context: ContractTokenContext) {
 function buildContractTokenAttribution(context: ContractTokenContext) {
   return {
     ...buildMediaAttribution(context),
-    ...buildArtistAttribution(context.foundationToken),
+    ...buildArtistAttribution(context),
     ...buildOwnerAttribution(context.foundationToken),
     ...buildCollectionAttribution(context.foundationToken),
   };
@@ -262,11 +278,11 @@ function buildContractTokenCreateFields(args: FieldBuildArgs) {
 
 // Update prefers `undefined` over `null` so that Prisma leaves existing
 // columns untouched when the Foundation payload is temporarily missing.
-function buildArtistUpdateAttribution(ft: FoundationMintMaybe) {
+function buildArtistUpdateAttribution(context: ContractTokenContext) {
   return {
-    artistName: ft?.artistName ?? undefined,
-    artistUsername: ft?.artistUsername ?? undefined,
-    artistWallet: ft?.artistWallet?.toLowerCase() ?? undefined,
+    artistName: context.foundationToken?.artistName ?? undefined,
+    artistUsername: context.foundationToken?.artistUsername ?? undefined,
+    artistWallet: resolvedArtistWallet(context) ?? undefined,
   };
 }
 
@@ -289,7 +305,7 @@ function buildCollectionUpdateAttribution(ft: FoundationMintMaybe) {
 function buildContractTokenUpdateAttribution(context: ContractTokenContext) {
   return {
     ...buildMediaAttribution(context),
-    ...buildArtistUpdateAttribution(context.foundationToken),
+    ...buildArtistUpdateAttribution(context),
     ...buildOwnerUpdateAttribution(context.foundationToken),
     ...buildCollectionUpdateAttribution(context.foundationToken),
   };

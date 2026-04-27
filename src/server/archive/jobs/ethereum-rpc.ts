@@ -2,6 +2,13 @@ import { getAddress, parseAbiItem } from "viem";
 
 import { getRpcClient } from "~/server/archive/chains";
 
+const TOKEN_CREATOR_ABI = [
+  parseAbiItem("function tokenCreator(uint256 tokenId) view returns (address)"),
+  parseAbiItem(
+    "function getTokenCreatorPaymentAddress(uint256 tokenId) view returns (address)",
+  ),
+];
+
 export async function resolveTokenUriFromContract(input: {
   chainId: number;
   contractAddress: string;
@@ -11,10 +18,39 @@ export async function resolveTokenUriFromContract(input: {
 
   return rpc.readContract({
     address: getAddress(input.contractAddress),
-    abi: [parseAbiItem("function tokenURI(uint256 tokenId) view returns (string)")],
+    abi: [
+      parseAbiItem("function tokenURI(uint256 tokenId) view returns (string)"),
+    ],
     functionName: "tokenURI",
     args: [BigInt(input.tokenId)],
   });
+}
+
+export async function resolveTokenCreatorFromContract(input: {
+  chainId: number;
+  contractAddress: string;
+  tokenId: string;
+}) {
+  const rpc = getRpcClient(input.chainId);
+  const address = getAddress(input.contractAddress);
+  const tokenId = BigInt(input.tokenId);
+
+  for (const abiItem of TOKEN_CREATOR_ABI) {
+    try {
+      const creator = await rpc.readContract({
+        address,
+        abi: [abiItem],
+        functionName: abiItem.name,
+        args: [tokenId],
+      });
+
+      return getAddress(creator).toLowerCase();
+    } catch {
+      // Not all ERC-721s expose Foundation creator helpers.
+    }
+  }
+
+  return null;
 }
 
 export async function discoverTokenIdsFromLogs(input: {
