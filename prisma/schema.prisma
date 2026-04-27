@@ -205,6 +205,8 @@ model Artwork {
   cidIndexes   IpfsCidIndex[]
 
   @@unique([chainId, contractAddress, tokenId])
+  @@index([updatedAt, id])
+  @@index([title, id])
   @@index([title])
   @@index([artistName])
   @@index([artistUsername])
@@ -214,6 +216,11 @@ model Artwork {
   @@index([collectionName])
   @@index([searchText])
   @@index([foundationContractType])
+  @@index([metadataRootId])
+  @@index([mediaRootId])
+  @@index([metadataStatus])
+  @@index([mediaStatus])
+  @@index([mediaKind])
 }
 
 model IpfsCidIndex {

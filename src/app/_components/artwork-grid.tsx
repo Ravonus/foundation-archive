@@ -424,16 +424,13 @@ function AutoplayVideo({
   return (
     <video
       ref={ref}
-      src={src}
+      src={inView ? src : undefined}
       poster={poster ?? undefined}
       muted
       autoPlay
       loop
       playsInline
-      // Full preload so Safari has the bytes staged when the tile
-      // scrolls in and .play() fires — metadata-only was causing
-      // some clips to stay on the poster frame until a user gesture.
-      preload="auto"
+      preload="metadata"
       disableRemotePlayback
       aria-label={alt}
       className={className}

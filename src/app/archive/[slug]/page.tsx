@@ -26,9 +26,12 @@ import {
   getTokenMarketState,
   listTokenMarketHistory,
 } from "~/server/archive/foundation-market";
-import { buildArchivePublicPath } from "~/server/archive/ipfs";
+import {
+  buildArchivePublicPath,
+  parseIpfsReference,
+} from "~/server/archive/ipfs";
 import { db } from "~/server/db";
-import { type Prisma } from "~/server/prisma-client";
+import { RootKind, type Prisma } from "~/server/prisma-client";
 
 import { MarketHistoryList } from "./_market-history";
 import { RetrySaveButton } from "./_retry-save-button";
@@ -173,6 +176,13 @@ function localUrlFor(root: IpfsRoot | null, status: string): string | null {
   return buildArchivePublicPath(root.cid, root.relativePath);
 }
 
+function browserSafeIpfsUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const parsed = parseIpfsReference(url, RootKind.MEDIA);
+  if (!parsed) return url;
+  return buildArchivePublicPath(parsed.cid, parsed.relativePath);
+}
+
 function pickImagePreviewUrl(
   artwork: ArtworkWithRelations,
   browserMediaUrl: string | null,
@@ -273,7 +283,8 @@ async function deriveView(artwork: ArtworkWithRelations): Promise<DerivedView> {
   ]);
   const gatewayMediaUrl = artwork.mediaRoot?.gatewayUrl ?? null;
   const gatewayMetadataUrl = artwork.metadataRoot?.gatewayUrl ?? null;
-  const browserMediaUrl = localMediaUrl ?? gatewayMediaUrl ?? artwork.sourceUrl;
+  const browserMediaUrl =
+    localMediaUrl ?? gatewayMediaUrl ?? browserSafeIpfsUrl(artwork.sourceUrl);
   const imagePreviewUrl = pickImagePreviewUrl(
     artwork,
     browserMediaUrl,

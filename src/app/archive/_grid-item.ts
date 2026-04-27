@@ -5,7 +5,11 @@ import {
   type FoundationLookupWork,
   type FoundationUserProfile,
 } from "~/server/archive/foundation-api";
-import { buildArchivePublicPath } from "~/server/archive/ipfs";
+import {
+  buildArchivePublicPath,
+  parseIpfsReference,
+} from "~/server/archive/ipfs";
+import { RootKind } from "~/server/prisma-client";
 
 import {
   artworkKey,
@@ -18,9 +22,18 @@ function isArchivedMediaDownloaded(status: string) {
   return status === "DOWNLOADED" || status === "PINNED";
 }
 
+function browserSafeIpfsUrl(url: string | null | undefined) {
+  if (!url) return null;
+  const parsed = parseIpfsReference(url, RootKind.MEDIA);
+  if (!parsed) return url;
+  return buildArchivePublicPath(parsed.cid, parsed.relativePath);
+}
+
 function resolveArchiveMediaUrl(artwork: ArchivedArtworkRow) {
   if (!artwork.mediaRoot) return null;
-  if (!isArchivedMediaDownloaded(artwork.mediaStatus)) return null;
+  if (!isArchivedMediaDownloaded(artwork.mediaStatus)) {
+    return artwork.mediaRoot.gatewayUrl;
+  }
   return buildArchivePublicPath(
     artwork.mediaRoot.cid,
     artwork.mediaRoot.relativePath,
@@ -31,10 +44,12 @@ function resolveArchivedPosterUrl(
   artwork: ArchivedArtworkRow,
   archiveMediaUrl: string | null,
 ) {
-  const base = artwork.staticPreviewUrl ?? artwork.previewUrl;
+  const base = browserSafeIpfsUrl(
+    artwork.staticPreviewUrl ?? artwork.previewUrl,
+  );
   if (base) return base;
   if (artwork.mediaKind !== "IMAGE") return null;
-  return archiveMediaUrl ?? artwork.sourceUrl;
+  return archiveMediaUrl ?? browserSafeIpfsUrl(artwork.sourceUrl);
 }
 
 function resolveArchivedMediaUrl(
@@ -43,9 +58,9 @@ function resolveArchivedMediaUrl(
 ) {
   if (archiveMediaUrl) return archiveMediaUrl;
   if (artwork.mediaKind === "IMAGE") {
-    return artwork.sourceUrl ?? artwork.previewUrl;
+    return browserSafeIpfsUrl(artwork.sourceUrl ?? artwork.previewUrl);
   }
-  return artwork.sourceUrl ?? artwork.previewUrl;
+  return browserSafeIpfsUrl(artwork.sourceUrl ?? artwork.previewUrl);
 }
 
 export function toArchivedGridItem(
@@ -104,16 +119,20 @@ function pickFirstUsable(
 
 function resolveDiscoveredPosterUrl(work: FoundationLookupWork) {
   const base = pickFirstUsable(work.staticPreviewUrl, work.previewUrl);
-  if (base) return base;
+  if (base) return browserSafeIpfsUrl(base);
   if (work.mediaKind !== "IMAGE") return null;
-  return pickFirstUsable(work.sourceUrl, work.mediaUrl);
+  return browserSafeIpfsUrl(pickFirstUsable(work.sourceUrl, work.mediaUrl));
 }
 
 function resolveDiscoveredMediaUrl(work: FoundationLookupWork) {
   if (work.mediaKind === "IMAGE") {
-    return pickFirstUsable(work.sourceUrl, work.mediaUrl, work.previewUrl);
+    return browserSafeIpfsUrl(
+      pickFirstUsable(work.sourceUrl, work.mediaUrl, work.previewUrl),
+    );
   }
-  return pickFirstUsable(work.mediaUrl, work.sourceUrl, work.previewUrl);
+  return browserSafeIpfsUrl(
+    pickFirstUsable(work.mediaUrl, work.sourceUrl, work.previewUrl),
+  );
 }
 
 export function toDiscoveredGridItem(
