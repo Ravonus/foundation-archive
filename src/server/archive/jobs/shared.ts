@@ -35,6 +35,8 @@ export type KnownContractSeed = {
   isFoundationNative: boolean;
   notes: string;
   seedCrawler: boolean;
+  seedScanFromBlock?: number;
+  seedBlockWindowSize?: number;
 };
 
 export const KNOWN_CONTRACTS: KnownContractSeed[] = [
@@ -48,6 +50,8 @@ export const KNOWN_CONTRACTS: KnownContractSeed[] = [
     notes:
       "Shared Foundation ERC-721 for legacy 1/1 mints on Ethereum mainnet. Good starting point for historical 1/1 scans.",
     seedCrawler: true,
+    seedScanFromBlock: 11694715,
+    seedBlockWindowSize: 50000,
   },
   {
     chainId: 1,

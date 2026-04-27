@@ -9,10 +9,14 @@ import {
   normalizeAddress,
 } from "./types";
 
-const CRAWLER_ELIGIBLE_SEED_KEYS = new Set(
-  KNOWN_CONTRACTS.filter((entry) => entry.seedCrawler).map(
-    (entry) => `${entry.chainId}:${normalizeAddress(entry.address)}`,
-  ),
+const CRAWLER_ELIGIBLE_SEED_CONFIG = new Map(
+  KNOWN_CONTRACTS.filter((entry) => entry.seedCrawler).map((entry) => [
+    `${entry.chainId}:${normalizeAddress(entry.address)}`,
+    {
+      blockWindowSize: entry.seedBlockWindowSize ?? 50000,
+      scanFromBlock: entry.seedScanFromBlock ?? 0,
+    },
+  ]),
 );
 
 export async function ensureApiCrawlerForContract(
@@ -52,6 +56,57 @@ export async function ensureApiCrawlerForContract(
             completed: false,
             totalDiscoveredCount: 0,
             lastDiscoveredCount: 0,
+            lastError: null,
+          }
+        : {}),
+    },
+  });
+}
+
+export async function ensureBlockCrawlerForContract(
+  client: DatabaseClient,
+  input: {
+    contractId: string;
+    scanFromBlock?: number;
+    blockWindowSize?: number;
+  },
+) {
+  const scanFromBlock = input.scanFromBlock ?? 0;
+  const blockWindowSize = input.blockWindowSize ?? 50000;
+  const existing = await client.contractCrawlerState.findUnique({
+    where: { contractId: input.contractId },
+    select: {
+      scanMode: true,
+    },
+  });
+  const switchingModes = existing?.scanMode !== "blocks";
+
+  return client.contractCrawlerState.upsert({
+    where: { contractId: input.contractId },
+    create: {
+      contractId: input.contractId,
+      autoEnabled: true,
+      scanMode: "blocks",
+      scanFromBlock,
+      nextFromBlock: scanFromBlock,
+      blockWindowSize,
+      completed: false,
+    },
+    update: {
+      autoEnabled: true,
+      scanMode: "blocks",
+      blockWindowSize,
+      ...(switchingModes
+        ? {
+            scanFromBlock,
+            scanToBlock: null,
+            nextFromBlock: scanFromBlock,
+            lastScannedBlock: null,
+            completed: false,
+            totalDiscoveredCount: 0,
+            lastDiscoveredCount: 0,
+            lastRunStartedAt: null,
+            lastRunFinishedAt: null,
             lastError: null,
           }
         : {}),
@@ -100,7 +155,9 @@ export async function upsertAutoDiscoveredContract({
       address,
       label: input.label,
       slug: input.slug ?? null,
-      contractKind: contractKindFromFoundationType(input.foundationContractType),
+      contractKind: contractKindFromFoundationType(
+        input.foundationContractType,
+      ),
       foundationContractType: input.foundationContractType,
       isFoundationNative: true,
       notes,
@@ -108,7 +165,9 @@ export async function upsertAutoDiscoveredContract({
     update: {
       label: input.label,
       slug: input.slug ?? undefined,
-      contractKind: contractKindFromFoundationType(input.foundationContractType),
+      contractKind: contractKindFromFoundationType(
+        input.foundationContractType,
+      ),
       foundationContractType: input.foundationContractType ?? undefined,
       isFoundationNative: true,
       notes,
@@ -130,9 +189,11 @@ export async function ensureAutoCrawlerContracts(client: DatabaseClient) {
 
   for (const contract of seededContracts) {
     const key = `${contract.chainId}:${contract.address}`;
-    if (!CRAWLER_ELIGIBLE_SEED_KEYS.has(key)) continue;
-    await ensureApiCrawlerForContract(client, {
+    const seedConfig = CRAWLER_ELIGIBLE_SEED_CONFIG.get(key);
+    if (!seedConfig) continue;
+    await ensureBlockCrawlerForContract(client, {
       contractId: contract.id,
+      ...seedConfig,
     });
   }
 

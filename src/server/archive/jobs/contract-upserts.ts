@@ -5,9 +5,7 @@ import {
 } from "~/server/prisma-client";
 import { slugify } from "~/lib/utils";
 import { emitArchiveEvent } from "~/server/archive/live-events";
-import {
-  type FoundationLookupWork,
-} from "~/server/archive/foundation-api";
+import { type FoundationLookupWork } from "~/server/archive/foundation-api";
 import { contractScanInputSchema } from "~/server/archive/schemas";
 import {
   artworkNeedsBackup,
@@ -347,7 +345,12 @@ export async function seedKnownContracts(client: DatabaseClient) {
   const results = [];
 
   for (const contract of KNOWN_CONTRACTS) {
-    const { seedCrawler: _seedCrawler, ...upsertInput } = contract;
+    const {
+      seedCrawler: _seedCrawler,
+      seedScanFromBlock: _seedScanFromBlock,
+      seedBlockWindowSize: _seedBlockWindowSize,
+      ...upsertInput
+    } = contract;
     results.push(await upsertContractEntry(client, upsertInput));
   }
 

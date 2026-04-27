@@ -9,6 +9,7 @@
     "archiver:dev": "cargo run --manifest-path rust-archiver/Cargo.toml",
     "clean:dev": "node ./scripts/clean-dev.mjs",
     "contracts:seed": "tsx scripts/seed-contracts.ts",
+    "contracts:reset-shared-fnd": "tsx scripts/reset-foundation-shared-crawler.ts",
     "db:bootstrap": "prisma db push --force-reset && prisma generate",
     "db:generate": "prisma migrate dev",
     "db:migrate": "prisma migrate deploy",

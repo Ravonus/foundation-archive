@@ -17,8 +17,12 @@ export {
 } from "~/lib/chain-label";
 
 function rpcUrlFor(chainId: number): string | undefined {
-  if (chainId === BASE_CHAIN_ID) return env.BASE_RPC_URL;
-  if (chainId === ETHEREUM_CHAIN_ID) return env.ETHEREUM_RPC_URL;
+  if (chainId === BASE_CHAIN_ID) {
+    return env.BASE_RPC_URL ?? "https://base.publicnode.com";
+  }
+  if (chainId === ETHEREUM_CHAIN_ID) {
+    return env.ETHEREUM_RPC_URL ?? "https://ethereum.publicnode.com";
+  }
   return undefined;
 }
 
