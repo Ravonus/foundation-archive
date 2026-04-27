@@ -286,9 +286,21 @@ export function ArchiveSaveManagerProvider({
     patchWorkState(key, (current) => ({ ...current, desktop: "pending" }));
 
     notificationPermissionRef.current ??= ensureNotificationPermission();
+    let notificationBody = `${work.title} is pinned on your desktop app now.`;
 
     try {
-      if (bridge.reachable) {
+      const hasPairedDevice = bridge.relayDevices.length > 0;
+
+      if (hasPairedDevice) {
+        notificationBody = `${work.title} was queued for your desktop app.`;
+        await bridge.queueWorkToRelay(work);
+        patchWorkState(key, (current) => ({ ...current, desktop: "saved" }));
+        updateToast(toastId, {
+          tone: "success",
+          title: "Queued for desktop",
+          body: `${work.title} was sent to your linked desktop app.`,
+        });
+      } else if (bridge.reachable) {
         const result = await bridge.shareWork(work);
         patchWorkState(key, (current) => ({ ...current, desktop: "saved" }));
         updateToast(toastId, {
@@ -297,20 +309,9 @@ export function ArchiveSaveManagerProvider({
           body: `${work.title} sent ${result.pins.length} file${result.pins.length === 1 ? "" : "s"} to this computer.`,
         });
       } else {
-        const hasPairedDevice = bridge.relayDevices.length > 0;
-        if (!hasPairedDevice) {
-          throw new Error(
-            "Desktop app isn't connected yet. Open the desktop app, then try again.",
-          );
-        }
-
-        await bridge.queueWorkToRelay(work);
-        patchWorkState(key, (current) => ({ ...current, desktop: "saved" }));
-        updateToast(toastId, {
-          tone: "success",
-          title: "Saved to desktop",
-          body: `${work.title} is queued for your linked desktop app.`,
-        });
+        throw new Error(
+          "Desktop app isn't connected yet. Open the desktop app, then try again.",
+        );
       }
 
       const permission = await notificationPermissionRef.current.catch(
@@ -319,7 +320,7 @@ export function ArchiveSaveManagerProvider({
       if (permission === "granted") {
         showBrowserNotification(
           "Agorix save complete",
-          `${work.title} is pinned on your desktop app now.`,
+          notificationBody,
         );
       }
     } catch (error) {

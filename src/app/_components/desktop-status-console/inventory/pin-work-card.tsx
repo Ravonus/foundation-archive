@@ -219,9 +219,14 @@ function CardPoster({
 
   if (active.kind === "UNKNOWN") {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--color-surface-alt)] px-4 text-center text-sm text-[var(--color-subtle)]">
-        Preview unavailable for this file type.
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={active.url}
+        alt={title}
+        loading="lazy"
+        onError={advanceCandidate}
+        className="h-full w-full object-cover transition-[filter,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:[filter:brightness(1.02)]"
+      />
     );
   }
 

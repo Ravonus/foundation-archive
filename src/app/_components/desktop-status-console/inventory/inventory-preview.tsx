@@ -126,9 +126,14 @@ export function InventoryPreview({
 
   if (activePreview.kind === "UNKNOWN") {
     return (
-      <div className="mt-4 flex aspect-[1.2/1] w-full items-center justify-center rounded-[1.2rem] border border-dashed border-[var(--color-line)] bg-[var(--color-surface-alt)] px-6 text-center text-sm text-[var(--color-subtle)]">
-        Preview unavailable for this file type.
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={activePreview.url}
+        alt={title}
+        loading="lazy"
+        onError={advanceCandidate}
+        className="mt-4 block aspect-[1.2/1] w-full max-w-full rounded-[1.2rem] object-cover"
+      />
     );
   }
 

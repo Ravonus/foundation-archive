@@ -2,11 +2,6 @@ import type { RelayPinEnrichmentMatch } from "~/lib/desktop-relay";
 
 import { parseBridgeError, withJsonHeaders } from "../lib/bridge-api";
 import { pickRelayDevice } from "../lib/builders";
-import {
-  isTerminalJobStatus,
-  subscribeToJobUpdates,
-  type JobUpdateEvent,
-} from "../lib/job-subscriptions";
 import type {
   BridgeConfig,
   DesktopShareableWork,
@@ -63,8 +58,6 @@ export type RelayOwnerBaseActions = Omit<
   "requestRelayInventory" | "queueWorkToRelay"
 >;
 
-const RELAY_JOB_TIMEOUT_MS = 45_000;
-
 function requireOwnerToken(token: string | null): string {
   if (!token) {
     throw new Error("Pair vault is not ready yet.");
@@ -88,30 +81,6 @@ async function resolveRelayTargetDevice(
   }
 
   return targetDevice;
-}
-
-function waitForRelayJobOutcome(
-  jobId: string,
-  timeoutMs: number,
-): Promise<JobUpdateEvent> {
-  return new Promise((resolve, reject) => {
-    let unsubscribe = () => undefined as void;
-    const timer = window.setTimeout(() => {
-      unsubscribe();
-      reject(
-        new Error(
-          "The linked desktop app did not confirm the backup in time. Please check the desktop page and try again.",
-        ),
-      );
-    }, timeoutMs);
-
-    unsubscribe = subscribeToJobUpdates(jobId, (event) => {
-      if (!isTerminalJobStatus(event.status)) return;
-      window.clearTimeout(timer);
-      unsubscribe();
-      resolve(event);
-    });
-  });
 }
 
 function createRefreshRelayDevices(deps: RelayOwnerDeps) {
@@ -298,9 +267,6 @@ export function createQueueWorkToRelay(
   refreshRelayDevices: () => Promise<RelayOwnerDevice[]>,
   requestRelayInventory: (deviceId: string) => void,
 ) {
-  // Waiting for relay completion is intentionally branchy because we support
-  // both live-connected devices and offline queued delivery.
-  // eslint-disable-next-line complexity
   return async (work: DesktopShareableWork, deviceId?: string | null) => {
     const ownerToken = requireOwnerToken(deps.ownerToken);
     const targetDevice = await resolveRelayTargetDevice(
@@ -341,27 +307,6 @@ export function createQueueWorkToRelay(
     }
 
     const payload = (await response.json()) as RelayQueuedJob;
-    const shouldWaitForOutcome =
-      deps.relaySocketConnected && targetDevice.connected;
-
-    if (!shouldWaitForOutcome) {
-      await refreshRelayDevices().catch(() => undefined);
-      requestRelayInventory(targetDevice.id);
-      return payload;
-    }
-
-    const outcome = await waitForRelayJobOutcome(
-      payload.jobId,
-      RELAY_JOB_TIMEOUT_MS,
-    );
-
-    if (outcome.status === "FAILED") {
-      throw new Error(
-        outcome.errorMessage ??
-          "The linked desktop app couldn't save this work.",
-      );
-    }
-
     await refreshRelayDevices().catch(() => undefined);
     requestRelayInventory(targetDevice.id);
     return payload;
