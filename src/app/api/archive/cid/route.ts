@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   cidLookupStatus,
   loadCidLookupMatches,
+  loadCidOverlapGroupsForQuery,
 } from "~/server/archive/cid-index";
 import { parseIpfsLookupInput } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
@@ -21,11 +22,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const matches = await loadCidLookupMatches({
-    client: db,
-    query,
-    take: 50,
-  });
+  const [matches, overlaps] = await Promise.all([
+    loadCidLookupMatches({
+      client: db,
+      query,
+      take: 50,
+    }),
+    loadCidOverlapGroupsForQuery({
+      client: db,
+      query,
+      groupLimit: 12,
+      artworkLimit: 20,
+    }),
+  ]);
 
   return NextResponse.json({
     query: parsed,
@@ -44,5 +53,6 @@ export async function GET(request: NextRequest) {
       mediaRoot: artwork.mediaRoot,
       cidMatches: artwork.cidIndexes,
     })),
+    overlaps,
   });
 }

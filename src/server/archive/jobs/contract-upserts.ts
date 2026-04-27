@@ -4,6 +4,7 @@ import {
   RootKind,
 } from "~/server/prisma-client";
 import { slugify } from "~/lib/utils";
+import { syncArtworkRootCidIndex } from "~/server/archive/cid-index";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import { type FoundationLookupWork } from "~/server/archive/foundation-api";
 import { contractScanInputSchema } from "~/server/archive/schemas";
@@ -273,6 +274,7 @@ export async function upsertDiscoveredFoundationWork(
     roots,
     input,
   });
+  await syncArtworkRootCidIndex(client, artwork.id);
 
   if (hasNewlyTrackedRoots(existing, roots)) {
     await emitArchiveEvent(client, {

@@ -51,6 +51,28 @@ export type ArchiveProfileMatch = {
   sampleTitles: string[];
 };
 
+export type ArchiveCidOverlapGroup = {
+  cid: string;
+  artworkCount: number;
+  contractCount: number;
+  artistCount: number;
+  rootKinds: string[];
+  sourceTypes: string[];
+  artworks: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    artistName: string | null;
+    artistUsername: string | null;
+    artistWallet: string | null;
+    chainId: number;
+    contractAddress: string;
+    tokenId: string;
+    metadataCid: string | null;
+    mediaCid: string | null;
+  }>;
+};
+
 export type ArchiveCursorPayload =
   | {
       sort: "newest" | "oldest";

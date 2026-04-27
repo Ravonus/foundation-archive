@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Info, Search } from "lucide-react";
+import { ArrowRight, Info, Link2, Search } from "lucide-react";
 
 import { CountUp, FadeUp } from "~/app/_components/motion";
 import { ProfileAvatar } from "~/app/_components/profile/profile-avatar";
@@ -13,7 +13,10 @@ import {
   type ArchiveStatusFilter,
 } from "~/lib/archive-browse";
 
-import { type ArchiveProfileMatch } from "./_types";
+import {
+  type ArchiveCidOverlapGroup,
+  type ArchiveProfileMatch,
+} from "./_types";
 
 type HeaderStatsProps = {
   totalIndexedWorks: number;
@@ -378,6 +381,89 @@ export function ArchiveProfileMatches({
             </article>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+export function ArchiveCidOverlaps({
+  groups,
+}: {
+  groups: ArchiveCidOverlapGroup[];
+}) {
+  if (groups.length === 0) return null;
+
+  return (
+    <section aria-label="CID overlaps" className="mt-6">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
+            CID overlaps
+          </p>
+          <h2 className="mt-1 font-serif text-2xl text-[var(--color-ink)]">
+            Shared archive objects
+          </h2>
+        </div>
+        <span className="font-mono text-[0.68rem] tracking-[0.2em] text-[var(--color-muted)] uppercase">
+          {groups.length} group{groups.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="grid gap-3">
+        {groups.map((group) => (
+          <article
+            key={group.cid}
+            className="rounded-sm border border-[var(--color-line)] bg-[var(--color-surface)] p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Link2
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-[var(--color-muted)]"
+                  />
+                  <p className="truncate font-mono text-xs text-[var(--color-ink)]">
+                    {group.cid}
+                  </p>
+                </div>
+                <p className="mt-2 text-sm text-[var(--color-body)]">
+                  {group.artworkCount} works · {group.contractCount} contracts ·{" "}
+                  {group.artistCount} artists
+                </p>
+              </div>
+              <Link
+                href={`/archive?q=${encodeURIComponent(group.cid)}`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-ink)] hover:text-[var(--color-bg)]"
+              >
+                Open CID
+                <ArrowRight aria-hidden className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {group.artworks.map((artwork) => (
+                <Link
+                  key={artwork.id}
+                  href={`/archive/${artwork.slug}`}
+                  className="min-w-0 rounded-sm border border-[var(--color-line)] px-3 py-2 hover:border-[var(--color-line-strong)]"
+                >
+                  <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+                    {artwork.title}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-[var(--color-muted)]">
+                    {artwork.artistName ??
+                      artwork.artistUsername ??
+                      artwork.artistWallet ??
+                      "Unknown artist"}
+                  </p>
+                  <p className="mt-1 font-mono text-[0.62rem] text-[var(--color-subtle)]">
+                    {artwork.contractAddress.slice(0, 10)} · #{artwork.tokenId}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );

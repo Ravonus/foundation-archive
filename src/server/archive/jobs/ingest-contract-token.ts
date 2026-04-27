@@ -1,4 +1,5 @@
 import { BackupStatus, RootKind } from "~/server/prisma-client";
+import { syncArtworkRootCidIndex } from "~/server/archive/cid-index";
 import { emitArchiveEvent } from "~/server/archive/live-events";
 import {
   buildFoundationMintUrl,
@@ -394,6 +395,7 @@ async function performContractTokenIngest(args: {
     roots,
     contractId: contract.id,
   });
+  await syncArtworkRootCidIndex(client, artwork.id);
 
   await emitArchiveEvent(client, {
     type: "artwork.ingested",

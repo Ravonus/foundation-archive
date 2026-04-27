@@ -12,6 +12,11 @@ import { listCidDirectoryEntries } from "./storage";
 const ROOT_SOURCE_TYPE = "root";
 const DAG_SOURCE_TYPE = "dag:directory-entry";
 const DEFAULT_CID_LOOKUP_LIMIT = 50;
+const DEFAULT_CID_OVERLAP_GROUP_LIMIT = 8;
+const DEFAULT_CID_OVERLAP_ARTWORK_LIMIT = 12;
+const CID_OVERLAP_SEED_ARTWORK_LIMIT = 250;
+const CID_OVERLAP_CANDIDATE_CID_LIMIT = 1_000;
+const CID_OVERLAP_ROW_LIMIT = 5_000;
 
 function cleanRelativePath(relativePath: string | null | undefined) {
   return relativePath?.replace(/^\/+|\/+$/g, "") ?? "";
@@ -300,6 +305,213 @@ export async function loadCidLookupMatches(args: {
         },
       },
     },
+  });
+}
+
+type CidOverlapIndexRow = Awaited<
+  ReturnType<PrismaClient["ipfsCidIndex"]["findMany"]>
+>[number] & {
+  artwork: {
+    id: string;
+    slug: string;
+    title: string;
+    artistName: string | null;
+    artistUsername: string | null;
+    artistWallet: string | null;
+    chainId: number;
+    contractAddress: string;
+    tokenId: string;
+    metadataRoot: { cid: string } | null;
+    mediaRoot: { cid: string } | null;
+  };
+};
+
+function pushUnique<T>(items: T[], item: T, limit: number) {
+  if (items.includes(item) || items.length >= limit) return;
+  items.push(item);
+}
+
+async function loadSeedCidsForArtworks(args: {
+  client: PrismaClient;
+  artworkIds: string[];
+}) {
+  const [indexRows, artworkRoots] = await Promise.all([
+    args.client.ipfsCidIndex.findMany({
+      where: { artworkId: { in: args.artworkIds } },
+      distinct: ["cid"],
+      take: CID_OVERLAP_CANDIDATE_CID_LIMIT,
+      select: { cid: true },
+    }),
+    args.client.artwork.findMany({
+      where: { id: { in: args.artworkIds } },
+      take: args.artworkIds.length,
+      select: {
+        metadataRoot: { select: { cid: true } },
+        mediaRoot: { select: { cid: true } },
+      },
+    }),
+  ]);
+
+  return uniqueIds(
+    [
+      ...indexRows.map((row) => row.cid),
+      ...artworkRoots.flatMap((artwork) => [
+        artwork.metadataRoot?.cid,
+        artwork.mediaRoot?.cid,
+      ]),
+    ].filter((cid): cid is string => Boolean(cid)),
+    CID_OVERLAP_CANDIDATE_CID_LIMIT,
+  );
+}
+
+function overlapArtworkFromRow(row: CidOverlapIndexRow) {
+  return {
+    id: row.artwork.id,
+    slug: row.artwork.slug,
+    title: row.artwork.title,
+    artistName: row.artwork.artistName,
+    artistUsername: row.artwork.artistUsername,
+    artistWallet: row.artwork.artistWallet,
+    chainId: row.artwork.chainId,
+    contractAddress: row.artwork.contractAddress,
+    tokenId: row.artwork.tokenId,
+    metadataCid: row.artwork.metadataRoot?.cid ?? null,
+    mediaCid: row.artwork.mediaRoot?.cid ?? null,
+  };
+}
+
+function buildCidOverlapGroups(args: {
+  rows: CidOverlapIndexRow[];
+  primaryCid: string;
+  groupLimit: number;
+  artworkLimit: number;
+}) {
+  const byCid = new Map<
+    string,
+    {
+      cid: string;
+      rootKinds: RootKind[];
+      sourceTypes: string[];
+      artworks: ReturnType<typeof overlapArtworkFromRow>[];
+      artworkIds: Set<string>;
+      contractKeys: Set<string>;
+      artistKeys: Set<string>;
+    }
+  >();
+
+  for (const row of args.rows) {
+    const group = byCid.get(row.cid) ?? {
+      cid: row.cid,
+      rootKinds: [],
+      sourceTypes: [],
+      artworks: [],
+      artworkIds: new Set<string>(),
+      contractKeys: new Set<string>(),
+      artistKeys: new Set<string>(),
+    };
+
+    pushUnique(group.rootKinds, row.rootKind, 8);
+    pushUnique(group.sourceTypes, row.sourceType, 8);
+
+    if (!group.artworkIds.has(row.artworkId)) {
+      group.artworkIds.add(row.artworkId);
+      group.contractKeys.add(
+        `${row.artwork.chainId}:${row.artwork.contractAddress}`,
+      );
+      if (row.artwork.artistWallet ?? row.artwork.artistUsername) {
+        group.artistKeys.add(
+          (row.artwork.artistWallet ?? row.artwork.artistUsername ?? "")
+            .trim()
+            .toLowerCase(),
+        );
+      }
+      if (group.artworks.length < args.artworkLimit) {
+        group.artworks.push(overlapArtworkFromRow(row));
+      }
+    }
+
+    byCid.set(row.cid, group);
+  }
+
+  return [...byCid.values()]
+    .filter((group) => group.artworkIds.size > 1)
+    .sort((left, right) => {
+      if (left.cid === args.primaryCid) return -1;
+      if (right.cid === args.primaryCid) return 1;
+      return right.artworkIds.size - left.artworkIds.size;
+    })
+    .slice(0, args.groupLimit)
+    .map((group) => ({
+      cid: group.cid,
+      artworkCount: group.artworkIds.size,
+      contractCount: group.contractKeys.size,
+      artistCount: group.artistKeys.size,
+      rootKinds: group.rootKinds,
+      sourceTypes: group.sourceTypes,
+      artworks: group.artworks,
+    }));
+}
+
+export async function loadCidOverlapGroupsForQuery(args: {
+  client: PrismaClient;
+  query: string;
+  groupLimit?: number;
+  artworkLimit?: number;
+}) {
+  const parsed = parseIpfsLookupInput(args.query);
+  if (!parsed) return [];
+
+  const seedArtworkIds = await loadCidArtworkIdsForQuery({
+    client: args.client,
+    query: args.query,
+    limit: CID_OVERLAP_SEED_ARTWORK_LIMIT,
+  });
+  if (!seedArtworkIds || seedArtworkIds.length === 0) return [];
+
+  const seedCids = uniqueIds(
+    [
+      parsed.cid,
+      ...(await loadSeedCidsForArtworks({
+        client: args.client,
+        artworkIds: seedArtworkIds,
+      })),
+    ],
+    CID_OVERLAP_CANDIDATE_CID_LIMIT,
+  );
+
+  const rows = (await args.client.ipfsCidIndex.findMany({
+    where: { cid: { in: seedCids } },
+    orderBy: [{ cid: "asc" }, { depth: "asc" }, { relativePath: "asc" }],
+    take: CID_OVERLAP_ROW_LIMIT,
+    select: {
+      cid: true,
+      relativePath: true,
+      rootKind: true,
+      sourceType: true,
+      artworkId: true,
+      artwork: {
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          artistName: true,
+          artistUsername: true,
+          artistWallet: true,
+          chainId: true,
+          contractAddress: true,
+          tokenId: true,
+          metadataRoot: { select: { cid: true } },
+          mediaRoot: { select: { cid: true } },
+        },
+      },
+    },
+  })) as CidOverlapIndexRow[];
+
+  return buildCidOverlapGroups({
+    rows,
+    primaryCid: parsed.cid,
+    groupLimit: args.groupLimit ?? DEFAULT_CID_OVERLAP_GROUP_LIMIT,
+    artworkLimit: args.artworkLimit ?? DEFAULT_CID_OVERLAP_ARTWORK_LIMIT,
   });
 }
 

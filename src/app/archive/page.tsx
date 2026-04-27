@@ -21,6 +21,7 @@ import {
   buildArchivedWhere,
   computeNextCursor,
   loadArchiveCidArtworkIds,
+  loadArchiveCidOverlaps,
   loadArchivedMatchesForWorks,
   loadArchivedWorks,
 } from "./_data";
@@ -30,6 +31,7 @@ import {
   toDiscoveredGridItem,
 } from "./_grid-item";
 import {
+  ArchiveCidOverlaps,
   ArchiveInfoDetails,
   ArchiveProfileMatches,
   ArchiveStickyHeader,
@@ -227,9 +229,11 @@ export default async function ArchivePage(props: ArchivePageProps) {
       archivedMatchCount,
     ],
     archiveProfileMatches,
+    cidOverlapGroups,
   ] = await Promise.all([
     loadArchiveCounts({ params, hasFilter, cidArtworkIds }),
     loadArchiveProfileMatches({ query: params.query, cidArtworkIds }),
+    params.query ? loadArchiveCidOverlaps(params.query) : [],
   ]);
 
   const archivedWorks = archivedRows.slice(0, ARCHIVE_PAGE_SIZE);
@@ -282,6 +286,8 @@ export default async function ArchivePage(props: ArchivePageProps) {
       <ArchiveInfoDetails />
 
       <ArchiveProfileMatches profiles={archiveProfileMatches} />
+
+      <ArchiveCidOverlaps groups={cidOverlapGroups} />
 
       {profileItems.length > 0 ? (
         <FadeUp inView className="mt-6 block">

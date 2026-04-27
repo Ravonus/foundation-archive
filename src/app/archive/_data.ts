@@ -4,7 +4,10 @@ import {
   type ArchiveStatusFilter,
 } from "~/lib/archive-browse";
 import { type FoundationLookupWork } from "~/server/archive/foundation-api";
-import { loadCidArtworkIdsForQuery } from "~/server/archive/cid-index";
+import {
+  loadCidArtworkIdsForQuery,
+  loadCidOverlapGroupsForQuery,
+} from "~/server/archive/cid-index";
 import { parseIpfsLookupInput } from "~/server/archive/ipfs";
 import { db } from "~/server/db";
 import { BackupStatus, MediaKind, type Prisma } from "~/server/prisma-client";
@@ -215,6 +218,13 @@ export function loadArchiveCidArtworkIds(query: string) {
     client: db,
     query,
     limit: CID_ARCHIVE_SEARCH_LIMIT,
+  });
+}
+
+export function loadArchiveCidOverlaps(query: string) {
+  return loadCidOverlapGroupsForQuery({
+    client: db,
+    query,
   });
 }
 
