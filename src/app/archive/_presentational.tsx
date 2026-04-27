@@ -16,9 +16,12 @@ type HeaderStatsProps = {
   publicQueueCount: number;
 };
 
-function HeaderStats({ totalIndexedWorks, publicQueueCount }: HeaderStatsProps) {
+function HeaderStats({
+  totalIndexedWorks,
+  publicQueueCount,
+}: HeaderStatsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.68rem] tracking-[0.2em] text-[var(--color-muted)] uppercase">
       <span
         className="inline-flex items-center gap-1.5"
         title="Works we know about and are saving."
@@ -78,13 +81,13 @@ function ArchiveSearchForm({
         className="h-4 w-4 shrink-0 text-[var(--color-subtle)]"
       />
       <label className="sr-only" htmlFor="archive-search">
-        Search by artist, title, or Foundation link
+        Search by artist, title, CID, or Foundation link
       </label>
       <input
         id="archive-search"
         name="q"
         defaultValue={query}
-        placeholder="Try an artist's name, title, or paste a Foundation link"
+        placeholder="Try an artist, title, CID, or Foundation link"
         className={`min-w-0 flex-1 bg-transparent text-sm text-[var(--color-ink)] outline-none placeholder:text-[var(--color-subtle)] ${
           compact ? "h-6" : "h-7 sm:text-[0.95rem]"
         }`}
@@ -121,7 +124,7 @@ function ResultsSummary({
   if (!query) return null;
   return (
     <FadeUp delay={0.15} duration={0.4}>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.68rem] tracking-[0.2em] text-[var(--color-muted)] uppercase">
         <span>
           Results for &ldquo;
           <span className="text-[var(--color-ink)]">{query}</span>&rdquo;
@@ -192,7 +195,7 @@ export function ArchiveStickyHeader(props: ArchiveStickyHeaderProps) {
             <FadeUp duration={0.4}>
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <div>
-                  <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+                  <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
                     Archive
                   </p>
                   <h1 className="mt-1 font-serif text-3xl leading-tight text-[var(--color-ink)] sm:text-4xl">
@@ -220,7 +223,9 @@ export function ArchiveStickyHeader(props: ArchiveStickyHeaderProps) {
           </FadeUp>
           <div
             className={`hidden shrink-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-300 ease-out sm:block ${
-              stuck ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+              stuck
+                ? "max-w-[360px] opacity-100"
+                : "pointer-events-none max-w-0 opacity-0"
             }`}
             aria-hidden={!stuck}
           >
@@ -265,7 +270,7 @@ export function ArchiveInfoDetails() {
       </summary>
       <div className="grid gap-3 border-t border-[var(--color-line)] px-4 py-4 sm:grid-cols-2 sm:px-5">
         <div>
-          <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+          <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
             The public archive
           </p>
           <p className="mt-2 text-sm text-[var(--color-body)]">
@@ -274,7 +279,7 @@ export function ArchiveInfoDetails() {
           </p>
         </div>
         <div>
-          <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-muted)]">
+          <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
             Keep your own copy (optional)
           </p>
           <p className="mt-2 text-sm text-[var(--color-body)]">

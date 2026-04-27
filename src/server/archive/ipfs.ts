@@ -114,7 +114,9 @@ export function parseIpfsReference(
     return null;
   }
 
-  const relativePath = trimSlashes(safeDecodeURIComponent(cidPath.relativePath));
+  const relativePath = trimSlashes(
+    safeDecodeURIComponent(cidPath.relativePath),
+  );
   const fileName = relativePath ? path.basename(relativePath) : null;
 
   return {
@@ -135,6 +137,32 @@ export function hasIpfsReference(url: string | null | undefined) {
   return Boolean(parseIpfsReference(url, RootKind.UNKNOWN));
 }
 
+export function parseIpfsLookupInput(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const reference = parseIpfsReference(trimmed, RootKind.UNKNOWN);
+  if (reference) {
+    return {
+      cid: reference.cid,
+      relativePath: reference.relativePath,
+    };
+  }
+
+  const cidPath = parseIpfsPath(trimmed);
+  if (!cidPath) return null;
+
+  try {
+    const parsedCid = CID.parse(cidPath.cid);
+    return {
+      cid: parsedCid.toString(),
+      relativePath: trimSlashes(safeDecodeURIComponent(cidPath.relativePath)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function firstIpfsReference(
   kind: RootKind,
   urls: Array<string | null | undefined>,
@@ -151,7 +179,11 @@ export function firstIpfsReference(
 }
 
 export function detectSourceProtocol(url: string) {
-  if (url.startsWith("ipfs://") || url.includes("/ipfs/") || url.includes(".ipfs.")) {
+  if (
+    url.startsWith("ipfs://") ||
+    url.includes("/ipfs/") ||
+    url.includes(".ipfs.")
+  ) {
     return SourceProtocol.IPFS;
   }
 
@@ -172,7 +204,10 @@ export function buildGatewayUrl(cid: string, relativePath = "") {
   return `${gatewayBase}/ipfs/${cid}${suffix}`;
 }
 
-export function buildArchivePublicPath(cid: string, relativePath: string | null | undefined) {
+export function buildArchivePublicPath(
+  cid: string,
+  relativePath: string | null | undefined,
+) {
   const cleaned = trimSlashes(relativePath ?? "");
   return cleaned ? `/ipfs/${cid}/${cleaned}` : `/ipfs/${cid}`;
 }

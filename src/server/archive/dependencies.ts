@@ -1,14 +1,10 @@
 /* eslint-disable max-lines */
-import {
-  mkdir,
-  readFile,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { RootKind } from "~/server/prisma-client";
+import { RootKind, type PrismaClient } from "~/server/prisma-client";
 
+import { indexDependencyManifestCids } from "./cid-index";
 import {
   buildArchivePublicPath,
   buildGatewayUrl,
@@ -105,12 +101,14 @@ export type DependencyManifest = {
 };
 
 type RootWithDependencyContext = {
+  id?: string;
   cid: string;
   relativePath: string | null;
-  kind: string;
+  kind: RootKind;
 };
 
 type ArtworkDependencyContext = {
+  id?: string;
   previewUrl: string | null;
   staticPreviewUrl: string | null;
 };
@@ -190,10 +188,17 @@ function isSkippableReference(value: string) {
 
 function parseAbsoluteReference(value: string) {
   if (value.startsWith("/ipfs/")) {
-    return parseIpfsReference(`https://archive.local${value}`, RootKind.UNKNOWN);
+    return parseIpfsReference(
+      `https://archive.local${value}`,
+      RootKind.UNKNOWN,
+    );
   }
 
-  if (value.startsWith("ipfs://") || value.startsWith("http://") || value.startsWith("https://")) {
+  if (
+    value.startsWith("ipfs://") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://")
+  ) {
     return parseIpfsReference(value, RootKind.UNKNOWN);
   }
 
@@ -203,7 +208,12 @@ function parseAbsoluteReference(value: string) {
 function isLikelyRelativeReference(value: string) {
   if (value.startsWith("//")) return false;
   if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false;
-  return value.startsWith("/") || value.startsWith("./") || value.startsWith("../") || !value.includes(" ");
+  return (
+    value.startsWith("/") ||
+    value.startsWith("./") ||
+    value.startsWith("../") ||
+    !value.includes(" ")
+  );
 }
 
 function resolveRelativeReference(
@@ -325,7 +335,9 @@ function collectJsonObjectReferences(
     return;
   }
 
-  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, nested] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
     collectJsonReferenceValues(nested, key, output);
   }
 }
@@ -346,7 +358,10 @@ function extractGlbJson(buffer: Buffer) {
     }
 
     if (chunkType === JSON_CHUNK_TYPE) {
-      return buffer.subarray(chunkStart, chunkEnd).toString("utf8").replace(/\0+$/u, "");
+      return buffer
+        .subarray(chunkStart, chunkEnd)
+        .toString("utf8")
+        .replace(/\0+$/u, "");
     }
 
     offset = chunkEnd;
@@ -434,7 +449,8 @@ function toDiscoveredReferences(args: {
   root: RootWithDependencyContext;
   values: Array<{ value: string; sourceType: string }>;
 }) {
-  const discoveredFrom = cleanRelativePath(args.root.relativePath) || "__root__";
+  const discoveredFrom =
+    cleanRelativePath(args.root.relativePath) || "__root__";
 
   return dedupeReferences(
     args.values
@@ -535,7 +551,10 @@ async function archiveDependencyTree(args: {
       continue;
     }
 
-    const localUrl = buildArchivePublicPath(reference.cid, reference.relativePath);
+    const localUrl = buildArchivePublicPath(
+      reference.cid,
+      reference.relativePath,
+    );
     const node = upsertNode(manifest, {
       key,
       parentKey,
@@ -653,10 +672,11 @@ export async function dependencyManifestIsCurrent(
 }
 
 export async function verifyArchivedRootDependencies(args: {
+  client?: PrismaClient;
   root: RootWithDependencyContext;
   artwork: ArtworkDependencyContext;
 }) {
-  const { root, artwork } = args;
+  const { client, root, artwork } = args;
   const manifest = manifestTemplate(root);
   const rootKey = manifest.rootKey;
   const rootLocalUrl = buildArchivePublicPath(root.cid, root.relativePath);
@@ -670,7 +690,10 @@ export async function verifyArchivedRootDependencies(args: {
     relativePath: cleanRelativePath(root.relativePath),
     localUrl: rootLocalUrl,
     gatewayUrl: buildGatewayUrl(root.cid, cleanRelativePath(root.relativePath)),
-    originalUrl: buildGatewayUrl(root.cid, cleanRelativePath(root.relativePath)),
+    originalUrl: buildGatewayUrl(
+      root.cid,
+      cleanRelativePath(root.relativePath),
+    ),
     sourceType: "root",
     discoveredFrom: "root",
     depth: 0,
@@ -697,6 +720,15 @@ export async function verifyArchivedRootDependencies(args: {
   });
   manifest.verifiedAt = new Date().toISOString();
   await writeDependencyManifest(root, manifest);
+  if (client && artwork.id && root.id) {
+    await indexDependencyManifestCids({
+      client,
+      artworkId: artwork.id,
+      rootId: root.id,
+      rootKind: root.kind,
+      manifest,
+    });
+  }
   return manifest;
 }
 

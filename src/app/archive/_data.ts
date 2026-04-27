@@ -4,6 +4,7 @@ import {
   type ArchiveStatusFilter,
 } from "~/lib/archive-browse";
 import { type FoundationLookupWork } from "~/server/archive/foundation-api";
+import { cidIndexArtworkFilterForQuery } from "~/server/archive/cid-index";
 import { db } from "~/server/db";
 import { BackupStatus, MediaKind, type Prisma } from "~/server/prisma-client";
 
@@ -67,8 +68,10 @@ function mediaKindFor(media: Exclude<ArchiveMediaFilter, "all">): MediaKind {
 
 function queryFilter(query: string): Prisma.ArtworkWhereInput {
   const lowered = query.toLowerCase();
+  const cidFilter = cidIndexArtworkFilterForQuery(query);
   return {
     OR: [
+      ...(cidFilter ? [cidFilter] : []),
       { title: { contains: query, mode: "insensitive" } },
       { artistName: { contains: query, mode: "insensitive" } },
       { artistUsername: { contains: query, mode: "insensitive" } },

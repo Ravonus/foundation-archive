@@ -152,9 +152,10 @@ model IpfsRoot {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
-  metadataFor Artwork[]   @relation("ArtworkMetadataRoot")
-  mediaFor    Artwork[]   @relation("ArtworkMediaRoot")
+  metadataFor Artwork[]      @relation("ArtworkMetadataRoot")
+  mediaFor    Artwork[]      @relation("ArtworkMediaRoot")
   backups     BackupRun[]
+  cidIndexes  IpfsCidIndex[]
 
   @@index([kind])
   @@index([backupStatus])
@@ -201,6 +202,7 @@ model Artwork {
   metadataRoot IpfsRoot?         @relation("ArtworkMetadataRoot", fields: [metadataRootId], references: [id], onDelete: SetNull)
   mediaRoot    IpfsRoot?         @relation("ArtworkMediaRoot", fields: [mediaRootId], references: [id], onDelete: SetNull)
   backups      BackupRun[]
+  cidIndexes   IpfsCidIndex[]
 
   @@unique([chainId, contractAddress, tokenId])
   @@index([title])
@@ -212,6 +214,29 @@ model Artwork {
   @@index([collectionName])
   @@index([searchText])
   @@index([foundationContractType])
+}
+
+model IpfsCidIndex {
+  id             String   @id @default(cuid())
+  cid            String
+  relativePath   String   @default("")
+  rootId         String
+  artworkId      String
+  rootKind       RootKind @default(UNKNOWN)
+  sourceType     String   @default("root")
+  discoveredFrom String?
+  depth          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  root    IpfsRoot @relation(fields: [rootId], references: [id], onDelete: Cascade)
+  artwork Artwork  @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+
+  @@unique([cid, relativePath, rootId, artworkId, sourceType])
+  @@index([cid])
+  @@index([cid, relativePath])
+  @@index([artworkId])
+  @@index([rootId])
 }
 
 model FoundationProfile {

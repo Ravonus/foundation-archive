@@ -29,6 +29,7 @@
     "profiles:backfill-assets": "tsx scripts/backfill-profile-assets.ts",
     "profiles:backfill-status": "tsx scripts/backfill-profile-assets.ts --status",
     "queue:drain": "tsx scripts/process-queue.ts",
+    "cid-index:backfill": "tsx scripts/backfill-cid-index.ts",
     "queue:scan-contract": "tsx scripts/queue-contract-scan.ts",
     "migrate:kubo-pins": "tsx scripts/migrate-kubo-pins.ts",
     "socket": "tsx scripts/socket-server.ts",

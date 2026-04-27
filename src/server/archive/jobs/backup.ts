@@ -27,6 +27,7 @@ import {
   buildRelayGatewayUrl,
   findRelayGatewayCandidates,
 } from "~/server/relay/pin-routing";
+import { syncArtworkRootCidIndex } from "~/server/archive/cid-index";
 import {
   type DatabaseClient,
   FAILED_ROOT_RETRY_COOLDOWN_MS,
@@ -56,6 +57,7 @@ type BackupRootInput = {
   artworkId: string;
   bypassSmartBudget?: boolean;
   artwork: {
+    id: string;
     previewUrl: string | null;
     staticPreviewUrl: string | null;
   };
@@ -633,6 +635,7 @@ async function backupSingleRoot(
     if (downloadResult.hasLocalArchive) {
       try {
         await verifyArchivedRootDependencies({
+          client,
           root,
           artwork: input.artwork,
         });
@@ -742,6 +745,8 @@ export async function backupArtwork(
     await removeMissingArtworkJobs(client, artworkId);
     return { outcome: "skipped", reason: "artwork-not-found" };
   }
+
+  await syncArtworkRootCidIndex(client, artwork.id);
 
   const rootResults: RootResult[] = [];
 
