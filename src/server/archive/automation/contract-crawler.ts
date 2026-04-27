@@ -126,7 +126,11 @@ async function selectUnfinishedCrawlerCandidates({
     include: {
       contract: true,
     },
-    orderBy: [{ lastRunFinishedAt: "asc" }, { updatedAt: "asc" }],
+    orderBy: [
+      { scanMode: "desc" },
+      { lastRunFinishedAt: "asc" },
+      { updatedAt: "asc" },
+    ],
     take: sampleSize,
   });
 }
