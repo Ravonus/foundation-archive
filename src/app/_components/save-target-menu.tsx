@@ -47,7 +47,9 @@ function compactSummary(summary: ReturnType<typeof summarizeWorkTargetState>) {
   return "Pin";
 }
 
-function targetStatusLabel(status: "PINNED" | "PENDING" | "FAILED" | "PARTIAL") {
+function targetStatusLabel(
+  status: "PINNED" | "PENDING" | "FAILED" | "PARTIAL",
+) {
   switch (status) {
     case "PINNED":
       return "Pinned";
@@ -60,7 +62,9 @@ function targetStatusLabel(status: "PINNED" | "PENDING" | "FAILED" | "PARTIAL") 
   }
 }
 
-function targetStatusClass(status: "PINNED" | "PENDING" | "FAILED" | "PARTIAL") {
+function targetStatusClass(
+  status: "PINNED" | "PENDING" | "FAILED" | "PARTIAL",
+) {
   switch (status) {
     case "PINNED":
       return "bg-[var(--tint-ok)] text-[var(--color-ok)]";
@@ -129,17 +133,21 @@ export function SaveTargetMenu({
       onToggle={(event) =>
         setOpen((event.currentTarget as HTMLDetailsElement).open)
       }
-      className={cn("relative", className)}
+      className={cn("relative z-20", open ? "z-[120]" : null, className)}
     >
       <summary
         className={cn(
           "list-none",
-          variant === "compact" ? "cursor-pointer" : "inline-flex cursor-pointer",
+          variant === "compact"
+            ? "cursor-pointer"
+            : "inline-flex cursor-pointer",
         )}
       >
         {variant === "compact" ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] shadow-sm">
-            {summary.pendingHosts > 0 || summary.desktopPending || summary.archivePending ? (
+            {summary.pendingHosts > 0 ||
+            summary.desktopPending ||
+            summary.archivePending ? (
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
             ) : summary.savedHosts > 0 || summary.desktopSaved ? (
               <Check className="h-3.5 w-3.5 text-[var(--color-ok)]" />
@@ -157,7 +165,7 @@ export function SaveTargetMenu({
         )}
       </summary>
 
-      <div className="absolute top-[calc(100%+0.6rem)] right-0 z-30 w-[min(24rem,calc(100vw-2rem))] rounded-[1.5rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[0_30px_90px_-35px_rgba(17,17,17,0.6)]">
+      <div className="absolute top-[calc(100%+0.6rem)] right-0 z-[130] w-[min(24rem,calc(100vw-2rem))] rounded-[1.5rem] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[0_30px_90px_-35px_rgba(17,17,17,0.6)]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-serif text-lg text-[var(--color-ink)]">
@@ -168,7 +176,7 @@ export function SaveTargetMenu({
             </p>
           </div>
           {summary.savedHosts > 0 || summary.pendingHosts > 0 ? (
-            <span className="rounded-full bg-[var(--color-surface-alt)] px-2.5 py-1 text-[0.68rem] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            <span className="rounded-full bg-[var(--color-surface-alt)] px-2.5 py-1 text-[0.68rem] tracking-[0.18em] text-[var(--color-muted)] uppercase">
               {summary.savedHosts > 0
                 ? `${summary.savedHosts} host${summary.savedHosts === 1 ? "" : "s"}`
                 : `${summary.pendingHosts} pending`}
@@ -220,7 +228,7 @@ export function SaveTargetMenu({
 
         <div className="mt-5 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-muted)]">
+            <p className="text-xs tracking-[0.2em] text-[var(--color-muted)] uppercase">
               Pinned hosts
             </p>
             {autoHosts.length > 0 ? (
@@ -228,7 +236,10 @@ export function SaveTargetMenu({
                 type="button"
                 disabled={!canHostPin}
                 onClick={() => {
-                  void saveToHosts(work, autoHosts.map((host) => host.id));
+                  void saveToHosts(
+                    work,
+                    autoHosts.map((host) => host.id),
+                  );
                   setOpen(false);
                 }}
                 className="text-xs text-[var(--color-ink)] disabled:opacity-45"
@@ -240,9 +251,9 @@ export function SaveTargetMenu({
 
           {!canHostPin ? (
             <p className="rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-muted)]">
-              This work can go to your desktop app now. Your pinned hosts need IPFS
-              roots first, so import it onto your machine before sending it to
-              those hosts.
+              This work can go to your desktop app now. Your pinned hosts need
+              IPFS roots first, so import it onto your machine before sending it
+              to those hosts.
             </p>
           ) : null}
 
@@ -282,7 +293,7 @@ export function SaveTargetMenu({
                     {derivedStatus ? (
                       <span
                         className={cn(
-                          "rounded-full px-2.5 py-1 text-[0.68rem] uppercase tracking-[0.16em]",
+                          "rounded-full px-2.5 py-1 text-[0.68rem] tracking-[0.16em] uppercase",
                           targetStatusClass(derivedStatus),
                         )}
                       >

@@ -5,14 +5,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import {
-  ArrowRight,
-  Box,
-  Check,
-  LoaderCircle,
-  Play,
-  Plus,
-} from "lucide-react";
+import { ArrowRight, Box, Check, LoaderCircle, Play, Plus } from "lucide-react";
 
 import {
   useArchiveSaveManager,
@@ -87,7 +80,7 @@ function offChainLabel(protocol: ArtworkStorageProtocol): string {
       return "Not on IPFS";
     default:
       return protocol satisfies never;
-    }
+  }
 }
 
 function offChainExplanation(protocol: ArtworkStorageProtocol): string {
@@ -475,7 +468,7 @@ function LazyModelPreview({
     <div
       ref={ref}
       className={cn(
-        "relative h-full w-full pointer-events-none overflow-hidden",
+        "pointer-events-none relative h-full w-full overflow-hidden",
         className,
       )}
     >
@@ -629,7 +622,11 @@ function HealthBadge({
   );
 }
 
-function MarketBadge({ state }: { state: ArtworkMarketState | null | undefined }) {
+function MarketBadge({
+  state,
+}: {
+  state: ArtworkMarketState | null | undefined;
+}) {
   if (!state) return null;
   const styles =
     state === "rescuable"
@@ -731,16 +728,12 @@ function ItemCard({
   return (
     <motion.article
       variants={cardVariants(largeGrid, offset)}
-      className="group relative flex flex-col"
-      style={{
-        contentVisibility: "auto",
-        containIntrinsicSize: "420px 540px",
-      }}
+      className="group relative z-0 flex flex-col overflow-visible focus-within:z-[80] hover:z-[70]"
     >
       {isArchivableProtocol(item.storageProtocol) ? (
         <div
           className={cn(
-            "pointer-events-none absolute top-3 right-3 z-20 transition duration-200 group-hover:opacity-100 group-focus-within:opacity-100",
+            "pointer-events-none absolute top-3 right-3 z-40 transition duration-200 group-focus-within:z-[90] group-focus-within:opacity-100 group-hover:opacity-100",
             showPinnedMenu ? "opacity-100" : "opacity-0",
           )}
         >
@@ -749,59 +742,67 @@ function ItemCard({
           </div>
         </div>
       ) : null}
-      <Link
-        href={href}
-        {...targetProps}
-        className="relative block overflow-hidden rounded-sm bg-[var(--color-placeholder)]"
+      <div
+        className="flex flex-col"
+        style={{
+          contentVisibility: "auto",
+          containIntrinsicSize: "420px 540px",
+        }}
       >
-        <div className="relative aspect-square w-full overflow-hidden">
-          <ItemPoster item={item} />
-        </div>
-        <HealthBadge health={health} protocol={item.storageProtocol} />
-        <MarketBadge state={item.marketState} />
-      </Link>
+        <Link
+          href={href}
+          {...targetProps}
+          className="relative block overflow-hidden rounded-sm bg-[var(--color-placeholder)]"
+        >
+          <div className="relative aspect-square w-full overflow-hidden">
+            <ItemPoster item={item} />
+          </div>
+          <HealthBadge health={health} protocol={item.storageProtocol} />
+          <MarketBadge state={item.marketState} />
+        </Link>
 
-      <div className="caption-rule mt-4 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="truncate font-serif text-lg leading-tight text-[var(--color-ink)]">
-            <Link
-              href={href}
-              {...targetProps}
-              className="link-editorial title-variable"
-            >
-              {item.title}
-            </Link>
-          </h3>
-          <p className="mt-1 flex items-center gap-2 truncate text-sm text-[var(--color-muted)]">
-            <span className="font-mono text-[0.65rem] text-[var(--color-subtle)] tabular-nums">
-              {String(index + 1).padStart(3, "0")}
-            </span>
-            {(() => {
-              const label = artistDisplay(item);
-              const profileHref = artistProfileHref(item);
-              if (!profileHref) {
-                return <span className="truncate">{label}</span>;
-              }
-              return (
-                <Link
-                  href={profileHref}
-                  className="link-editorial truncate hover:text-[var(--color-ink)]"
-                  aria-label={`View profile for ${label}`}
-                >
-                  {label}
-                </Link>
-              );
-            })()}
-            <ChainBadge chainId={item.chainId} />
-          </p>
-        </div>
+        <div className="caption-rule mt-4 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="truncate font-serif text-lg leading-tight text-[var(--color-ink)]">
+              <Link
+                href={href}
+                {...targetProps}
+                className="link-editorial title-variable"
+              >
+                {item.title}
+              </Link>
+            </h3>
+            <p className="mt-1 flex items-center gap-2 truncate text-sm text-[var(--color-muted)]">
+              <span className="font-mono text-[0.65rem] text-[var(--color-subtle)] tabular-nums">
+                {String(index + 1).padStart(3, "0")}
+              </span>
+              {(() => {
+                const label = artistDisplay(item);
+                const profileHref = artistProfileHref(item);
+                if (!profileHref) {
+                  return <span className="truncate">{label}</span>;
+                }
+                return (
+                  <Link
+                    href={profileHref}
+                    className="link-editorial truncate hover:text-[var(--color-ink)]"
+                    aria-label={`View profile for ${label}`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })()}
+              <ChainBadge chainId={item.chainId} />
+            </p>
+          </div>
 
-        <ItemAction
-          item={item}
-          health={health}
-          isSubmitting={isSubmitting}
-          onRequest={onRequest}
-        />
+          <ItemAction
+            item={item}
+            health={health}
+            isSubmitting={isSubmitting}
+            onRequest={onRequest}
+          />
+        </div>
       </div>
     </motion.article>
   );
