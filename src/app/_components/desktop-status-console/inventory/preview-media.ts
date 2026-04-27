@@ -20,6 +20,7 @@ const PREVIEW_KIND_MARKERS: Array<{
   {
     kind: "IMAGE",
     markers: [
+      "image/",
       ".png",
       ".jpg",
       ".jpeg",
@@ -34,15 +35,15 @@ const PREVIEW_KIND_MARKERS: Array<{
   },
   {
     kind: "VIDEO",
-    markers: [".mp4", ".mov", ".webm", ".m4v", ".ogv", ".m3u8"],
+    markers: ["video/", ".mp4", ".mov", ".webm", ".m4v", ".ogv", ".m3u8"],
   },
   {
     kind: "AUDIO",
-    markers: [".mp3", ".wav", ".ogg", ".oga", ".aac", ".m4a", ".flac"],
+    markers: ["audio/", ".mp3", ".wav", ".ogg", ".oga", ".aac", ".m4a", ".flac"],
   },
   {
     kind: "HTML",
-    markers: [".html", ".htm"],
+    markers: ["text/html", "application/xhtml+xml", ".html", ".htm"],
   },
   {
     kind: "MODEL",
@@ -171,16 +172,33 @@ export function normalizePreviewKind(
   ) {
     return normalized;
   }
-  return "UNKNOWN";
+  return previewKindFromHint(value);
 }
 
-export function previewKindFromUrl(url: string): PreviewKind {
-  const lower = stripQueryAndHash(url).toLowerCase();
+export function previewKindFromHint(
+  value: string | null | undefined,
+): PreviewKind {
+  if (!value?.trim()) return "UNKNOWN";
+  const lower = stripQueryAndHash(value.trim()).toLowerCase();
   return (
     PREVIEW_KIND_MARKERS.find(({ markers }) =>
       markers.some((marker) => lower.includes(marker)),
     )?.kind ?? "UNKNOWN"
   );
+}
+
+export function previewKindFromHints(
+  ...values: Array<string | null | undefined>
+): PreviewKind {
+  for (const value of values) {
+    const kind = previewKindFromHint(value);
+    if (kind !== "UNKNOWN") return kind;
+  }
+  return "UNKNOWN";
+}
+
+export function previewKindFromUrl(url: string): PreviewKind {
+  return previewKindFromHint(url);
 }
 
 export function previewKindForPreviewUrl(

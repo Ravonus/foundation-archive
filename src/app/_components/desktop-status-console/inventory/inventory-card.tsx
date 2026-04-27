@@ -14,6 +14,7 @@ import { InventoryPreview } from "./inventory-preview";
 import {
   buildInventoryPreviewCandidates,
   normalizePreviewKind,
+  previewKindFromHints,
 } from "./preview-media";
 import { itemContext, itemLabel, type PinMatch } from "../types";
 
@@ -163,10 +164,14 @@ function useInventoryCardContent(
     ? `@${primaryMatch.artistUsername}`
     : (primaryMatch?.artistName ?? itemContext(item));
   const mediaKind = normalizePreviewKind(item.mediaKind);
+  const previewKind =
+    mediaKind === "UNKNOWN"
+      ? previewKindFromHints(item.label, item.title, item.syncPath, title)
+      : mediaKind;
   const previewCandidates = useMemo(
     () =>
       buildInventoryPreviewCandidates({
-        mediaKind,
+        mediaKind: previewKind,
         posterUrl: primaryMatch?.posterUrl ?? null,
         previewLocalGatewayUrl: item.previewLocalGatewayUrl,
         previewPublicGatewayUrl: item.previewPublicGatewayUrl,
@@ -183,12 +188,12 @@ function useInventoryCardContent(
       item.publicGatewayUrl,
       item.previewLocalGatewayUrl,
       item.previewPublicGatewayUrl,
-      mediaKind,
+      previewKind,
       primaryMatch?.posterUrl,
     ],
   );
 
-  return { title, subtitle, previewCandidates };
+  return { title, subtitle, previewCandidates, previewKind };
 }
 
 export function InventoryCard({
@@ -199,10 +204,8 @@ export function InventoryCard({
   matches: PinMatch[];
 }) {
   const primaryMatch = matches[0] ?? null;
-  const { title, subtitle, previewCandidates } = useInventoryCardContent(
-    item,
-    primaryMatch,
-  );
+  const { title, subtitle, previewCandidates, previewKind } =
+    useInventoryCardContent(item, primaryMatch);
 
   return (
     <motion.article
@@ -215,7 +218,7 @@ export function InventoryCard({
       <CardHeader title={title} subtitle={subtitle} pinned={item.pinned} />
       <InventoryPreview
         title={title}
-        mediaKind={item.mediaKind}
+        mediaKind={previewKind}
         previewCandidates={previewCandidates}
       />
       <CardMeta item={item} primaryMatch={primaryMatch} />

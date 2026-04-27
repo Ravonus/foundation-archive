@@ -20,6 +20,7 @@ import { cn, formatDate, shortAddress } from "~/lib/utils";
 import {
   buildInventoryPreviewCandidates,
   normalizePreviewKind,
+  previewKindFromHints,
   type PreviewCandidate,
 } from "./preview-media";
 import {
@@ -265,8 +266,19 @@ function buildPreviewCandidates(
   item: BridgePinInventoryItem,
   primaryMatch: PinMatch | null,
 ): PreviewCandidate[] {
+  const mediaKind = normalizePreviewKind(item.mediaKind);
+  const previewKind =
+    mediaKind === "UNKNOWN"
+      ? previewKindFromHints(
+          item.label,
+          item.title,
+          item.syncPath,
+          primaryMatch?.title,
+        )
+      : mediaKind;
+
   return buildInventoryPreviewCandidates({
-    mediaKind: normalizePreviewKind(item.mediaKind),
+    mediaKind: previewKind,
     posterUrl: primaryMatch?.posterUrl ?? null,
     previewLocalGatewayUrl: item.previewLocalGatewayUrl,
     previewPublicGatewayUrl: item.previewPublicGatewayUrl,
