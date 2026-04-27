@@ -57,7 +57,7 @@ function profileMatchArtworkWhere(input: {
   const address = normalizeAddressQuery(input.query);
   if (!address) return null;
 
-  return { OR: [{ artistWallet: address }, { contractAddress: address }] };
+  return { artistWallet: address };
 }
 
 function profileKeyForRow(row: {
