@@ -889,7 +889,7 @@ const HYDRATE_CONCURRENCY = 6;
 const KUBO_DIRECTORY_TYPES = new Set([1, 5]);
 const KUBO_LS_MAX_DEPTH = 8;
 
-type DirectoryEntry = {
+export type DirectoryEntry = {
   path: string;
   cid: string;
   size: number;
@@ -1101,6 +1101,10 @@ async function listDirectoryRecursive(
   }
 
   return out;
+}
+
+export function listCidDirectoryEntries(cid: string) {
+  return listDirectoryRecursive(cid);
 }
 
 export type DirectoryHydrationResult = {

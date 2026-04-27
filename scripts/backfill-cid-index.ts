@@ -1,6 +1,9 @@
 import "dotenv/config";
 
-import { indexDependencyManifestCids } from "~/server/archive/cid-index";
+import {
+  indexDependencyManifestCids,
+  indexKuboDagCids,
+} from "~/server/archive/cid-index";
 import { readDependencyManifest } from "~/server/archive/dependencies";
 import { db } from "~/server/db";
 
@@ -20,13 +23,19 @@ function cleanRelativePath(relativePath: string | null | undefined) {
   return relativePath?.replace(/^\/+|\/+$/g, "") ?? "";
 }
 
+function hasFlag(name: string) {
+  return process.argv.includes(`--${name}`);
+}
+
 async function main() {
   const batchSize = numberArg("batch", DEFAULT_BATCH_SIZE);
   const limit = numberArg("limit", Number.POSITIVE_INFINITY);
+  const includeDag = hasFlag("dag");
   let cursor = "";
   let processed = 0;
   let rootRows = 0;
   let manifestRows = 0;
+  let dagRows = 0;
 
   while (processed < limit) {
     const take = Math.min(batchSize, limit - processed);
@@ -93,25 +102,42 @@ async function main() {
           root.cid,
           root.relativePath,
         );
-        if (!manifest) continue;
-        const indexed = await indexDependencyManifestCids({
-          client: db,
-          artworkId: artwork.id,
-          rootId: root.id,
-          rootKind: root.kind,
-          manifest,
-        });
-        manifestRows += indexed.indexed;
+        if (manifest) {
+          const indexed = await indexDependencyManifestCids({
+            client: db,
+            artworkId: artwork.id,
+            rootId: root.id,
+            rootKind: root.kind,
+            manifest,
+          });
+          manifestRows += indexed.indexed;
+        }
+
+        if (includeDag) {
+          const dagIndexed = await indexKuboDagCids({
+            client: db,
+            artworkId: artwork.id,
+            rootId: root.id,
+            rootKind: root.kind,
+            rootCid: root.cid,
+          }).catch((error) => {
+            console.warn(
+              `[cid-index] DAG indexing skipped for ${root.cid}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            return { indexed: 0 };
+          });
+          dagRows += dagIndexed.indexed;
+        }
       }
     }
 
     console.log(
-      `[cid-index] processed=${processed} rootRows=${rootRows} manifestRows=${manifestRows} cursor=${cursor}`,
+      `[cid-index] processed=${processed} rootRows=${rootRows} manifestRows=${manifestRows} dagRows=${dagRows} cursor=${cursor}`,
     );
   }
 
   console.log(
-    `[cid-index] Done. processed=${processed} rootRows=${rootRows} manifestRows=${manifestRows}`,
+    `[cid-index] Done. processed=${processed} rootRows=${rootRows} manifestRows=${manifestRows} dagRows=${dagRows}`,
   );
 }
 

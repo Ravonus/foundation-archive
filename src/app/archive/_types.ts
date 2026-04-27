@@ -41,6 +41,16 @@ export type ArchivedArtworkRow = {
   } | null;
 };
 
+export type ArchiveProfileMatch = {
+  accountAddress: string;
+  username: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+  savedCount: number;
+  matchingCount: number;
+  sampleTitles: string[];
+};
+
 export type ArchiveCursorPayload =
   | {
       sort: "newest" | "oldest";

@@ -7,8 +7,10 @@ import {
 
 import type { DependencyManifest } from "./dependencies";
 import { parseIpfsLookupInput } from "./ipfs";
+import { listCidDirectoryEntries } from "./storage";
 
 const ROOT_SOURCE_TYPE = "root";
+const DAG_SOURCE_TYPE = "dag:directory-entry";
 const DEFAULT_CID_LOOKUP_LIMIT = 50;
 
 function cleanRelativePath(relativePath: string | null | undefined) {
@@ -183,6 +185,48 @@ export async function indexDependencyManifestCids(args: {
       depth: node.depth,
     }),
   );
+
+  if (data.length === 0) {
+    return { indexed: 0 };
+  }
+
+  const created = await args.client.ipfsCidIndex.createMany({
+    data,
+    skipDuplicates: true,
+  });
+
+  return { indexed: created.count };
+}
+
+export async function indexKuboDagCids(args: {
+  client: PrismaClient;
+  artworkId: string;
+  rootId: string;
+  rootKind: RootKind;
+  rootCid: string;
+}) {
+  const entries = await listCidDirectoryEntries(args.rootCid);
+
+  await args.client.ipfsCidIndex.deleteMany({
+    where: {
+      artworkId: args.artworkId,
+      rootId: args.rootId,
+      sourceType: DAG_SOURCE_TYPE,
+    },
+  });
+
+  const data: Prisma.IpfsCidIndexCreateManyInput[] = entries
+    .filter((entry) => entry.cid)
+    .map((entry) => ({
+      cid: entry.cid,
+      relativePath: cleanRelativePath(entry.path),
+      rootId: args.rootId,
+      artworkId: args.artworkId,
+      rootKind: args.rootKind,
+      sourceType: DAG_SOURCE_TYPE,
+      discoveredFrom: args.rootCid,
+      depth: cleanRelativePath(entry.path).split("/").filter(Boolean).length,
+    }));
 
   if (data.length === 0) {
     return { indexed: 0 };

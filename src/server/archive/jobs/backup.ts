@@ -27,7 +27,10 @@ import {
   buildRelayGatewayUrl,
   findRelayGatewayCandidates,
 } from "~/server/relay/pin-routing";
-import { syncArtworkRootCidIndex } from "~/server/archive/cid-index";
+import {
+  indexKuboDagCids,
+  syncArtworkRootCidIndex,
+} from "~/server/archive/cid-index";
 import {
   type DatabaseClient,
   FAILED_ROOT_RETRY_COOLDOWN_MS,
@@ -495,6 +498,35 @@ async function markPinSkipped(client: DatabaseClient, rootId: string) {
   });
 }
 
+async function tryIndexRootDagCids(args: {
+  client: DatabaseClient;
+  input: BackupRootInput;
+  root: RootRecord;
+}) {
+  if (!env.KUBO_API_URL) return;
+
+  try {
+    const result = await indexKuboDagCids({
+      client: args.client,
+      artworkId: args.input.artworkId,
+      rootId: args.root.id,
+      rootKind: args.root.kind,
+      rootCid: args.root.cid,
+    });
+
+    if (result.indexed > 0) {
+      console.warn(
+        `[archive] Indexed ${result.indexed} child CID(s) for ${args.root.cid}.`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[archive] Child CID indexing skipped for ${args.root.cid}:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 async function recordRootFailure(args: {
   client: DatabaseClient;
   input: BackupRootInput;
@@ -599,6 +631,7 @@ async function backupSingleRoot(
         startedAt,
       })
     ) {
+      await tryIndexRootDagCids({ client, input, root });
       return {
         status: "processed",
         availableAt: null,
@@ -646,6 +679,8 @@ async function backupSingleRoot(
         );
       }
     }
+
+    await tryIndexRootDagCids({ client, input, root });
 
     if (env.KUBO_API_URL && !downloadResult.alreadyPinned) {
       await pinResolvedRootWithKubo({

@@ -1,15 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Info, Search } from "lucide-react";
+import { ArrowRight, Info, Search } from "lucide-react";
 
 import { CountUp, FadeUp } from "~/app/_components/motion";
+import { ProfileAvatar } from "~/app/_components/profile/profile-avatar";
 import { SearchShortcutHint } from "~/app/_components/search-shortcut-hint";
 import {
   type ArchiveMediaFilter,
   type ArchiveSort,
   type ArchiveStatusFilter,
 } from "~/lib/archive-browse";
+
+import { type ArchiveProfileMatch } from "./_types";
 
 type HeaderStatsProps = {
   totalIndexedWorks: number;
@@ -290,5 +294,91 @@ export function ArchiveInfoDetails() {
         </div>
       </div>
     </details>
+  );
+}
+
+export function ArchiveProfileMatches({
+  profiles,
+}: {
+  profiles: ArchiveProfileMatch[];
+}) {
+  if (profiles.length === 0) return null;
+
+  return (
+    <section aria-label="Artist matches" className="mt-6">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="font-mono text-[0.62rem] tracking-[0.28em] text-[var(--color-muted)] uppercase">
+            Artist matches
+          </p>
+          <h2 className="mt-1 font-serif text-2xl text-[var(--color-ink)]">
+            Open archived profiles
+          </h2>
+        </div>
+        <span className="font-mono text-[0.68rem] tracking-[0.2em] text-[var(--color-muted)] uppercase">
+          {profiles.length} found
+        </span>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {profiles.map((profile) => {
+          const displayName =
+            profile.name ?? profile.username ?? profile.accountAddress;
+          const profileHref = `/profile/${encodeURIComponent(
+            profile.username ?? profile.accountAddress,
+          )}`;
+
+          return (
+            <article
+              key={profile.accountAddress}
+              className="flex min-w-0 items-start justify-between gap-4 rounded-sm border border-[var(--color-line)] bg-[var(--color-surface)] p-4"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <ProfileAvatar
+                  imageUrl={profile.avatarUrl}
+                  label={displayName}
+                  className="h-11 w-11"
+                />
+                <div className="min-w-0">
+                  <Link
+                    href={profileHref}
+                    className="font-serif text-lg leading-tight text-[var(--color-ink)] hover:underline"
+                  >
+                    {displayName}
+                  </Link>
+                  <p className="mt-0.5 truncate text-sm text-[var(--color-muted)]">
+                    {profile.username
+                      ? `@${profile.username}`
+                      : profile.accountAddress}
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--color-body)]">
+                    {profile.savedCount} saved
+                    {profile.matchingCount > 0 ? (
+                      <span className="text-[var(--color-muted)]">
+                        {" "}
+                        · {profile.matchingCount} matching
+                      </span>
+                    ) : null}
+                  </p>
+                  {profile.sampleTitles.length > 0 ? (
+                    <p className="mt-1 truncate text-xs text-[var(--color-muted)]">
+                      {profile.sampleTitles.join(" / ")}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <Link
+                href={profileHref}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-ink)] hover:text-[var(--color-bg)]"
+              >
+                Open
+                <ArrowRight aria-hidden className="h-3.5 w-3.5" />
+              </Link>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }

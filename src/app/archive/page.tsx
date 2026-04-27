@@ -29,7 +29,11 @@ import {
   toArchivedGridItem,
   toDiscoveredGridItem,
 } from "./_grid-item";
-import { ArchiveInfoDetails, ArchiveStickyHeader } from "./_presentational";
+import {
+  ArchiveInfoDetails,
+  ArchiveProfileMatches,
+  ArchiveStickyHeader,
+} from "./_presentational";
 import {
   ARCHIVE_PAGE_SIZE,
   artworkKey,
@@ -40,6 +44,7 @@ import {
   parseArchiveSearchParams,
   type ParsedArchiveSearchParams,
 } from "./_search-params";
+import { loadArchiveProfileMatches } from "./_profile-matches";
 
 export const dynamic = "force-dynamic";
 
@@ -147,12 +152,14 @@ async function parseSearchParams(
 type CountsInput = {
   params: ParsedArchiveSearchParams;
   hasFilter: boolean;
+  cidArtworkIds: string[] | null;
 };
 
-async function loadArchiveCounts({ params, hasFilter }: CountsInput) {
-  const cidArtworkIds = params.query
-    ? await loadArchiveCidArtworkIds(params.query)
-    : null;
+async function loadArchiveCounts({
+  params,
+  hasFilter,
+  cidArtworkIds,
+}: CountsInput) {
   const filterCountPromise = hasFilter
     ? db.artwork.count({
         where: buildArchivedWhere({
@@ -208,13 +215,22 @@ export default async function ArchivePage(props: ArchivePageProps) {
   const discovery = runDiscovery(params.query);
 
   const hasFilter = hasExplicitFilterInput(params);
+  const cidArtworkIds = params.query
+    ? await loadArchiveCidArtworkIds(params.query)
+    : null;
   const [
-    archivedRows,
-    totalIndexedWorks,
-    publicQueueCount,
-    liveSnapshot,
-    archivedMatchCount,
-  ] = await loadArchiveCounts({ params, hasFilter });
+    [
+      archivedRows,
+      totalIndexedWorks,
+      publicQueueCount,
+      liveSnapshot,
+      archivedMatchCount,
+    ],
+    archiveProfileMatches,
+  ] = await Promise.all([
+    loadArchiveCounts({ params, hasFilter, cidArtworkIds }),
+    loadArchiveProfileMatches({ query: params.query, cidArtworkIds }),
+  ]);
 
   const archivedWorks = archivedRows.slice(0, ARCHIVE_PAGE_SIZE);
   const nextCursor = computeNextCursor(archivedRows, params.sort);
@@ -260,10 +276,12 @@ export default async function ArchivePage(props: ArchivePageProps) {
         publicQueueCount={publicQueueCount}
         archivedShown={archivedShown}
         liveOnlyShown={liveOnlyShown}
-        profileCount={profileItems.length}
+        profileCount={profileItems.length + archiveProfileMatches.length}
       />
 
       <ArchiveInfoDetails />
+
+      <ArchiveProfileMatches profiles={archiveProfileMatches} />
 
       {profileItems.length > 0 ? (
         <FadeUp inView className="mt-6 block">
