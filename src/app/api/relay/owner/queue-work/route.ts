@@ -8,6 +8,14 @@ import { enqueueRelayShareWork } from "~/server/relay/service";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const contentReferenceSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(4096)
+  .nullable()
+  .optional();
+
 const schema = z.object({
   ownerToken: z.string().min(16),
   deviceId: z.string().min(1),
@@ -19,11 +27,22 @@ const schema = z.object({
     artistUsername: z.string().nullable().optional(),
     metadataCid: z.string().nullable().optional(),
     mediaCid: z.string().nullable().optional(),
-    metadataUrl: z.string().url().nullable().optional(),
-    sourceUrl: z.string().url().nullable().optional(),
-    mediaUrl: z.string().url().nullable().optional(),
+    metadataUrl: contentReferenceSchema,
+    sourceUrl: contentReferenceSchema,
+    mediaUrl: contentReferenceSchema,
   }),
 });
+
+function normalizeContentReference(
+  value: string | null | undefined,
+  request: Request,
+) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return new URL(trimmed, request.url).toString();
+  return trimmed;
+}
 
 export async function POST(request: Request) {
   try {
@@ -39,9 +58,9 @@ export async function POST(request: Request) {
         artistUsername: input.work.artistUsername ?? null,
         metadataCid: input.work.metadataCid ?? null,
         mediaCid: input.work.mediaCid ?? null,
-        metadataUrl: input.work.metadataUrl ?? null,
-        sourceUrl: input.work.sourceUrl ?? null,
-        mediaUrl: input.work.mediaUrl ?? null,
+        metadataUrl: normalizeContentReference(input.work.metadataUrl, request),
+        sourceUrl: normalizeContentReference(input.work.sourceUrl, request),
+        mediaUrl: normalizeContentReference(input.work.mediaUrl, request),
       },
     });
 
@@ -64,7 +83,8 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unable to queue relay job.",
+        error:
+          error instanceof Error ? error.message : "Unable to queue relay job.",
       },
       { status: 400 },
     );
