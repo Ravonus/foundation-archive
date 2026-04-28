@@ -2,13 +2,7 @@
 
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, LoaderCircle, X, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -18,11 +12,13 @@ import {
   hasHostedPinRoots,
   type DesktopShareableWork,
 } from "~/app/_components/desktop-bridge-provider";
+import { saveWorkToDesktop } from "~/app/_components/desktop-save-routing";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 
 type PinHostRecord = RouterOutputs["pinHosts"]["list"][number];
-type PinHostWorkState = RouterOutputs["pinHosts"]["getWorkStates"][string][number];
+type PinHostWorkState =
+  RouterOutputs["pinHosts"]["getWorkStates"][string][number];
 
 export type ArchiveSaveWork = DesktopShareableWork & {
   chainId: number;
@@ -81,7 +77,9 @@ const ArchiveSaveContext = createContext<ArchiveSaveContextValue | null>(null);
 
 const TOAST_EASE = [0.22, 1, 0.36, 1] as const;
 
-function workKey(work: Pick<ArchiveSaveWork, "chainId" | "contractAddress" | "tokenId">) {
+function workKey(
+  work: Pick<ArchiveSaveWork, "chainId" | "contractAddress" | "tokenId">,
+) {
   return `${work.chainId}:${work.contractAddress.toLowerCase()}:${work.tokenId}`;
 }
 
@@ -133,7 +131,9 @@ export function ArchiveSaveManagerProvider({
 }) {
   const router = useRouter();
   const bridge = useDesktopBridge();
-  const [workStates, setWorkStates] = useState<Record<string, WorkSaveState>>({});
+  const [workStates, setWorkStates] = useState<Record<string, WorkSaveState>>(
+    {},
+  );
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const notificationPermissionRef = useRef<Promise<string> | null>(null);
   const utils = api.useUtils();
@@ -159,7 +159,9 @@ export function ArchiveSaveManagerProvider({
       .filter((toast) => toast.tone !== "pending")
       .map((toast) =>
         window.setTimeout(() => {
-          setToasts((current) => current.filter((item) => item.id !== toast.id));
+          setToasts((current) =>
+            current.filter((item) => item.id !== toast.id),
+          );
         }, 5000),
       );
     return () => {
@@ -289,39 +291,39 @@ export function ArchiveSaveManagerProvider({
     let notificationBody = `${work.title} is pinned on your desktop app now.`;
 
     try {
+      const canPinDirectly = bridge.reachable;
       const hasPairedDevice = bridge.relayDevices.length > 0;
+      const saveResult = await saveWorkToDesktop({
+        work,
+        canPinDirectly,
+        hasPairedDevice,
+        shareWork: bridge.shareWork,
+        queueWorkToRelay: bridge.queueWorkToRelay,
+      });
 
-      if (hasPairedDevice) {
+      if (saveResult.route === "relay") {
         notificationBody = `${work.title} was queued for your desktop app.`;
-        await bridge.queueWorkToRelay(work);
         patchWorkState(key, (current) => ({ ...current, desktop: "saved" }));
         updateToast(toastId, {
           tone: "success",
           title: "Queued for desktop",
           body: `${work.title} was sent to your linked desktop app.`,
         });
-      } else if (bridge.reachable) {
-        const result = await bridge.shareWork(work);
+      } else {
+        const result = saveResult.result;
         patchWorkState(key, (current) => ({ ...current, desktop: "saved" }));
         updateToast(toastId, {
           tone: "success",
           title: "Saved to desktop",
           body: `${work.title} sent ${result.pins.length} file${result.pins.length === 1 ? "" : "s"} to this computer.`,
         });
-      } else {
-        throw new Error(
-          "Desktop app isn't connected yet. Open the desktop app, then try again.",
-        );
       }
 
       const permission = await notificationPermissionRef.current.catch(
         () => "unsupported",
       );
       if (permission === "granted") {
-        showBrowserNotification(
-          "Agorix save complete",
-          notificationBody,
-        );
+        showBrowserNotification("Agorix save complete", notificationBody);
       }
     } catch (error) {
       patchWorkState(key, (current) => ({ ...current, desktop: "error" }));
@@ -349,7 +351,9 @@ export function ArchiveSaveManagerProvider({
       hostIds && hostIds.length > 0
         ? hostIds
         : options?.useAutoPin
-          ? pinHosts.filter((host) => host.autoPin && host.enabled).map((host) => host.id)
+          ? pinHosts
+              .filter((host) => host.autoPin && host.enabled)
+              .map((host) => host.id)
           : [];
 
     if (selectedHostIds.length === 0 && !options?.useAutoPin) {
@@ -358,7 +362,9 @@ export function ArchiveSaveManagerProvider({
 
     const key = workKey(work);
     const pendingHosts = pinHosts.filter((host) =>
-      options?.useAutoPin ? host.autoPin && host.enabled : selectedHostIds.includes(host.id),
+      options?.useAutoPin
+        ? host.autoPin && host.enabled
+        : selectedHostIds.includes(host.id),
     );
     const toastId = createToastId("host");
 
@@ -408,7 +414,9 @@ export function ArchiveSaveManagerProvider({
         },
       }));
 
-      const successCount = results.filter((result) => result.status === "PINNED").length;
+      const successCount = results.filter(
+        (result) => result.status === "PINNED",
+      ).length;
       const failedCount = results.length - successCount;
 
       updateToast(toastId, {
@@ -420,7 +428,10 @@ export function ArchiveSaveManagerProvider({
             : `${work.title} pinned to ${successCount} host${successCount === 1 ? "" : "s"}.`,
       });
 
-      await utils.pinHosts.getWorkStates.invalidate({ ownerToken, works: [work] });
+      await utils.pinHosts.getWorkStates.invalidate({
+        ownerToken,
+        works: [work],
+      });
       await utils.pinHosts.list.invalidate({ ownerToken });
     } catch (error) {
       patchWorkState(key, (current) => ({
@@ -447,7 +458,9 @@ export function ArchiveSaveManagerProvider({
   };
 
   const saveEverywhere = async (work: ArchiveSaveWork) => {
-    const enabledHosts = pinHosts.filter((host) => host.enabled && host.autoPin);
+    const enabledHosts = pinHosts.filter(
+      (host) => host.enabled && host.autoPin,
+    );
     const tasks = [requestArchiveSave(work)];
 
     if (bridge.reachable || bridge.relayDevices.length > 0) {
@@ -455,7 +468,12 @@ export function ArchiveSaveManagerProvider({
     }
 
     if (enabledHosts.length > 0 && ownerToken && hasHostedPinRoots(work)) {
-      tasks.push(saveToHosts(work, enabledHosts.map((host) => host.id)));
+      tasks.push(
+        saveToHosts(
+          work,
+          enabledHosts.map((host) => host.id),
+        ),
+      );
     }
 
     await Promise.allSettled(tasks);
@@ -478,9 +496,12 @@ export function ArchiveSaveManagerProvider({
   return (
     <ArchiveSaveContext.Provider value={value}>
       {children}
-      <SaveToastViewport toasts={toasts} onDismiss={(id) => {
-        setToasts((current) => current.filter((toast) => toast.id !== id));
-      }} />
+      <SaveToastViewport
+        toasts={toasts}
+        onDismiss={(id) => {
+          setToasts((current) => current.filter((toast) => toast.id !== id));
+        }}
+      />
     </ArchiveSaveContext.Provider>
   );
 }
@@ -558,7 +579,9 @@ function SaveToastViewport({
 export function useArchiveSaveManager() {
   const context = useContext(ArchiveSaveContext);
   if (!context) {
-    throw new Error("useArchiveSaveManager must be used inside ArchiveSaveManagerProvider.");
+    throw new Error(
+      "useArchiveSaveManager must be used inside ArchiveSaveManagerProvider.",
+    );
   }
   return context;
 }
@@ -567,7 +590,10 @@ export function summarizeWorkTargetState(
   optimistic: WorkSaveState,
   remote: PinHostWorkState[] | undefined,
 ) {
-  const hostEntries = new Map<string, { label: string; status: SaveStatus | PinHostWorkState["status"] }>();
+  const hostEntries = new Map<
+    string,
+    { label: string; status: SaveStatus | PinHostWorkState["status"] }
+  >();
 
   for (const [hostId, entry] of Object.entries(optimistic.hosts)) {
     hostEntries.set(hostId, { label: entry.label, status: entry.status });

@@ -12,6 +12,11 @@ import {
   useDesktopBridge,
   type DesktopShareableWork,
 } from "~/app/_components/desktop-bridge-provider";
+import { saveWorkToDesktop } from "~/app/_components/desktop-save-routing";
+import type {
+  RelayQueuedJob,
+  ShareWorkResult,
+} from "~/app/_components/desktop-bridge-provider/types";
 
 type FeedbackState = { tone: "success" | "error" | "pending"; message: string };
 type ShareOutcome = {
@@ -74,13 +79,20 @@ async function runShareAction({
 }: {
   canPinDirectly: boolean;
   hasPairedDevice: boolean;
-  queueWorkToRelay: (work: DesktopShareableWork) => Promise<unknown>;
-  shareWork: (work: DesktopShareableWork) => Promise<{ pins: unknown[] }>;
+  queueWorkToRelay: (work: DesktopShareableWork) => Promise<RelayQueuedJob>;
+  shareWork: (work: DesktopShareableWork) => Promise<ShareWorkResult>;
   work: DesktopShareableWork;
 }): Promise<ShareOutcome> {
-  // Direct path: local bridge is on the same loopback as the browser.
-  if (canPinDirectly) {
-    const result = await shareWork(work);
+  const saveResult = await saveWorkToDesktop({
+    work,
+    canPinDirectly,
+    hasPairedDevice,
+    shareWork,
+    queueWorkToRelay,
+  });
+
+  if (saveResult.route === "direct") {
+    const result = saveResult.result;
     return {
       message: `Saved on this computer (${result.pins.length} file${result.pins.length === 1 ? "" : "s"} sent).`,
       notificationTitle: "Foundation backup saved",
@@ -88,20 +100,6 @@ async function runShareAction({
     };
   }
 
-  // Relay path: queueWorkToRelay hits /api/relay/owner/queue-work, which
-  // persists the job on the archive server regardless of whether our local
-  // WebSocket finished handshaking. We only need hasPairedDevice — the
-  // device-was-ever-connected bootstrap cache — to know a worker exists.
-  // The socket is only needed to surface live job status; if it isn't
-  // connected yet, queueWorkToRelay will still succeed and the job gets
-  // picked up when the bridge reconnects.
-  if (!hasPairedDevice) {
-    throw new Error(
-      "Desktop app isn't connected yet. Open the desktop app, then try again.",
-    );
-  }
-
-  await queueWorkToRelay(work);
   return {
     message: relaySuccessMessage,
     notificationTitle: "Foundation backup saved",
@@ -120,8 +118,8 @@ function SaveButtonIcon({ isWorking }: { isWorking: boolean }) {
 type RunSaveParams = {
   canPinDirectly: boolean;
   hasPairedDevice: boolean;
-  queueWorkToRelay: (work: DesktopShareableWork) => Promise<unknown>;
-  shareWork: (work: DesktopShareableWork) => Promise<{ pins: unknown[] }>;
+  queueWorkToRelay: (work: DesktopShareableWork) => Promise<RelayQueuedJob>;
+  shareWork: (work: DesktopShareableWork) => Promise<ShareWorkResult>;
   work: DesktopShareableWork;
   setIsWorking: (value: boolean) => void;
   setFeedback: (value: FeedbackState | null) => void;
