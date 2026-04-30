@@ -8,6 +8,8 @@ import {
 import { toArchivedGridItem } from "~/app/archive/_grid-item";
 import { parseArchiveSearchParams } from "~/app/archive/_search-params";
 import { ARCHIVE_PAGE_SIZE } from "~/app/archive/_types";
+import { attachMarketStateToGridItems } from "~/server/archive/foundation-market";
+import { db } from "~/server/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,9 +29,13 @@ export async function GET(request: NextRequest) {
   });
 
   const archivedWorks = archivedRows.slice(0, ARCHIVE_PAGE_SIZE);
+  const items = await attachMarketStateToGridItems(
+    db,
+    archivedWorks.map(toArchivedGridItem),
+  );
 
   return NextResponse.json({
-    items: archivedWorks.map(toArchivedGridItem),
+    items,
     nextCursor: computeNextCursor(archivedRows, params.sort),
   });
 }
