@@ -87,6 +87,7 @@ export const FOUNDATION_NFT_MARKET_ABI = [
       { name: "nftContract", type: "address" },
       { name: "tokenId", type: "uint256" },
       { name: "reservePrice", type: "uint256" },
+      { name: "duration", type: "uint256" },
     ],
     outputs: [],
   },

@@ -6,9 +6,17 @@ import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useEffect } from "react";
 import { formatEther, getAddress, isAddressEqual, parseEther } from "viem";
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import {
+  useAccount,
+  useReadContract,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
 
-import { ERC721_APPROVAL_ABI, FOUNDATION_NFT_MARKET_ABI } from "./foundation-contract-abi";
+import {
+  ERC721_APPROVAL_ABI,
+  FOUNDATION_NFT_MARKET_ABI,
+} from "./foundation-contract-abi";
 
 type ActiveBuyPrice = {
   marketContract: string;
@@ -266,7 +274,8 @@ function BuyPriceOwnerControls({
 }) {
   const parsedPrice = parsePriceInput(draftPrice) ?? 0n;
   const canSubmit = parsePriceInput(draftPrice) !== null;
-  const priceLabel = formatPriceEth(currentPriceWei) ?? `${currentPriceWei} wei`;
+  const priceLabel =
+    formatPriceEth(currentPriceWei) ?? `${currentPriceWei} wei`;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-alt)] p-4">
@@ -397,7 +406,8 @@ function ReserveAuctionOwnerControls({
       ) : (
         <p className="text-xs leading-relaxed text-[var(--color-ink)]/60">
           Once the first bid lands, Foundation locks this auction in. You can
-          still settle it when it ends, but you can&apos;t delist it mid-auction.
+          still settle it when it ends, but you can&apos;t delist it
+          mid-auction.
         </p>
       )}
     </div>
@@ -493,7 +503,7 @@ function CreateReserveAuctionListing({
           address: marketContract,
           abi: FOUNDATION_NFT_MARKET_ABI,
           functionName: "createReserveAuction",
-          args: [getAddress(contractAddress), BigInt(tokenId), parsedPrice],
+          args: [getAddress(contractAddress), BigInt(tokenId), parsedPrice, 0n],
           chainId,
         })}
         refreshOnSuccess
@@ -524,7 +534,7 @@ function PriceInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-10 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-line-strong)]"
+        className="h-10 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink)] transition outline-none focus:border-[var(--color-line-strong)]"
       />
     </label>
   );
@@ -562,7 +572,9 @@ function ContractActionButton(args: {
   successLabel: string;
   buttonClassName: string;
   disabled?: boolean;
-  buildRequest: () => Parameters<ReturnType<typeof useWriteContract>["writeContract"]>[0];
+  buildRequest: () => Parameters<
+    ReturnType<typeof useWriteContract>["writeContract"]
+  >[0];
   refreshOnSuccess?: boolean;
 }) {
   const router = useRouter();
@@ -583,7 +595,9 @@ function ContractActionButton(args: {
       <motion.button
         type="button"
         onClick={() => writeContract(args.buildRequest())}
-        disabled={(args.disabled ?? false) || isPending || isMining || isSuccess}
+        disabled={
+          (args.disabled ?? false) || isPending || isMining || isSuccess
+        }
         whileHover={{ scale: 1.015 }}
         whileTap={{ scale: 0.985 }}
         className={args.buttonClassName}

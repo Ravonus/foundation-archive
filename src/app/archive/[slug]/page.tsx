@@ -420,11 +420,15 @@ export default async function ArtworkDetailPage(props: ArtworkDetailPageProps) {
     await Promise.all([
       deriveView(artwork),
       dependencyFlowsForArtwork(artwork),
-      getTokenMarketState(db, {
-        chainId: artwork.chainId,
-        nftContract: artwork.contractAddress,
-        tokenId: artwork.tokenId,
-      }),
+      getTokenMarketState(
+        db,
+        {
+          chainId: artwork.chainId,
+          nftContract: artwork.contractAddress,
+          tokenId: artwork.tokenId,
+        },
+        { refreshMissingFromChain: true },
+      ),
       listTokenMarketHistory(
         db,
         {

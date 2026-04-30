@@ -1,4 +1,4 @@
-import { parseAbiItem } from "viem";
+import { parseAbi, parseAbiItem } from "viem";
 
 export const RESERVE_AUCTION_CREATED_EVENT = parseAbiItem(
   "event ReserveAuctionCreated(address indexed seller, address indexed nftContract, uint256 indexed tokenId, uint256 duration, uint256 extensionDuration, uint256 reservePrice, uint256 auctionId)",
@@ -54,3 +54,9 @@ export const NFT_MARKET_EVENTS = [
 ] as const;
 
 export type NftMarketEvent = (typeof NFT_MARKET_EVENTS)[number];
+
+export const NFT_MARKET_GETTERS_ABI = parseAbi([
+  "function getBuyPrice(address nftContract, uint256 tokenId) view returns (address seller, uint256 price)",
+  "function getReserveAuctionIdFor(address nftContract, uint256 tokenId) view returns (uint256 auctionId)",
+  "function getReserveAuction(uint256 auctionId) view returns ((address nftContract, uint256 tokenId, address seller, uint256 duration, uint256 extensionDuration, uint256 endTime, address bidder, uint256 amount) auction)",
+]);
