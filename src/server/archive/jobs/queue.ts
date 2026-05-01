@@ -644,74 +644,93 @@ function analyseRebalance(
   };
 }
 
-function refillCandidateOr(failedRetryCutoff: Date) {
-  const candidates: Prisma.ArtworkWhereInput[] = [
-    {
-      metadataRootId: { not: null },
-      metadataStatus: {
-        equals: BackupStatus.PENDING,
+function rootUnknownOrWithinBudget(
+  smartPinMaxBytes: number,
+): Prisma.IpfsRootWhereInput {
+  return {
+    OR: [
+      {
+        estimatedByteSize: null,
+        byteSize: null,
       },
-    },
-    {
-      mediaRootId: { not: null },
-      mediaStatus: {
-        equals: BackupStatus.PENDING,
-      },
-    },
-    {
-      metadataRootId: { not: null },
-      metadataStatus: BackupStatus.FAILED,
-      metadataRoot: {
-        is: {
-          updatedAt: {
-            lte: failedRetryCutoff,
-          },
+      {
+        estimatedByteSize: {
+          lte: smartPinMaxBytes,
         },
       },
-    },
-    {
-      mediaRootId: { not: null },
-      mediaStatus: BackupStatus.FAILED,
-      mediaRoot: {
-        is: {
-          updatedAt: {
-            lte: failedRetryCutoff,
-          },
+      {
+        estimatedByteSize: null,
+        byteSize: {
+          lte: smartPinMaxBytes,
         },
       },
+    ],
+  };
+}
+
+function refillRootCandidate(
+  failedRetryCutoff: Date,
+  smartPinMaxBytes: number,
+): Prisma.IpfsRootWhereInput {
+  const candidates: Prisma.IpfsRootWhereInput[] = [
+    {
+      AND: [
+        { backupStatus: BackupStatus.PENDING },
+        rootUnknownOrWithinBudget(smartPinMaxBytes),
+      ],
+    },
+    {
+      AND: [
+        { backupStatus: BackupStatus.FAILED },
+        { updatedAt: { lte: failedRetryCutoff } },
+      ],
+    },
+    {
+      AND: [
+        { pinStatus: BackupStatus.FAILED },
+        { updatedAt: { lte: failedRetryCutoff } },
+      ],
     },
   ];
 
-  if (!archivePinningEnabled()) {
-    return candidates;
+  if (archivePinningEnabled()) {
+    candidates.push({
+      AND: [
+        { backupStatus: BackupStatus.DOWNLOADED },
+        rootUnknownOrWithinBudget(smartPinMaxBytes),
+      ],
+    });
   }
 
-  candidates.push(
-    {
-      metadataRootId: { not: null },
-      metadataStatus: BackupStatus.DOWNLOADED,
-      metadataRoot: {
-        is: {
-          pinStatus: {
-            not: BackupStatus.PINNED,
-          },
-        },
-      },
+  return {
+    pinStatus: {
+      not: BackupStatus.PINNED,
     },
-    {
-      mediaRootId: { not: null },
-      mediaStatus: BackupStatus.DOWNLOADED,
-      mediaRoot: {
-        is: {
-          pinStatus: {
-            not: BackupStatus.PINNED,
-          },
-        },
-      },
-    },
+    OR: candidates,
+  };
+}
+
+function refillCandidateOr(
+  failedRetryCutoff: Date,
+  smartPinMaxBytes: number,
+) {
+  const rootCandidate = refillRootCandidate(
+    failedRetryCutoff,
+    smartPinMaxBytes,
   );
 
-  return candidates;
+  return [
+    {
+      metadataRoot: {
+        is: rootCandidate,
+      },
+    },
+    {
+      mediaRoot: {
+        is: rootCandidate,
+      },
+    },
+  ] satisfies Prisma.ArtworkWhereInput[];
 }
 
 async function refillAutomaticBackups(args: {
@@ -728,7 +747,7 @@ async function refillAutomaticBackups(args: {
 
   const candidateArtworks = await client.artwork.findMany({
     where: {
-      OR: refillCandidateOr(failedRetryCutoff),
+      OR: refillCandidateOr(failedRetryCutoff, smartPinMaxBytes),
     },
     select: {
       id: true,
@@ -740,7 +759,7 @@ async function refillAutomaticBackups(args: {
       },
     },
     orderBy: [{ lastIndexedAt: "asc" }, { createdAt: "asc" }],
-    take: Math.min(Math.max(refillSlots * 256, 1_024), 10_000),
+    take: Math.min(Math.max(refillSlots * 512, 5_000), 50_000),
   });
 
   const orderedCandidates = candidateArtworks
