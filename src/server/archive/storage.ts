@@ -543,7 +543,7 @@ export async function kuboHasRecursivePin(cid: string): Promise<boolean> {
       headers: env.KUBO_API_AUTH_HEADER
         ? { Authorization: env.KUBO_API_AUTH_HEADER }
         : undefined,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(3_000),
     });
     if (!response.ok) return false;
     const body = await response.text();

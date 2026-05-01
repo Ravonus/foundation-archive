@@ -69,7 +69,7 @@ type BackupRootInput = {
 type DeferredOutcome = {
   status: "deferred";
   availableAt: Date;
-  reason: "size" | "retry-cooldown";
+  reason: "size" | "retry-cooldown" | "size-probe";
   retainJob?: boolean;
 };
 type SkippedOutcome = {
@@ -168,7 +168,23 @@ async function evaluateSmartBudget(args: {
 
   const policy = await getArchivePolicyState(client);
   const { estimatedByteSize, mimeType } = await probeRootSize(root);
-  if (!estimatedByteSize) return null;
+  if (!estimatedByteSize) {
+    await client.ipfsRoot.update({
+      where: { id: root.id },
+      data: {
+        lastDeferredAt: new Date(),
+        lastError:
+          "Fast size probe did not return a byte size; queued for another probe pass.",
+      },
+    });
+
+    return {
+      status: "deferred",
+      availableAt: new Date(Date.now() + policy.smartPinDeferMs),
+      reason: "size-probe",
+      retainJob: true,
+    };
+  }
 
   await client.ipfsRoot.update({
     where: { id: root.id },
@@ -623,19 +639,8 @@ async function backupSingleRoot(
   const startedAt = new Date();
 
   try {
-    if (
-      await markExistingKuboPinIfPresent({
-        client,
-        input,
-        root,
-        startedAt,
-      })
-    ) {
-      await tryIndexRootDagCids({ client, input, root });
-      return {
-        status: "processed",
-        availableAt: null,
-      };
+    if (await shouldSkipSatisfiedRoot(root)) {
+      return { status: "skipped", availableAt: null };
     }
 
     if (!input.bypassSmartBudget) {
@@ -653,8 +658,19 @@ async function backupSingleRoot(
     const deferred = await evaluateSmartBudget({ client, input, root });
     if (deferred) return deferred;
 
-    if (await shouldSkipSatisfiedRoot(root)) {
-      return { status: "skipped", availableAt: null };
+    if (
+      await markExistingKuboPinIfPresent({
+        client,
+        input,
+        root,
+        startedAt,
+      })
+    ) {
+      await tryIndexRootDagCids({ client, input, root });
+      return {
+        status: "processed",
+        availableAt: null,
+      };
     }
 
     const downloadedRoot = hasDownloadedRoot(root);
@@ -831,6 +847,8 @@ export async function backupArtwork(
       message:
         deferredRoot.reason === "retry-cooldown"
           ? `Paused a recently failed root for ${artwork.title} before trying it again.`
+          : deferredRoot.reason === "size-probe"
+            ? `Queued another fast size probe for ${artwork.title} before downloading it.`
           : `Deferred larger root(s) for ${artwork.title} until a later smart-pin tier unlocks.`,
       retainJob: deferredRoot.retainJob,
     };

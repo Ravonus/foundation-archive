@@ -26,6 +26,7 @@ import { backupArtwork } from "./backup";
 import {
   artworkNeedsOnlyFailedRootRepair,
   artworkBlockedBySmartBudget,
+  nextProcessableRootPriority,
   type SmartBudgetArtworkSnapshot,
   unsatisfiedSmartBudgetRootIds,
 } from "./smart-budget";
@@ -212,7 +213,7 @@ async function loadSmartBudgetArtworks(
 }
 
 async function selectProcessableJobs(client: DatabaseClient, limit: number) {
-  const sampleSize = Math.max(limit * 24, 96);
+  const sampleSize = Math.min(Math.max(limit * 128, 512), 5_000);
   const jobs = await client.queueJob.findMany({
     where: {
       status: QueueJobStatus.PENDING,
@@ -244,11 +245,38 @@ async function selectProcessableJobs(client: DatabaseClient, limit: number) {
   );
   let selectedFailedRepairJobs = 0;
 
-  for (const job of jobs) {
+  const rankedJobs = jobs
+    .map((job, index) => {
+      const artworkId = budgetArtworkIdForJob(job);
+      const artwork = artworkId ? (artworkById.get(artworkId) ?? null) : null;
+      const rootPriority = nextProcessableRootPriority(
+        artwork,
+        policy.smartPinMaxBytes,
+      );
+
+      return {
+        job,
+        artwork,
+        rootPriority,
+        index,
+      };
+    })
+    .sort((left, right) => {
+      const priorityGap = right.job.priority - left.job.priority;
+      if (priorityGap !== 0) return priorityGap;
+
+      const rankGap = left.rootPriority.rank - right.rootPriority.rank;
+      if (rankGap !== 0) return rankGap;
+
+      const sizeGap = left.rootPriority.size - right.rootPriority.size;
+      if (sizeGap !== 0) return sizeGap;
+
+      return left.index - right.index;
+    });
+
+  for (const { job, artwork } of rankedJobs) {
     if (selected.length >= limit) break;
 
-    const artworkId = budgetArtworkIdForJob(job);
-    const artwork = artworkId ? (artworkById.get(artworkId) ?? null) : null;
     const failedRepairJob = artworkNeedsOnlyFailedRootRepair(artwork);
     if (failedRepairJob && selectedFailedRepairJobs >= failedRepairLimit) {
       continue;
