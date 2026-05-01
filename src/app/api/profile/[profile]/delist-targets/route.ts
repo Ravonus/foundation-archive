@@ -7,7 +7,6 @@ import {
   loadArtistMarketCandidates,
   resolveProfileFromKey,
 } from "~/app/profile/[profile]/_data";
-import { getTokenMarketState } from "~/server/archive/foundation-market";
 import { db } from "~/server/db";
 
 export const runtime = "nodejs";
@@ -38,7 +37,7 @@ type SkippedCounts = {
   errors: number;
 };
 
-const MARKET_REFRESH_CONCURRENCY = 4;
+const MARKET_QUERY_CHUNK_SIZE = 250;
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   const { profile } = await context.params;
@@ -50,31 +49,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     username: resolved.username,
   });
 
-  const targets: BulkDelistTarget[] = [];
-  const skipped: SkippedCounts = {
-    biddingAuctions: 0,
-    otherSeller: 0,
-    errors: 0,
-  };
-
-  for (
-    let index = 0;
-    index < candidates.length;
-    index += MARKET_REFRESH_CONCURRENCY
-  ) {
-    const batch = candidates.slice(index, index + MARKET_REFRESH_CONCURRENCY);
-    const resolvedBatch = await Promise.all(
-      batch.map((candidate) =>
-        findCandidateDelistTargets(candidate, resolved.accountAddress),
-      ),
-    );
-    for (const result of resolvedBatch) {
-      targets.push(...result.targets);
-      skipped.biddingAuctions += result.skipped.biddingAuctions;
-      skipped.otherSeller += result.skipped.otherSeller;
-      skipped.errors += result.skipped.errors;
-    }
-  }
+  const { targets, skipped } = await findStoredDelistTargets(
+    candidates,
+    resolved.accountAddress,
+  );
 
   targets.sort((a, b) => {
     if (a.chainId !== b.chainId) return a.chainId - b.chainId;
@@ -89,41 +67,62 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   });
 }
 
-async function findCandidateDelistTargets(
-  candidate: ArtistMarketCandidate,
+async function findStoredDelistTargets(
+  candidates: ArtistMarketCandidate[],
   sellerAddress: string,
 ): Promise<{ targets: BulkDelistTarget[]; skipped: SkippedCounts }> {
+  const candidatesByToken = new Map(
+    candidates.map((candidate) => [tokenKey(candidate), candidate]),
+  );
+  const targets: BulkDelistTarget[] = [];
   const skipped: SkippedCounts = {
     biddingAuctions: 0,
     otherSeller: 0,
     errors: 0,
   };
 
-  try {
-    const state = await getTokenMarketState(
-      db,
-      {
-        chainId: candidate.chainId,
-        nftContract: candidate.contractAddress,
-        tokenId: candidate.tokenId,
-      },
-      { refreshFromChain: true },
-    );
+  for (
+    let index = 0;
+    index < candidates.length;
+    index += MARKET_QUERY_CHUNK_SIZE
+  ) {
+    const batch = candidates.slice(index, index + MARKET_QUERY_CHUNK_SIZE);
+    const whereTokens = batch.map((candidate) => ({
+      chainId: candidate.chainId,
+      nftContract: candidate.contractAddress.toLowerCase(),
+      tokenId: candidate.tokenId,
+    }));
 
-    const targets: BulkDelistTarget[] = [];
-    if (state.activeBuyPrice) {
-      if (addressesMatch(state.activeBuyPrice.seller, sellerAddress)) {
+    const [buyPrices, auctions] = await Promise.all([
+      db.foundationBuyPrice.findMany({
+        where: {
+          status: "active",
+          OR: whereTokens,
+        },
+      }),
+      db.foundationReserveAuction.findMany({
+        where: {
+          status: { in: ["open", "bidding"] },
+          OR: whereTokens,
+        },
+      }),
+    ]);
+
+    for (const buyPrice of buyPrices) {
+      const candidate = candidatesByToken.get(tokenKey(buyPrice));
+      if (!candidate) continue;
+      if (addressesMatch(buyPrice.seller, sellerAddress)) {
         targets.push({
-          id: `${state.activeBuyPrice.chainId}:${state.activeBuyPrice.marketContract}:buyPrice:${state.activeBuyPrice.nftContract}:${state.activeBuyPrice.tokenId}`,
+          id: `${buyPrice.chainId}:${buyPrice.marketContract}:buyPrice:${buyPrice.nftContract}:${buyPrice.tokenId}`,
           kind: "buyPrice",
-          chainId: state.activeBuyPrice.chainId,
+          chainId: buyPrice.chainId,
           title: candidate.title,
           slug: candidate.slug,
-          contractAddress: state.activeBuyPrice.nftContract,
-          tokenId: state.activeBuyPrice.tokenId,
-          marketContract: state.activeBuyPrice.marketContract,
-          seller: state.activeBuyPrice.seller,
-          price: state.activeBuyPrice.price,
+          contractAddress: buyPrice.nftContract,
+          tokenId: buyPrice.tokenId,
+          marketContract: buyPrice.marketContract,
+          seller: buyPrice.seller,
+          price: buyPrice.price,
           auctionId: null,
           reservePrice: null,
         });
@@ -132,37 +131,42 @@ async function findCandidateDelistTargets(
       }
     }
 
-    if (state.liveAuction) {
-      if (!addressesMatch(state.liveAuction.seller, sellerAddress)) {
+    for (const auction of auctions) {
+      const candidate = candidatesByToken.get(tokenKey(auction));
+      if (!candidate) continue;
+      if (!addressesMatch(auction.seller, sellerAddress)) {
         skipped.otherSeller += 1;
-      } else if (
-        state.liveAuction.status === "open" &&
-        !state.liveAuction.highestBid
-      ) {
+      } else if (auction.status === "open" && !auction.highestBid) {
         targets.push({
-          id: `${state.liveAuction.chainId}:${state.liveAuction.marketContract}:reserveAuction:${state.liveAuction.auctionId}`,
+          id: `${auction.chainId}:${auction.marketContract}:reserveAuction:${auction.auctionId}`,
           kind: "reserveAuction",
-          chainId: state.liveAuction.chainId,
+          chainId: auction.chainId,
           title: candidate.title,
           slug: candidate.slug,
-          contractAddress: state.liveAuction.nftContract,
-          tokenId: state.liveAuction.tokenId,
-          marketContract: state.liveAuction.marketContract,
-          seller: state.liveAuction.seller,
+          contractAddress: auction.nftContract,
+          tokenId: auction.tokenId,
+          marketContract: auction.marketContract,
+          seller: auction.seller,
           price: null,
-          auctionId: state.liveAuction.auctionId,
-          reservePrice: state.liveAuction.reservePrice,
+          auctionId: auction.auctionId,
+          reservePrice: auction.reservePrice,
         });
       } else {
         skipped.biddingAuctions += 1;
       }
     }
-
-    return { targets, skipped };
-  } catch {
-    skipped.errors += 1;
-    return { targets: [], skipped };
   }
+
+  return { targets, skipped };
+}
+
+function tokenKey(row: {
+  chainId: number;
+  contractAddress?: string;
+  nftContract?: string;
+  tokenId: string;
+}) {
+  return `${row.chainId}:${(row.nftContract ?? row.contractAddress ?? "").toLowerCase()}:${row.tokenId}`;
 }
 
 function addressesMatch(
