@@ -5,6 +5,7 @@ import {
   attachMarketStateToGridItems,
   summarizeProfileMarketState,
 } from "~/server/archive/foundation-market";
+import { ProfileBulkDelistPanelShell } from "~/app/_components/web3/profile-bulk-delist-panel-shell";
 import { db } from "~/server/db";
 
 import {
@@ -124,6 +125,10 @@ export default async function ProfilePage({
           marketSummary={marketSummary}
         />
         <ViewTabs profile={profile} view={activeView} counts={counts} />
+        <ProfileBulkDelistPanelShell
+          profile={profile}
+          sellerAddress={resolved.accountAddress}
+        />
         <section className="mt-10">
           <ProfileBrowser
             profile={profile}

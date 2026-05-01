@@ -1,15 +1,18 @@
-FROM node:22-bookworm-slim
+# Full Bookworm includes OpenSSL 3, which Prisma needs during generate/db push.
+# This keeps the web image off apt-get so builds do not depend on deb.debian.org.
+FROM node:22-bookworm
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 WORKDIR /app
 
-RUN corepack enable
-# node:22-bookworm-slim already ships ca-certificates, and nothing in
-# our runtime shells out to the openssl binary (Prisma uses libssl from
-# the base image). The apt-get step used to live here; dropped it so
-# the build doesn't depend on buildkit having working DNS.
+RUN npm \
+  --fetch-retries=5 \
+  --fetch-retry-mintimeout=10000 \
+  --fetch-retry-maxtimeout=60000 \
+  --fetch-timeout=60000 \
+  install -g pnpm@10.29.2
 
 COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma ./prisma

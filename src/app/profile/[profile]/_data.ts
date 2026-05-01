@@ -348,6 +348,37 @@ export async function loadArchivedArtistPage(input: {
   return { rows: page, nextCursor };
 }
 
+export type ArtistMarketCandidate = {
+  id: string;
+  chainId: number;
+  slug: string | null;
+  title: string;
+  artistWallet: string | null;
+  artistUsername: string | null;
+  contractAddress: string;
+  tokenId: string;
+};
+
+export async function loadArtistMarketCandidates(input: {
+  accountAddress: string;
+  username: string | null;
+}): Promise<ArtistMarketCandidate[]> {
+  return db.artwork.findMany({
+    where: buildArtistWhere(input),
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      chainId: true,
+      slug: true,
+      title: true,
+      artistWallet: true,
+      artistUsername: true,
+      contractAddress: true,
+      tokenId: true,
+    },
+  });
+}
+
 export async function computeArtistCounts(input: {
   accountAddress: string;
   username: string | null;

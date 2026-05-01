@@ -78,6 +78,7 @@ export type TokenMarketState = {
 
 type GetTokenMarketStateOptions = {
   refreshMissingFromChain?: boolean;
+  refreshFromChain?: boolean;
 };
 
 export async function getTokenMarketState(
@@ -87,9 +88,10 @@ export async function getTokenMarketState(
 ): Promise<TokenMarketState> {
   let state = await loadStoredTokenMarketState(client, identity);
   if (
-    options.refreshMissingFromChain &&
-    !state.activeBuyPrice &&
-    !state.liveAuction
+    options.refreshFromChain ||
+    (options.refreshMissingFromChain &&
+      !state.activeBuyPrice &&
+      !state.liveAuction)
   ) {
     await refreshTokenMarketStateFromChain(client, identity).catch(() => null);
     state = await loadStoredTokenMarketState(client, identity);
@@ -223,11 +225,26 @@ async function persistLiveBuyPrice(
   },
 ) {
   const [seller, price] = input.buyPrice;
-  if (isZeroAddress(seller)) return;
-
   const marketContract = lower(input.marketContract);
   const nftContract = lower(input.nftContract);
   const tokenId = input.tokenId.toString();
+  if (isZeroAddress(seller)) {
+    await client.foundationBuyPrice.updateMany({
+      where: {
+        chainId: input.chainId,
+        marketContract,
+        nftContract,
+        tokenId,
+        status: "active",
+      },
+      data: {
+        status: "invalidated",
+        updatedBlock: input.latestBlock,
+      },
+    });
+    return;
+  }
+
   await client.foundationBuyPrice.upsert({
     where: {
       chainId_marketContract_nftContract_tokenId: {
@@ -284,7 +301,19 @@ async function persistLiveAuction(
     }>;
   },
 ) {
-  if (input.auctionId === 0n) return;
+  if (input.auctionId === 0n) {
+    await client.foundationReserveAuction.updateMany({
+      where: {
+        chainId: input.chainId,
+        marketContract: lower(input.marketContract),
+        nftContract: lower(input.nftContract),
+        tokenId: input.tokenId.toString(),
+        status: { in: ["open", "bidding"] },
+      },
+      data: { status: "invalidated" },
+    });
+    return;
+  }
 
   const auction = await input.readAuction(input.auctionId);
   if (

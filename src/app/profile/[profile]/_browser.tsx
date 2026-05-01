@@ -125,6 +125,35 @@ function advanceCursor(
   };
 }
 
+function modeForCursor(cursor: ProfileCursorState): "db" | "foundation" {
+  return cursor.dbCursor ? "db" : "foundation";
+}
+
+function mergePayloadItems(
+  current: ArtworkGridItem[],
+  payload: BrowsePageResponse,
+  seen: Set<string>,
+) {
+  const merged = mergeNewItems(current, payload.items, seen);
+  for (const key of payload.seenKeys) seen.add(key);
+  return merged;
+}
+
+function cursorUnchanged(
+  before: ProfileCursorState,
+  after: ProfileCursorState,
+) {
+  return (
+    after.dbCursor === before.dbCursor &&
+    after.foundationPage === before.foundationPage &&
+    after.foundationExhausted === before.foundationExhausted
+  );
+}
+
+function loadErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function ProfileBrowser(props: ProfileBrowserProps) {
   const resetKey = [
     props.profile,
@@ -149,6 +178,7 @@ function ProfileBrowserSession({
   const [items, setItems] = useState<ArtworkGridItem[]>(initialItems);
   const [cursor, setCursor] = useState<ProfileCursorState>(initialCursor);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const seenKeysRef = useRef<Set<string>>(new Set(initialSeenKeys));
   const isLoadingRef = useRef(false);
@@ -167,7 +197,7 @@ function ProfileBrowserSession({
     if (isLoadingRef.current || !hasMore(cursor, view)) return;
     if (Date.now() - lastFetchAtRef.current < MIN_FETCH_INTERVAL_MS) return;
 
-    const mode: "db" | "foundation" = cursor.dbCursor ? "db" : "foundation";
+    const mode = modeForCursor(cursor);
     isLoadingRef.current = true;
     setIsLoadingMore(true);
     setLoadError(null);
@@ -181,23 +211,63 @@ function ProfileBrowserSession({
         foundationPage: cursor.foundationPage,
       });
       lastFetchAtRef.current = Date.now();
-      if (!payload || !isMountedRef.current) return;
+      if (!payload) return;
+      if (!isMountedRef.current) return;
 
-      for (const key of payload.seenKeys) seenKeysRef.current.add(key);
-      setItems((current) =>
-        mergeNewItems(current, payload.items, seenKeysRef.current),
-      );
+      setItems((current) => {
+        return mergePayloadItems(current, payload, seenKeysRef.current);
+      });
       setCursor((current) => advanceCursor(current, mode, payload));
     } catch (error) {
       if (!isMountedRef.current) return;
       setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load more works right now.",
+        loadErrorMessage(error, "Unable to load more works right now."),
       );
     } finally {
       isLoadingRef.current = false;
       if (isMountedRef.current) setIsLoadingMore(false);
+    }
+  }, [cursor, profile, view]);
+
+  const loadAll = useCallback(async () => {
+    if (isLoadingRef.current || !hasMore(cursor, view)) return;
+
+    let nextCursor = cursor;
+    isLoadingRef.current = true;
+    setIsLoadingAll(true);
+    setLoadError(null);
+
+    try {
+      while (hasMore(nextCursor, view)) {
+        const mode = modeForCursor(nextCursor);
+        const payload = await fetchBrowsePage({
+          profile,
+          view,
+          mode,
+          dbCursor: nextCursor.dbCursor,
+          foundationPage: nextCursor.foundationPage,
+        });
+        lastFetchAtRef.current = Date.now();
+        if (!payload) return;
+        if (!isMountedRef.current) return;
+
+        setItems((current) => {
+          return mergePayloadItems(current, payload, seenKeysRef.current);
+        });
+
+        const advanced = advanceCursor(nextCursor, mode, payload);
+        setCursor(advanced);
+        if (cursorUnchanged(nextCursor, advanced)) break;
+        nextCursor = advanced;
+      }
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      setLoadError(
+        loadErrorMessage(error, "Unable to load all works right now."),
+      );
+    } finally {
+      isLoadingRef.current = false;
+      if (isMountedRef.current) setIsLoadingAll(false);
     }
   }, [cursor, profile, view]);
 
@@ -233,8 +303,10 @@ function ProfileBrowserSession({
       <div ref={sentinelRef} aria-hidden className="h-16 w-full" />
       <LoadMoreFooter
         hasMore={moreAvailable}
-        isLoading={isLoadingMore}
+        isLoading={isLoadingMore || isLoadingAll}
+        isLoadingAll={isLoadingAll}
         loadError={loadError}
+        onLoadAll={() => void loadAll()}
         onLoadMore={() => void loadMore()}
         rendered={items.length > 0}
       />
@@ -245,13 +317,17 @@ function ProfileBrowserSession({
 function LoadMoreFooter({
   hasMore: more,
   isLoading,
+  isLoadingAll,
   loadError,
+  onLoadAll,
   onLoadMore,
   rendered,
 }: {
   hasMore: boolean;
   isLoading: boolean;
+  isLoadingAll: boolean;
   loadError: string | null;
+  onLoadAll: () => void;
   onLoadMore: () => void;
   rendered: boolean;
 }) {
@@ -269,15 +345,26 @@ function LoadMoreFooter({
           </button>
         </div>
       ) : isLoading ? (
-        <span>Loading more works...</span>
+        <span>
+          {isLoadingAll ? "Loading all works..." : "Loading more works..."}
+        </span>
       ) : more ? (
-        <button
-          type="button"
-          onClick={onLoadMore}
-          className="rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-1.5 text-xs text-[var(--color-ink)] hover:bg-[var(--color-surface-quiet)]"
-        >
-          Load more
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={onLoadMore}
+            className="rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-1.5 text-xs text-[var(--color-ink)] hover:bg-[var(--color-surface-quiet)]"
+          >
+            Load more
+          </button>
+          <button
+            type="button"
+            onClick={onLoadAll}
+            className="rounded-full bg-[var(--color-ink)] px-4 py-1.5 text-xs font-medium text-[var(--color-bg)] hover:opacity-90"
+          >
+            View all
+          </button>
+        </div>
       ) : rendered ? (
         <span className="text-xs text-[var(--color-muted)]">
           Reached the end of this view.
