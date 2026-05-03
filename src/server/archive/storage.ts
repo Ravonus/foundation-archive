@@ -855,9 +855,19 @@ export async function downloadFileToArchive(input: {
       );
 
       if (response) {
+        const archivedPath = response.absolute_path || getArchivedFilePath(
+          input.cid,
+          input.relativePath,
+        );
+        if (!(await pathExists(archivedPath))) {
+          throw new Error(
+            `Rust archiver reported success for ${input.cid} but ${archivedPath} is missing from shared storage.`,
+          );
+        }
+
         clearRustArchiverCooldown();
         return {
-          absolutePath: response.absolute_path,
+          absolutePath: archivedPath,
           localDirectory: response.local_directory,
           byteSize: response.byte_size,
           mimeType: response.mime_type,

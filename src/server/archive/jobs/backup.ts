@@ -1,5 +1,7 @@
 /* eslint-disable complexity, max-lines */
 
+import { readdir, stat } from "node:fs/promises";
+
 import {
   BackupStatus,
   PinProvider,
@@ -18,6 +20,7 @@ import { getArchivePolicyState } from "~/server/archive/state";
 import {
   downloadFileToArchive,
   ensureArchiveRoot,
+  getArchivedFilePath,
   kuboHasRecursivePin,
   hydrateCidDirectory,
   pinCidWithKubo,
@@ -93,6 +96,32 @@ function hasDownloadedRoot(root: RootRecord) {
   );
 }
 
+async function archivedRootExistsOnDisk(root: RootRecord) {
+  const archivedPath = getArchivedFilePath(root.cid, root.relativePath);
+
+  try {
+    const archivedStats = await stat(archivedPath);
+    if (archivedStats.isFile()) return true;
+    if (archivedStats.isDirectory()) {
+      const entries = await readdir(archivedPath);
+      return entries.length > 0;
+    }
+  } catch {
+    // Fall through to the localDirectory check below.
+  }
+
+  if (!root.localDirectory) return false;
+
+  try {
+    const localDirectoryStats = await stat(root.localDirectory);
+    if (!localDirectoryStats.isDirectory()) return false;
+    const entries = await readdir(root.localDirectory);
+    return entries.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function isRootAlreadySatisfied(root: RootRecord) {
   return (
     root.pinStatus === BackupStatus.PINNED ||
@@ -118,10 +147,23 @@ async function resolveDownloadResult(args: {
 }): Promise<ResolvedDownloadResult> {
   const { client, input, root, startedAt } = args;
   if (hasDownloadedRoot(root)) {
-    return {
-      byteSize: root.byteSize ?? root.estimatedByteSize ?? 0,
-      hasLocalArchive: true,
-    };
+    if (!(await archivedRootExistsOnDisk(root))) {
+      await client.ipfsRoot.update({
+        where: { id: root.id },
+        data: {
+          backupStatus: BackupStatus.PENDING,
+          pinStatus: BackupStatus.PENDING,
+          localDirectory: null,
+          lastError:
+            "Archive file was missing from shared storage; re-queued for download.",
+        },
+      });
+    } else {
+      return {
+        byteSize: root.byteSize ?? root.estimatedByteSize ?? 0,
+        hasLocalArchive: true,
+      };
+    }
   }
 
   try {
